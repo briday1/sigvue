@@ -7,16 +7,19 @@ import plotly.graph_objects as go
 
 from workspace_browser.core.models import ItemDescriptor, RefreshResult, WorkspaceMetadata
 from workspace_browser.core.page import ControlSpec, OpenedItem, PageDefinition, PlaybackConfiguration, ViewSpec
-from workspace_browser.core.status import ItemStatus
 from workspace_browser.core.layout import container, view_slot
 
 
 class GenericExampleWorkspace:
+    def __init__(self, *, identifier: str = "generic-example", name: str = "Generic Example Workspace") -> None:
+        self.identifier = identifier
+        self.name = name
+
     @property
     def metadata(self) -> WorkspaceMetadata:
         return WorkspaceMetadata(
-            identifier="generic-example",
-            display_name="Generic Example Workspace",
+            identifier=self.identifier,
+            display_name=self.name,
             description="Example workspace that demonstrates discovery and viewing.",
             version="0.1.0",
             category="examples",
@@ -30,7 +33,6 @@ class GenericExampleWorkspace:
                 identifier="item-1",
                 title="Example Item",
                 subtitle="Demonstrates workspace item rendering",
-                status=ItemStatus.READY,
                 source_reference="memory://example/item-1",
                 timestamp=now,
                 tags=("example", "ready"),
@@ -40,7 +42,6 @@ class GenericExampleWorkspace:
                 identifier="sigmf-tone-demo",
                 title="Four-Channel SigMF Collection Playback",
                 subtitle="Recorded multi-channel capture played back in small analysis buffers",
-                status=ItemStatus.READY,
                 source_reference="sigmf://examples/two-tone.sigmf-meta",
                 timestamp=now,
                 tags=("sigmf", "iq", "timeseries", "spectrum"),
@@ -59,7 +60,6 @@ class GenericExampleWorkspace:
         page = PageDefinition(
             title=item.title,
             subtitle=item.subtitle,
-            status=item.status.value,
             views=(
                 ViewSpec(name="summary", callback=lambda _: "# Example Item\nThis is a markdown view."),
             ),
@@ -109,7 +109,6 @@ class GenericExampleWorkspace:
         page = PageDefinition(
             title=item.title,
             subtitle=item.subtitle,
-            status=item.status.value,
             controls=(
                 ControlSpec(name="buffer_size", control_type="select", default=128, options=(64, 128, 256)),
                 ControlSpec(name="amplitude_scale", control_type="select", default=1.0, options=(0.5, 1.0, 2.0, 4.0)),

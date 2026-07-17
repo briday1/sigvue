@@ -9,7 +9,13 @@ description = "Pure-Python scientific workspace browser framework"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "Scientific Workspace Browser" }]
-dependencies = ["plotly>=5.0"]
+dependencies = ["matplotlib>=3.7", "plotly>=5.0", "tomli>=2; python_version < '3.11'"]
+
+[project.entry-points."workspace_browser.workspaces"]
+generic-example = "workspace_browser.examples.profile:create_generic_workspace"
+sigmf-viewer = "workspace_browser.examples.profile:create_sigmf_workspace"
+sigmf-matplotlib-viewer = "workspace_browser.examples.profile:create_sigmf_matplotlib_workspace"
+pri-waterfall = "workspace_browser.examples.profile:create_pri_workspace"
 
 [project.scripts]
 workspace-browser = "workspace_browser.web.application:main"
@@ -19,3 +25,6 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+workspace_browser = ["examples/data/*.sigmf-meta", "examples/data/*.sigmf-data"]

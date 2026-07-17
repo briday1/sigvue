@@ -1,0 +1,16 @@
+{
+  "global": {
+    "core:datatype": "rf32_le",
+    "core:sample_rate": 1024,
+    "core:num_channels": 4,
+    "core:version": "1.2.5",
+    "core:description": "Four-channel file-backed playback example"
+  },
+  "captures": [
+    {
+      "core:sample_start": 0,
+      "core:frequency": 915000000
+    }
+  ],
+  "annotations": []
+}

@@ -1,0 +1,112 @@
+import sys
+import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from uuid import uuid4
+
+from workspace_browser.profile import load_browser_profile
+from workspace_browser.web.application import create_app
+
+
+class BrowserProfileTests(unittest.TestCase):
+    def test_bundled_example_profile_is_runnable(self):
+        profile_path = Path(__file__).resolve().parents[1] / "browser.example.toml"
+        app = create_app(config_path=profile_path)
+        self.assertEqual("Signal Analysis Browser", app.title)
+        self.assertEqual(
+            ["recorded-signals", "recorded-signals-matplotlib", "pri-analysis"],
+            [workspace["id"] for workspace in app.list_workspaces()],
+        )
+
+    def test_repository_entry_point_can_create_multiple_configured_instances(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            repository = root / "radar-repository"
+            package_name = f"radar_workspace_{uuid4().hex}"
+            package = repository / "src" / package_name
+            package.mkdir(parents=True)
+            (package / "__init__.py").write_text(
+                "from workspace_browser.examples.generic import GenericExampleWorkspace\n"
+                "def create_workspace(config):\n"
+                "    return GenericExampleWorkspace(identifier=config['id'], name=config['name'])\n",
+                encoding="utf-8",
+            )
+            (repository / "pyproject.toml").write_text(
+                "[project]\n"
+                f"name = '{package_name}'\n"
+                "version = '0.1.0'\n"
+                "[project.entry-points.\"workspace_browser.workspaces\"]\n"
+                f"radar-analysis = '{package_name}:create_workspace'\n",
+                encoding="utf-8",
+            )
+            profile_path = root / "browser.toml"
+            profile_path.write_text(
+                "[browser]\n"
+                "title = 'Lab Browser'\n"
+                "[[workspaces]]\n"
+                "use = 'radar-analysis'\n"
+                "path = './radar-repository'\n"
+                "id = 'lab-captures'\n"
+                "name = 'Lab captures'\n"
+                "[workspaces.config]\n"
+                "data_root = './data/lab'\n"
+                "[[workspaces]]\n"
+                "use = 'radar-analysis'\n"
+                "path = './radar-repository'\n"
+                "id = 'field-tests'\n"
+                "name = 'Field tests'\n"
+                "[workspaces.config]\n"
+                "data_root = './data/field'\n",
+                encoding="utf-8",
+            )
+
+            try:
+                profile = load_browser_profile(profile_path)
+                self.assertEqual("Lab Browser", profile.title)
+                self.assertEqual(repository.resolve(), profile.workspaces[0].watch_path)
+                self.assertEqual(str((root / "data/lab").resolve()), profile.workspaces[0].configuration["data_root"])
+
+                app = create_app(config_path=profile_path)
+                self.assertEqual("Lab Browser", app.title)
+                self.assertEqual(
+                    [("lab-captures", "Lab captures"), ("field-tests", "Field tests")],
+                    [(workspace["id"], workspace["name"]) for workspace in app.list_workspaces()],
+                )
+            finally:
+                sys.modules.pop(package_name, None)
+
+    def test_direct_module_factory_reference_does_not_require_entry_point(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            module_name = f"direct_workspace_{uuid4().hex}"
+            (root / f"{module_name}.py").write_text(
+                "from workspace_browser.examples.generic import GenericExampleWorkspace\n"
+                "def build(config):\n"
+                "    return GenericExampleWorkspace(identifier=config['id'], name=config['name'])\n",
+                encoding="utf-8",
+            )
+            profile_path = root / "browser.toml"
+            profile_path.write_text(
+                "[[workspaces]]\n"
+                f"use = '{module_name}:build'\n"
+                "path = '.'\n"
+                "id = 'direct'\n"
+                "name = 'Direct module'\n",
+                encoding="utf-8",
+            )
+            try:
+                app = create_app(config_path=profile_path)
+                self.assertEqual(["direct"], [workspace["id"] for workspace in app.list_workspaces()])
+            finally:
+                sys.modules.pop(module_name, None)
+
+    def test_unknown_workspace_name_reports_available_entry_points(self):
+        with TemporaryDirectory() as directory:
+            profile_path = Path(directory) / "browser.toml"
+            profile_path.write_text("[[workspaces]]\nuse = 'does-not-exist'\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Unknown workspace 'does-not-exist'"):
+                load_browser_profile(profile_path)
+
+
+if __name__ == "__main__":
+    unittest.main()

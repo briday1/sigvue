@@ -3,9 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from .status import ItemStatus, normalize_status
-
-
 @dataclass(frozen=True)
 class WorkspaceMetadata:
     identifier: str
@@ -27,7 +24,6 @@ class WorkspaceMetadata:
 class ItemDescriptor:
     identifier: str
     title: str
-    status: ItemStatus | str = ItemStatus.UNKNOWN
     source_reference: str | None = None
     subtitle: str | None = None
     timestamp: datetime | None = None
@@ -41,9 +37,6 @@ class ItemDescriptor:
             raise ValueError("Item identifier must be non-empty")
         if not self.title.strip():
             raise ValueError("Item title must be non-empty")
-        self.status = normalize_status(self.status)
-
-
 @dataclass(frozen=True)
 class RefreshConfiguration:
     enabled: bool = False
@@ -62,9 +55,7 @@ class RefreshConfiguration:
 class RefreshResult:
     changed: bool = False
     metadata_changed: bool = False
-    status_changed: bool = False
     changed_views: tuple[str, ...] = ()
     all_views_changed: bool = False
-    unavailable: bool = False
     failed: bool = False
     next_suggested_refresh_at: datetime | None = None

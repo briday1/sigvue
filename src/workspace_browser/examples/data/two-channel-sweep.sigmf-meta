@@ -1,0 +1,16 @@
+{
+  "global": {
+    "core:datatype": "rf32_le",
+    "core:sample_rate": 2048,
+    "core:num_channels": 2,
+    "core:version": "1.2.5",
+    "core:description": "Two-channel swept-frequency capture"
+  },
+  "captures": [
+    {
+      "core:sample_start": 0,
+      "core:frequency": 433920000
+    }
+  ],
+  "annotations": []
+}

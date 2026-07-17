@@ -29,7 +29,7 @@ def detect_render_kind(value: object) -> RenderKind:
         return RenderKind.MATPLOTLIB
     if "pandas" in module and name == "dataframe":
         return RenderKind.DATAFRAME
-    if isinstance(value, (list, tuple)) and value and isinstance(value[0], dict):
+    if isinstance(value, (list, tuple)) and (not value or isinstance(value[0], dict)):
         return RenderKind.TABLE
     if isinstance(value, dict) and "download_path" in value:
         return RenderKind.DOWNLOAD

@@ -1,13 +1,12 @@
 import unittest
 
 from workspace_browser.core.models import ItemDescriptor
-from workspace_browser.core.status import ItemStatus
 
 
 class ModelTests(unittest.TestCase):
-    def test_item_descriptor_normalizes_status(self):
-        item = ItemDescriptor(identifier="1", title="Title", status="READY")
-        self.assertEqual(ItemStatus.READY, item.status)
+    def test_item_descriptor_keeps_discovery_metadata(self):
+        item = ItemDescriptor(identifier="1", title="Title", tags=("sigmf",))
+        self.assertEqual(("sigmf",), item.tags)
 
     def test_item_descriptor_rejects_empty_id(self):
         with self.assertRaises(ValueError):

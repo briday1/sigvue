@@ -9,7 +9,6 @@ class LayoutTests(unittest.TestCase):
     def test_valid_layout(self):
         page = PageDefinition(
             title="Title",
-            status="ready",
             views=(ViewSpec(name="a", callback=lambda _: "text"),),
             layout=container("tabs", (view_slot("a"),)),
         )

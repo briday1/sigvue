@@ -1,0 +1,26 @@
+[browser]
+title = "Signal Analysis Browser"
+
+[[workspaces]]
+use = "workspace_browser.examples.profile:create_sigmf_workspace"
+id = "recorded-signals"
+name = "Recorded signals"
+
+[workspaces.config]
+data_root = "./src/workspace_browser/examples/data"
+
+[[workspaces]]
+use = "workspace_browser.examples.profile:create_sigmf_matplotlib_workspace"
+id = "recorded-signals-matplotlib"
+name = "Recorded signals (Matplotlib)"
+
+[workspaces.config]
+data_root = "./src/workspace_browser/examples/data"
+
+[[workspaces]]
+use = "workspace_browser.examples.profile:create_pri_workspace"
+id = "pri-analysis"
+name = "PRI analysis"
+
+[workspaces.config]
+data_root = "./src/workspace_browser/examples/data"

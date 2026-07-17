@@ -25,11 +25,12 @@ CONTAINER_KINDS = {
     "split_pane",
     "sidebar",
     "control_group",
+    "view_switcher",
 }
 
 
-def view_slot(view_name: str) -> LayoutNode:
-    return LayoutNode(kind="view_slot", view=view_name)
+def view_slot(view_name: str, **props: object) -> LayoutNode:
+    return LayoutNode(kind="view_slot", view=view_name, props=dict(props))
 
 
 def container(kind: str, children: Iterable[LayoutNode], **props: object) -> LayoutNode:
