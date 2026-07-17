@@ -26,7 +26,7 @@ Launching the service now opens a browser interface at `/`; the JSON API remains
 Most plugins should use the high-level source + analysis API instead of implementing the full workspace contract.
 
 ```python
-from workspace_browser.plugin import directory_workspace
+from workspace_browser.plugin import AnalysisWorkspace, DirectorySource
 
 def analyze(data, ui):
     window = ui.number("window", default=128, minimum=1, step=1)
@@ -40,18 +40,60 @@ def analyze(data, ui):
         ui.plot(make_time_figure(frame), key="time")
         ui.plot(make_spectrum_figure(frame), key="spectrum")
 
-workspace = directory_workspace(
+workspace = AnalysisWorkspace(
     identifier="my-results",
     name="My Results",
     description="Browse and inspect my result data.",
-    directory="/data/results",
-    pattern="*.result",
-    loader=load_my_data,
+    source=DirectorySource(
+        "/data/results",
+        pattern="*.result",
+        loader=load_my_data,
+    ),
     analyze=analyze,
 )
 ```
 
-The framework scans the directory and creates one browser row per matching file. Use `recursive=True` for nested directories or provide `describe(path)` to customize row titles, tags, and summary fields. Implement the lower-level `DataSource` interface only when discovery is not file-based (for example, a database or REST API).
+`DirectorySource` scans the directory and creates one browser row per matching file. Use `recursive=True` for nested directories or provide `describe(path)` to customize row titles, tags, and summary fields. Implement the `DataSource` interface when discovery is not file-based (for example, a database or REST API).
+
+## SigMF workspace flow
+
+The bundled SigMF workspace is the concrete example of the contract. Its loader creates a lightweight recording object; it does **not** load the `.sigmf-data` payload at item-open time. The analysis chooses a buffer, then asks that object for the current window.
+
+```mermaid
+flowchart TD
+    files["SigMF directory\n.sigmf-meta + .sigmf-data"]
+
+    subgraph plugin["SigMF workspace code"]
+        create["create_workspace()\nAnalysisWorkspace(...)"]
+        source["DirectorySource\npattern=*.sigmf-meta"]
+        describe["_describe_recording(path)\nlisting title / tags / summary"]
+        load["_read_recording(meta path)\nreturns SigMFRecording\npaths + metadata + dimensions"]
+        analyze["analyze(recording, ui)\nchooses buffer and plots"]
+        frame["recording.frame(time, buffer_size)\nseek + read only that window"]
+        figures["ui.plot(native Figure)\nPlotly or Matplotlib"]
+    end
+
+    subgraph framework["Browser framework"]
+        listing["Discover items\nand show directory rows"]
+        open["Open selected item\ncall source.open(resource)"]
+        clock["Playback / controls\nprovide current time and settings"]
+        render["Serialize views\nand update browser"]
+    end
+
+    files --> source
+    create --> source
+    source -->|discover| describe --> listing
+    listing -->|select item| open
+    source -->|open selected .sigmf-meta| load
+    load -->|SigMFRecording| analyze
+    clock -->|time + control values| analyze
+    analyze -->|buffer request| frame
+    frame -->|read segment from .sigmf-data| files
+    frame -->|channel samples| analyze
+    analyze --> figures --> render
+```
+
+`SigMFRecording` retains the metadata and file paths. `recording.frame(...)` is the workspace-defined I/O step that decides how much sample data to pull. In the PRI workspace, `buffer_seconds` determines `buffer_size`, so each playback update seeks and reads only that requested PRI-analysis buffer.
 
 For a live source, call `ui.refresh(every=1.0)` in place of `ui.playback(...)`. The framework schedules reruns, prevents overlapping browser requests, and updates existing Plotly figures or Matplotlib image surfaces. The lower-level `Workspace` protocol remains available for unusual integrations.
 
@@ -145,13 +187,15 @@ radar-analysis = "radar_workspace.workspace:create_workspace"
 
 ```python
 def create_workspace(config):
-    return directory_workspace(
+    return AnalysisWorkspace(
         identifier=config["id"],
         name=config["name"],
         description="Radar analysis",
-        directory=config["data_root"],
-        pattern="*.sigmf-meta",
-        loader=load_recording,
+        source=DirectorySource(
+            config["data_root"],
+            pattern="*.sigmf-meta",
+            loader=load_recording,
+        ),
         analyze=analyze,
     )
 ```

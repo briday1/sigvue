@@ -7,8 +7,9 @@ from pathlib import Path
 
 from matplotlib.figure import Figure
 
-from workspace_browser.plugin import AnalysisContext, AnalysisWorkspace, directory_workspace
+from workspace_browser.plugin import AnalysisContext, AnalysisWorkspace, DirectorySource
 
+from .plot_style import TEAL, style_matplotlib
 from .sigmf import SigMFRecording, _describe_recording, _read_recording
 
 
@@ -55,14 +56,11 @@ def create_workspace(
     name: str = "SigMF Matplotlib Viewer",
 ) -> AnalysisWorkspace:
     directory = path or Path(__file__).with_name("data")
-    return directory_workspace(
+    return AnalysisWorkspace(
         identifier=identifier,
         name=name,
         description="Discovers stored SigMF recordings and plays them back with native Matplotlib figures.",
-        directory=directory,
-        pattern="*.sigmf-meta",
-        loader=_read_recording,
-        describe=_describe_recording,
+        source=DirectorySource(directory, pattern="*.sigmf-meta", loader=_read_recording, describe=_describe_recording),
         analyze=analyze,
         category="signal analysis",
         tags=("sigmf", "files", "playback", "matplotlib"),
@@ -72,10 +70,8 @@ def create_workspace(
 def _time_figure(title: str, x: list[float], samples: tuple[float, ...]) -> Figure:
     figure = Figure(figsize=(6.4, 3.6), layout="constrained")
     axes = figure.subplots()
-    axes.plot(x, samples, linewidth=1)
-    axes.set(title=title, xlabel="Recording time (s)", ylabel="Amplitude")
-    axes.grid(alpha=0.25)
-    return figure
+    axes.plot(x, samples, color=TEAL, linewidth=1.25)
+    return style_matplotlib(figure, axes, title=title, x_label="Recording time (s)", y_label="Amplitude")
 
 
 def _spectrum_figure(title: str, samples: tuple[float, ...], sample_rate: float, window: str) -> Figure:
@@ -94,7 +90,5 @@ def _spectrum_figure(title: str, samples: tuple[float, ...], sample_rate: float,
 
     figure = Figure(figsize=(6.4, 3.6), layout="constrained")
     axes = figure.subplots()
-    axes.plot(frequencies, magnitude, linewidth=1)
-    axes.set(title=title, xlabel="Frequency (Hz)", ylabel="Magnitude (dBFS)")
-    axes.grid(alpha=0.25)
-    return figure
+    axes.plot(frequencies, magnitude, color=TEAL, linewidth=1.25)
+    return style_matplotlib(figure, axes, title=title, x_label="Frequency (Hz)", y_label="Magnitude (dBFS)")

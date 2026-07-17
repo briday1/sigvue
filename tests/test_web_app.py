@@ -9,6 +9,7 @@ from unittest.mock import Mock
 from plotly.graph_objects import Figure
 
 from workspace_browser.examples.generic import GenericExampleWorkspace
+from workspace_browser.examples.sigmf import _read_recording
 from workspace_browser.web.application import (
     WorkspaceBrowserApp,
     WorkspaceModuleRegistration,
@@ -151,6 +152,47 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(4, len(multichannel["rendered_views"]))
         self.assertEqual("dropdown", multichannel["layout"]["children"][0]["props"]["selector"])
         self.assertEqual(["Channel 1", "Channel 2", "Channel 3", "Channel 4"], [child["props"]["label"] for child in multichannel["layout"]["children"][0]["children"]])
+
+    def test_sigmf_frame_reads_only_the_requested_pri_window(self):
+        metadata_path = Path(__file__).resolve().parents[1] / "src/workspace_browser/examples/data/single-channel-bursts.sigmf-meta"
+        recording = _read_recording(metadata_path)
+        data_path = recording.data_path
+        requested_reads: list[int] = []
+
+        class CountingStream:
+            def __init__(self, stream):
+                self.stream = stream
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                self.stream.close()
+
+            def seek(self, offset):
+                return self.stream.seek(offset)
+
+            def read(self, size=-1):
+                requested_reads.append(size)
+                return self.stream.read(size)
+
+        class CountingPath:
+            def open(self, *args, **kwargs):
+                return CountingStream(data_path.open(*args, **kwargs))
+
+        recording = recording.__class__(
+            recording.metadata_path,
+            CountingPath(),
+            recording.sample_rate,
+            recording.datatype,
+            recording.channel_count,
+            recording.frame_count,
+            recording.metadata,
+        )
+        offset, channels = recording.frame(0.5, 240)
+        self.assertEqual(400, offset)
+        self.assertEqual(240, len(channels[0]))
+        self.assertEqual([240 * recording.bytes_per_frame], requested_reads)
 
     def test_launch_url_serves_browser_interface(self):
         app = create_app()

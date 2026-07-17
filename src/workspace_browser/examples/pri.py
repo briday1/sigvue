@@ -9,7 +9,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from workspace_browser.examples.sigmf import SigMFRecording, _describe_recording, _read_recording
-from workspace_browser.plugin import AnalysisContext, AnalysisWorkspace, directory_workspace
+from workspace_browser.examples.plot_style import ORANGE, TEAL, style_plotly
+from workspace_browser.plugin import AnalysisContext, AnalysisWorkspace, DirectorySource
 
 
 def analyze(recording: SigMFRecording, ui: AnalysisContext) -> None:
@@ -59,14 +60,11 @@ def create_workspace(
     name: str = "PRI Waterfall Analysis",
 ) -> AnalysisWorkspace:
     directory = path or Path(__file__).with_name("data")
-    return directory_workspace(
+    return AnalysisWorkspace(
         identifier=identifier,
         name=name,
         description="Inspect repeated intervals as time/spectrum waterfalls with max-hold traces.",
-        directory=directory,
-        pattern="*.sigmf-meta",
-        loader=_read_recording,
-        describe=_describe_recording,
+        source=DirectorySource(directory, pattern="*.sigmf-meta", loader=_read_recording, describe=_describe_recording),
         analyze=analyze,
         category="signal analysis",
         tags=("sigmf", "waterfall", "pri", "max-hold"),
@@ -121,8 +119,8 @@ def _combined_figure(
         horizontal_spacing=0.08,
         subplot_titles=("Time max hold", "Spectrum max hold", "Time waterfall", "Spectrum waterfall"),
     )
-    figure.add_trace(go.Scatter(x=time_axis_ms, y=time_hold, mode="lines", name="Time max hold", line={"color": "#087e8b"}), row=1, col=1)
-    figure.add_trace(go.Scatter(x=frequencies, y=spectrum_hold, mode="lines", name="Spectrum max hold", line={"color": "#d35d35"}), row=1, col=2)
+    figure.add_trace(go.Scatter(x=time_axis_ms, y=time_hold, mode="lines", name="Time max hold", line={"color": TEAL, "width": 1.5}), row=1, col=1)
+    figure.add_trace(go.Scatter(x=frequencies, y=spectrum_hold, mode="lines", name="Spectrum max hold", line={"color": ORANGE, "width": 1.5}), row=1, col=2)
     figure.add_trace(go.Heatmap(x=time_axis_ms, y=row_times, z=time_rows, colorscale="Viridis", coloraxis="coloraxis", name="Time waterfall"), row=2, col=1)
     figure.add_trace(go.Heatmap(x=frequencies, y=row_times, z=spectra, colorscale="Viridis", coloraxis="coloraxis2", name="Spectrum waterfall"), row=2, col=2)
     figure.update_xaxes(title_text="Time within PRI (ms)", row=2, col=1)
@@ -133,8 +131,8 @@ def _combined_figure(
     figure.update_yaxes(title_text="Buffer time (s)", row=2, col=2)
     figure.update_layout(
         showlegend=False,
-        margin=dict(l=70, r=50, t=45, b=50),
         coloraxis={"colorbar": {"title": "Amplitude", "x": 0.46, "len": 0.58, "y": 0.29}},
         coloraxis2={"colorbar": {"title": "dBFS", "x": 1.01, "len": 0.58, "y": 0.29}},
     )
+    style_plotly(figure)
     return figure

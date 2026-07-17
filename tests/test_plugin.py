@@ -4,7 +4,7 @@ from tempfile import TemporaryDirectory
 
 import plotly.graph_objects as go
 
-from workspace_browser.plugin import AnalysisContext, AnalysisWorkspace, DataResource, directory_workspace
+from workspace_browser.plugin import AnalysisContext, AnalysisWorkspace, DataResource, DirectorySource
 
 
 class ExampleSource:
@@ -16,7 +16,7 @@ class ExampleSource:
 
 
 class PluginAuthoringTests(unittest.TestCase):
-    def test_directory_workspace_creates_listing_rows_and_opens_selected_file(self):
+    def test_directory_source_creates_listing_rows_and_opens_selected_file(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "first.dat").write_text("1,2,3", encoding="utf-8")
@@ -27,13 +27,11 @@ class PluginAuthoringTests(unittest.TestCase):
                 with ui.tab("Values"):
                     ui.plot(go.Figure(go.Scatter(y=data)), key="values")
 
-            workspace = directory_workspace(
+            workspace = AnalysisWorkspace(
                 identifier="files",
                 name="Files",
                 description="Directory files",
-                directory=root,
-                pattern="*.dat",
-                loader=lambda path: [int(value) for value in path.read_text().split(",")],
+                source=DirectorySource(root, pattern="*.dat", loader=lambda path: [int(value) for value in path.read_text().split(",")]),
                 analyze=analyze,
             )
             self.assertEqual(["first.dat", "second.dat"], [item.identifier for item in workspace.discover_items()])

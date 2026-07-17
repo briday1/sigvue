@@ -9,6 +9,8 @@ from workspace_browser.core.models import ItemDescriptor, RefreshResult, Workspa
 from workspace_browser.core.page import ControlSpec, OpenedItem, PageDefinition, PlaybackConfiguration, ViewSpec
 from workspace_browser.core.layout import container, view_slot
 
+from .plot_style import TEAL, style_plotly
+
 
 class GenericExampleWorkspace:
     def __init__(self, *, identifier: str = "generic-example", name: str = "Generic Example Workspace") -> None:
@@ -131,8 +133,10 @@ class GenericExampleWorkspace:
 
 
 def _plot(title: str, x_label: str, y_label: str, x: list[float], y: list[float]) -> go.Figure:
-    figure = go.Figure(go.Scatter(x=x, y=y, mode="lines", name=title))
-    figure.update_layout(title=title, xaxis_title=x_label, yaxis_title=y_label, margin=dict(l=55, r=20, t=45, b=50))
+    figure = go.Figure(go.Scatter(x=x, y=y, mode="lines", name=title, line={"color": TEAL, "width": 1.5}))
+    figure.update_xaxes(title_text=x_label)
+    figure.update_yaxes(title_text=y_label)
+    style_plotly(figure, title=title)
     return figure
 
 

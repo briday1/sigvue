@@ -11,7 +11,9 @@ from pathlib import Path
 
 import plotly.graph_objects as go
 
-from workspace_browser.plugin import AnalysisContext, AnalysisWorkspace, DataResource, directory_workspace
+from workspace_browser.plugin import AnalysisContext, AnalysisWorkspace, DataResource, DirectorySource
+
+from .plot_style import TEAL, style_plotly
 
 
 @dataclass(frozen=True)
@@ -28,11 +30,15 @@ class SigMFRecording:
     def duration(self) -> float:
         return self.frame_count / self.sample_rate
 
+    @property
+    def bytes_per_frame(self) -> int:
+        scalar_format, components = _FORMATS[self.datatype]
+        return struct.calcsize(scalar_format) * components * self.channel_count
+
     def frame(self, time: float, size: int) -> tuple[int, tuple[tuple[float, ...], ...]]:
         """Seek to and read only one interleaved analysis frame from the data file."""
         scalar_format, components = _FORMATS[self.datatype]
-        scalar_size = struct.calcsize(scalar_format)
-        bytes_per_frame = scalar_size * components * self.channel_count
+        bytes_per_frame = self.bytes_per_frame
         size = min(size, self.frame_count)
         offset = min(int(time * self.sample_rate), self.frame_count - size)
         with self.data_path.open("rb") as stream:
@@ -108,14 +114,11 @@ def create_workspace(
     name: str = "SigMF File Viewer",
 ) -> AnalysisWorkspace:
     directory = path or Path(__file__).with_name("data")
-    return directory_workspace(
+    return AnalysisWorkspace(
         identifier=identifier,
         name=name,
         description="Discovers stored SigMF recordings and plays them back with native Plotly views.",
-        directory=directory,
-        pattern="*.sigmf-meta",
-        loader=_read_recording,
-        describe=_describe_recording,
+        source=DirectorySource(directory, pattern="*.sigmf-meta", loader=_read_recording, describe=_describe_recording),
         analyze=analyze,
         category="signal analysis",
         tags=("sigmf", "files", "playback"),
@@ -171,8 +174,10 @@ _FORMATS = {"rf32_le": ("<f", 1), "rf32_be": (">f", 1), "cf32_le": ("<f", 2), "c
 
 
 def _line_figure(title: str, x_label: str, y_label: str, x: list[float], y: list[float]) -> go.Figure:
-    figure = go.Figure(go.Scatter(x=x, y=y, mode="lines", name=title))
-    figure.update_layout(title=title, xaxis_title=x_label, yaxis_title=y_label, margin=dict(l=55, r=20, t=45, b=50))
+    figure = go.Figure(go.Scatter(x=x, y=y, mode="lines", name=title, line={"color": TEAL, "width": 1.5}))
+    figure.update_xaxes(title_text=x_label)
+    figure.update_yaxes(title_text=y_label)
+    style_plotly(figure, title=title)
     return figure
 
 
@@ -250,5 +255,5 @@ def _phase_alignment_figure(
     figure.update_xaxes(title_text="Calibration time (ms)", row=2, col=1)
     figure.update_yaxes(title_text="Amplitude", row=1, col=1)
     figure.update_yaxes(title_text="Amplitude", row=2, col=1)
-    figure.update_layout(title="Calibration effect", margin=dict(l=55, r=20, t=70, b=50), legend=dict(orientation="h"))
+    style_plotly(figure, title="Calibration effect")
     return figure

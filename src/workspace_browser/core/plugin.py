@@ -429,31 +429,3 @@ class AnalysisWorkspace:
 
     def refresh_item(self, item_id: str) -> RefreshResult:
         return RefreshResult(changed=False)
-
-
-def directory_workspace(
-    *,
-    identifier: str,
-    name: str,
-    description: str,
-    directory: str | Path,
-    pattern: str | tuple[str, ...],
-    loader: Callable[[Path], Any],
-    analyze: Callable[[Any, AnalysisContext], None],
-    describe: Callable[[Path], DataResource] | None = None,
-    recursive: bool = False,
-    version: str = "0.1.0",
-    category: str | None = None,
-    tags: tuple[str, ...] = (),
-) -> AnalysisWorkspace:
-    """Create a browsable workspace from files without writing discovery code."""
-    return AnalysisWorkspace(
-        identifier=identifier,
-        name=name,
-        description=description,
-        source=DirectorySource(directory, pattern=pattern, loader=loader, describe=describe, recursive=recursive),
-        analyze=analyze,
-        version=version,
-        category=category,
-        tags=tags,
-    )
