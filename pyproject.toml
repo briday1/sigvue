@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "workspace-browser"
+version = "0.1.0"
+description = "Pure-Python scientific workspace browser framework"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Scientific Workspace Browser" }]
+dependencies = []
+
+[project.scripts]
+workspace-browser = "workspace_browser.web.application:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
