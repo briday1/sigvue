@@ -145,7 +145,7 @@ def _make_handler(app: WorkspaceBrowserApp) -> type[BaseHTTPRequestHandler]:
 
             self._write_json(404, {"error": "not_found"})
 
-        def log_message(self, format: str, *args: Any) -> None:  # noqa: A003
+        def log_message(self, message_format: str, *args: Any) -> None:
             return
 
     return Handler
