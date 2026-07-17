@@ -2,6 +2,8 @@
 
 Pure-Python framework for registering scientific workspaces, discovering viewable items, opening workspace-defined item pages, and serving a browser-oriented API.
 
+Launching the service now opens a browser interface at `/`; the JSON API remains available for integrations.
+
 ## What is included
 
 - Workspace contract, metadata, item descriptors, and normalized statuses.

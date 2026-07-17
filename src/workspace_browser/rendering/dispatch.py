@@ -18,6 +18,8 @@ class RenderKind(StrEnum):
 def detect_render_kind(value: object) -> RenderKind:
     if value is None:
         return RenderKind.TEXT
+    if isinstance(value, dict) and value.get("type") in {"plotly", "plot_grid"}:
+        return RenderKind.PLOTLY
     module = type(value).__module__.lower()
     name = type(value).__name__.lower()
 

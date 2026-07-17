@@ -8,6 +8,22 @@ from .models import ItemDescriptor, RefreshConfiguration
 
 
 @dataclass(frozen=True)
+class PlaybackConfiguration:
+    """Framework-owned playback lifecycle expressed only in elapsed time."""
+
+    enabled: bool = False
+    duration_seconds: float = 0.0
+    step_seconds: float = 0.35
+    loop: bool = True
+
+    def __post_init__(self) -> None:
+        if self.enabled and self.duration_seconds <= 0:
+            raise ValueError("Playback duration must be positive")
+        if self.step_seconds <= 0:
+            raise ValueError("Playback step must be positive")
+
+
+@dataclass(frozen=True)
 class ControlSpec:
     name: str
     control_type: str
@@ -33,6 +49,7 @@ class PageDefinition:
     metadata: dict[str, object] = field(default_factory=dict)
     actions: tuple[str, ...] = ()
     refresh: RefreshConfiguration = field(default_factory=RefreshConfiguration)
+    playback: PlaybackConfiguration = field(default_factory=PlaybackConfiguration)
 
     def validate(self) -> None:
         view_names = {view.name for view in self.views}
