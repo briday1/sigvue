@@ -39,5 +39,6 @@ def detect_render_kind(value: object) -> RenderKind:
         stripped = value.lstrip()
         is_markdown_heading = stripped.startswith("# ")
         is_markdown_multiline = "\n# " in stripped or stripped.startswith("## ") or stripped.startswith("### ")
-        return RenderKind.MARKDOWN if is_markdown_heading or is_markdown_multiline else RenderKind.TEXT
+        is_markdown_emphasis = stripped.count("**") >= 2
+        return RenderKind.MARKDOWN if is_markdown_heading or is_markdown_multiline or is_markdown_emphasis else RenderKind.TEXT
     return RenderKind.UNKNOWN

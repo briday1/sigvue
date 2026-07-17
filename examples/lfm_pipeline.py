@@ -271,14 +271,18 @@ def analyze_lfm(data: LfmInput, ui: AnalysisContext) -> None:
     amplitude_rows = [
         {
             "Channel": channel + 1,
-            "Reference": "Yes" if channel == calibration.amplitude_reference_channel else "",
-            "Calibration magnitude": f"{np.sqrt(np.mean(np.abs(data.calibration_counts[channel]) ** 2)):.1f} counts",
             "Normalization": f"{calibration.amplitude_corrections[channel]:.4f}x",
-            "Scale": f"{calibration.volts_per_count[channel]:.4g} V/count",
-            "Full scale": f"{calibration.full_scale_dbm[channel]:.2f} dBm",
+            "Recorded full-scale power": f"{calibration.full_scale_dbm[channel]:.2f} dBm",
         }
         for channel in range(4)
     ]
+    calibrated_full_scale_voltage = (2 ** (requested_adc_bits - 1) - 1) * calibration.reference_volts_per_count
+    calibrated_full_scale_dbm = float(_db10((calibrated_full_scale_voltage**2 / (2 * R_OHMS)) / 1e-3))
+    amplitude_summary = (
+        f"Normalized to: **{calibration.amplitude_reference_label}**\n"
+        f"Calibrated scale: **{calibration.reference_volts_per_count:.4g} V/count**\n"
+        f"Calibrated full scale: **{calibrated_full_scale_dbm:.2f} dBm**"
+    )
     with ui.tab("Waterfall"):
         ui.view_switcher(
             "Domain",
@@ -345,6 +349,11 @@ def analyze_lfm(data: LfmInput, ui: AnalysisContext) -> None:
                             maximum=32,
                             step=1,
                         )
+                    ui.text(
+                        amplitude_summary,
+                        key="amplitude-summary",
+                        depends_on=("amplitude_reference", "adc_bits"),
+                    )
                     ui.table(amplitude_rows, key="amplitude-diagnostics", depends_on=("amplitude_reference", "adc_bits"))
                 ui.plot(
                     _amplitude_figure(calibrated_tone, data, calibration, ui.theme),
@@ -356,17 +365,11 @@ def analyze_lfm(data: LfmInput, ui: AnalysisContext) -> None:
                     with ui.parameter_group("Calibration parameters"):
                         reference_noise_psd = ui.number(
                             "reference_noise_psd_dbm_hz",
-                            label="Reference PSD (dBm/Hz)",
+                            label="Reference noise PSD (dBm/Hz)",
                             default=THERMAL_NOISE_DBM_HZ,
                             minimum=-220.0,
                             maximum=-100.0,
                             step=0.1,
-                        )
-                        reference_lines = ui.select(
-                            "noise_reference_lines",
-                            label="PSD reference lines",
-                            default="Expected + measured",
-                            options=("Expected + measured", "Expected only", "Measured only"),
                         )
                     noise_rows = [
                         {
@@ -379,9 +382,8 @@ def analyze_lfm(data: LfmInput, ui: AnalysisContext) -> None:
                     ]
                     ui.table(noise_rows, key="noise-diagnostics", depends_on=("reference_noise_psd_dbm_hz",))
                 ui.plot(
-                    _noise_figure(calibrated_noise, data, calibration, ui.theme, reference_noise_psd, reference_lines),
+                    _noise_figure(calibrated_noise, data, calibration, ui.theme),
                     key="noise-plot",
-                    depends_on=("reference_noise_psd_dbm_hz", "noise_reference_lines"),
                 )
 
     ui.stat("Samples delivered", f"{data.ota_counts.shape[1]:,}")
@@ -607,8 +609,6 @@ def _noise_figure(
     data: LfmInput,
     calibration: Calibration,
     theme: str,
-    reference_noise_psd: float = THERMAL_NOISE_DBM_HZ,
-    reference_lines: str = "Expected + measured",
 ) -> go.Figure:
     figure = make_subplots(
         rows=2,
@@ -623,20 +623,8 @@ def _noise_figure(
         line = {"color": CHANNEL_COLORS[channel]}
         figure.add_trace(go.Scatter(x=time_us, y=power, name=f"Channel {channel + 1}", line=line), row=1, col=1)
         figure.add_trace(go.Scatter(x=frequency, y=psd, name=f"Channel {channel + 1}", line=line, showlegend=False), row=2, col=1)
-    if reference_lines != "Expected only":
-        for channel in range(4):
-            figure.add_trace(go.Scatter(x=[-data.sample_rate / 2, data.sample_rate / 2], y=[calibration.noise_psd_dbm_hz[channel]] * 2, name=f"Ch {channel + 1} measured floor", line={"dash": "dot"}), row=2, col=1)
-    if reference_lines != "Measured only":
-        figure.add_trace(
-            go.Scatter(
-                x=[-data.sample_rate / 2, data.sample_rate / 2],
-                y=[reference_noise_psd] * 2,
-                name="Expected noise PSD",
-                line={"color": ORANGE, "dash": "dash"},
-            ),
-            row=2,
-            col=1,
-        )
+    for channel in range(4):
+        figure.add_trace(go.Scatter(x=[-data.sample_rate / 2, data.sample_rate / 2], y=[calibration.noise_psd_dbm_hz[channel]] * 2, name=f"Ch {channel + 1} measured floor", line={"dash": "dot"}), row=2, col=1)
     figure.update_xaxes(title_text="Time (us)", row=1, col=1)
     figure.update_xaxes(title_text="Frequency (Hz)", row=2, col=1)
     return style_plotly(figure, title="Terminated-noise calibration", theme=theme, boxed_axes=True)
@@ -746,10 +734,10 @@ def _combined_time_figure(
     figure = _combined_channel_figure(
         products.fast_time_us,
         values,
-        calibration.noise_power_dbm,
-        calibration.full_scale_dbm,
+        _linear_average_db(calibration.noise_power_dbm),
+        float(calibration.full_scale_dbm[calibration.amplitude_reference_channel]),
         label,
-        "Noise power",
+        "Average noise power",
         trace_styles[aggregation],
         trace_styles,
     )
@@ -810,10 +798,10 @@ def _combined_frequency_figure(
     figure = _combined_channel_figure(
         products.frequencies_hz,
         values,
-        calibration.noise_psd_dbm_hz,
-        calibration.full_scale_dbm,
+        _linear_average_db(calibration.noise_psd_dbm_hz),
+        float(calibration.full_scale_dbm[calibration.amplitude_reference_channel]),
         label,
-        "Noise PSD",
+        "Average noise PSD",
         trace_styles[aggregation],
         trace_styles,
     )
@@ -825,14 +813,14 @@ def _combined_frequency_figure(
 def _combined_channel_figure(
     x: np.ndarray,
     values: np.ndarray,
-    noise_values: np.ndarray,
-    full_scale_values: np.ndarray,
+    noise_value: float,
+    full_scale_value: float,
     value_label: str,
     noise_label: str,
     value_style: TraceStyle,
     trace_styles: dict[str, TraceStyle],
 ) -> go.Figure:
-    """Overlay channel results and their references while retaining channel identity."""
+    """Overlay channel results with shared post-calibration references."""
     figure = go.Figure()
     for channel, color in enumerate(CHANNEL_COLORS):
         channel_name = f"Channel {channel + 1}"
@@ -847,18 +835,22 @@ def _combined_channel_figure(
                 legendgroup=channel_name,
             )
         )
-        for reference, reference_label, reference_style in (
-            (noise_values[channel], noise_label, trace_styles["noise"]),
-            (full_scale_values[channel], "Full scale", trace_styles["full_scale"]),
-        ):
-            figure.add_trace(
-                go.Scatter(
-                    x=x,
-                    y=np.full(x.size, reference),
-                    name=f"{channel_name} {reference_label}",
-                    mode="lines",
-                    line={**reference_style.line, "color": color},
-                    legendgroup=channel_name,
-                )
+    for reference, reference_label, reference_style in (
+        (noise_value, noise_label, trace_styles["noise"]),
+        (full_scale_value, "Full scale", trace_styles["full_scale"]),
+    ):
+        figure.add_trace(
+            go.Scatter(
+                x=x,
+                y=np.full(x.size, reference),
+                name=reference_label,
+                mode="lines",
+                line=reference_style.line,
             )
+        )
     return figure
+
+
+def _linear_average_db(values: np.ndarray) -> float:
+    """Average power-like dB values in linear units before converting back to dB."""
+    return float(_db10(np.mean(10 ** (np.asarray(values, dtype=float) / 10))))

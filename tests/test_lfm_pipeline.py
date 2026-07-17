@@ -5,6 +5,7 @@ from tempfile import TemporaryDirectory
 import numpy as np
 
 from workspace_browser.core.plugin import AnalysisContext
+from workspace_browser.rendering.dispatch import RenderKind, detect_render_kind
 from examples.lfm_collection import create_workspace as create_buffered_workspace
 from examples.lfm_full_recording import create_workspace as create_full_workspace
 from examples.lfm_pipeline import (
@@ -15,6 +16,7 @@ from examples.lfm_pipeline import (
     LfmInput,
     WholeFileDelivery,
     _calibrate,
+    _linear_average_db,
     _products,
     analyze_lfm,
 )
@@ -127,6 +129,9 @@ class LfmDeliveryTests(unittest.TestCase):
             atol=1e-10,
         )
 
+    def test_combined_noise_reference_averages_linear_power_before_db(self):
+        self.assertAlmostEqual(10 * np.log10(5.5), _linear_average_db(np.asarray([0.0, 10.0])))
+
     def test_noise_tab_exercises_inline_number_and_dropdown_parameters(self):
         samples = np.ones((4, 100), dtype=np.complex64) * (100 + 25j)
         data = LfmInput(
@@ -139,14 +144,14 @@ class LfmDeliveryTests(unittest.TestCase):
             noise_counts=samples * 0.01,
             ota_counts=samples,
         )
-        baseline = AnalysisContext({"reference_noise_psd_dbm_hz": "-174", "noise_reference_lines": "Measured only", "adc_bits": "8"})
-        changed = AnalysisContext({"reference_noise_psd_dbm_hz": "-168.5", "noise_reference_lines": "Expected only", "adc_bits": "16"})
+        baseline = AnalysisContext({"reference_noise_psd_dbm_hz": "-174", "adc_bits": "8"})
+        changed = AnalysisContext({"reference_noise_psd_dbm_hz": "-168.5", "adc_bits": "16"})
         analyze_lfm(data, baseline)
         analyze_lfm(data, changed)
 
         inline = [control for control in changed.controls if control.placement == "inline"]
         self.assertEqual(
-            ["phase_reference", "amplitude_reference", "adc_bits", "reference_noise_psd_dbm_hz", "noise_reference_lines"],
+            ["phase_reference", "amplitude_reference", "adc_bits", "reference_noise_psd_dbm_hz"],
             [control.name for control in inline],
         )
         self.assertEqual(
@@ -167,12 +172,25 @@ class LfmDeliveryTests(unittest.TestCase):
         baseline_nf = float(baseline.figures["noise-diagnostics"][0]["Estimated NF"].split()[0])
         changed_nf = float(changed.figures["noise-diagnostics"][0]["Estimated NF"].split()[0])
         self.assertAlmostEqual(5.5, baseline_nf - changed_nf)
-        baseline_full_scale = float(baseline.figures["amplitude-diagnostics"][0]["Full scale"].split()[0])
-        changed_full_scale = float(changed.figures["amplitude-diagnostics"][0]["Full scale"].split()[0])
+        baseline_full_scale = float(baseline.figures["amplitude-diagnostics"][0]["Recorded full-scale power"].split()[0])
+        changed_full_scale = float(changed.figures["amplitude-diagnostics"][0]["Recorded full-scale power"].split()[0])
         self.assertAlmostEqual(48.23, changed_full_scale - baseline_full_scale, delta=0.02)
+        self.assertEqual(
+            {"Channel", "Normalization", "Recorded full-scale power"},
+            set(changed.figures["amplitude-diagnostics"][0]),
+        )
+        self.assertEqual(3, len(changed.figures["amplitude-summary"].splitlines()))
+        self.assertIn("Normalized to: **Min (Channel 1)**", changed.figures["amplitude-summary"])
+        self.assertEqual(RenderKind.MARKDOWN, detect_render_kind(changed.figures["amplitude-summary"]))
+        self.assertIn("Calibrated scale:", changed.figures["amplitude-summary"])
+        self.assertIn("Calibrated full scale:", changed.figures["amplitude-summary"])
         names = [trace.name or "" for trace in changed.figures["noise-plot"].data]
-        self.assertIn("Expected noise PSD", names)
-        self.assertFalse(any("measured floor" in name for name in names))
+        self.assertNotIn("Expected noise PSD", names)
+        self.assertEqual(4, sum("measured floor" in name for name in names))
+        self.assertEqual(
+            "Reference noise PSD (dBm/Hz)",
+            next(control for control in inline if control.name == "reference_noise_psd_dbm_hz").label,
+        )
 
         self.assertEqual(4, len(set(CHANNEL_COLORS)))
         self.assertFalse(any(control.name.startswith("channel_") for control in changed.controls))
@@ -192,9 +210,15 @@ class LfmDeliveryTests(unittest.TestCase):
                 [choice.props["label"] for choice in switcher.children],
             )
         for key in ("time-view-1", "time-view-2", "frequency-view-1", "frequency-view-2"):
-            self.assertEqual(12, len(changed.figures[key].data))
+            self.assertEqual(6, len(changed.figures[key].data))
             self.assertEqual(1, len(list(changed.figures[key].select_xaxes())))
             self.assertEqual(CHANNEL_COLORS[0], changed.figures[key].data[0].line.color)
+            self.assertEqual("Full scale", changed.figures[key].data[-1].name)
+            self.assertEqual(1, sum(trace.name == "Full scale" for trace in changed.figures[key].data))
+        for key in ("time-view-1", "time-view-2"):
+            self.assertEqual("Average noise power", changed.figures[key].data[-2].name)
+        for key in ("frequency-view-1", "frequency-view-2"):
+            self.assertEqual("Average noise PSD", changed.figures[key].data[-2].name)
         for key in ("waterfall-domain-0", "waterfall-domain-1"):
             self.assert_axes_share_range(changed.figures[key], "x")
             self.assert_axes_share_range(changed.figures[key], "y")

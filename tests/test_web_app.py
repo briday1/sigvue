@@ -225,6 +225,7 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("if(activeThemeRefresh)await activeThemeRefresh()", body)
         self.assertIn("activeThemeRefresh=()=>refresh(true)", body)
         self.assertIn('type="color"', body)
+        self.assertIn("'<strong>$1</strong>'", body)
         self.assertIn("control.group||'Analysis settings'", body)
         self.assertIn('class="style-picker"', body)
         self.assertIn("data-style-swatch", body)

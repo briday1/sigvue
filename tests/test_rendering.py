@@ -10,6 +10,7 @@ class RenderingTests(unittest.TestCase):
     def test_detect_text_and_markdown(self):
         self.assertEqual(RenderKind.TEXT, detect_render_kind("plain"))
         self.assertEqual(RenderKind.MARKDOWN, detect_render_kind("# heading"))
+        self.assertEqual(RenderKind.MARKDOWN, detect_render_kind("Label: **value**"))
         self.assertEqual(RenderKind.TEXT, detect_render_kind("#hashtag"))
 
     def test_detect_table_and_download(self):
