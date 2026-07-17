@@ -240,6 +240,26 @@ with ui.tab("Calibration", update="static"):
 
 `ui.switcher_view(...)` acts like a lightweight sub-tab and may contain mixed framework tables, text, plots, and inline parameter groups. Anything placed inside one choice is visible only for that choice. Controls declared outside `ui.parameter_group(...)` retain their existing behavior and appear in Details. For static views, list parameter names in `depends_on` so the framework maintains a separate cached result for each parameter value.
 
+Reusable trace appearance controls can also be declared in the analysis callback. `ui.trace_style(...)` adds one compact picker to a grouped section in Details. Its color swatch and label expand to line-style, marker, native color, and width controls, while the call returns a `TraceStyle` with Plotly-ready properties:
+
+```python
+average_style = ui.trace_style(
+    "average_trace",
+    label="Average",
+    color="#087e8b",
+    width=1.5,
+)
+figure.add_trace(go.Scatter(
+    x=x,
+    y=average,
+    mode=average_style.mode,
+    line=average_style.line,
+    marker=average_style.plotly_marker,
+))
+```
+
+Workflows decide which semantic traces are configurable. Repeated channel traces can instead use a generated palette, avoiding a Details control for every channel.
+
 
 `ui.view(...)` is the generic hook; `ui.plot(...)`, `ui.text(...)`, and `ui.table(...)` are readable aliases. Groups may be rows, columns, stacks, or panels and can be nested within a tab.
 
@@ -311,7 +331,7 @@ def create_workspace(config):
     )
 ```
 
-If the package is installed, omit `path`. For an uninstalled development repository, `path` makes the launcher read that repository's entry points, add its `src` directory, and watch the repository for refresh-time hot reload. A direct `module:factory` value is also accepted in `use`. See `browser.example.toml` for a runnable profile using the bundled workspaces.
+If the package is installed, omit `path`. For an uninstalled development repository, `path` makes the launcher read that repository's entry points, add its `src` directory, and watch the repository for refresh-time hot reload. A direct `module:factory` value is also accepted in `use`. See `browser.example.toml` for a runnable profile that loads the top-level `examples/` workspace package without installing it.
 
 ## Run
 
@@ -321,22 +341,18 @@ Install the project and its plotting/export dependencies:
 python -m pip install -e .
 ```
 
-Then launch with a profile:
+Launch the repository examples with their profile:
 
 ```bash
-workspace-browser --config browser.toml
+workspace-browser --config browser.example.toml
 ```
 
-Or launch the bundled defaults:
+For your own workspaces, copy that profile or supply another `browser.toml`. Launching without `--config` starts an empty browser to which workspaces can be registered programmatically; the framework no longer imports examples from its installed package.
+
+The equivalent module command for the examples is:
 
 ```bash
-workspace-browser
-```
-
-The equivalent module command is:
-
-```bash
-python -m workspace_browser.web.application --host 127.0.0.1 --port 8000
+python -m workspace_browser.web.application --host 127.0.0.1 --port 8000 --config browser.example.toml
 ```
 
 Workspace modules reload in-process by default.
@@ -344,6 +360,37 @@ Workspace modules reload in-process by default.
 Leave that server running while editing workspace analysis, plotting, or layout code. Refresh the current browser page to reload changed workspace modules and rebuild the registry without restarting the process or navigating away from the current item URL. If the new module fails to load, the page shows the error and the prior registry remains intact for the next edit-and-refresh attempt.
 
 Use `--no-reload` to disable this behavior. `--reload` remains accepted for explicit/backward-compatible development commands.
+
+## Build a standalone executable
+
+The included `workspace-browser.spec` creates a one-file PyInstaller executable containing Python, the framework, NumPy, SciPy, Matplotlib, Plotly, Kaleido, and their Python/native dependencies. Workspace repositories, including the top-level `examples/` directory, remain external and are selected by a browser profile. Install the build extra and run the spec from the repository root:
+
+```bash
+python -m pip install -e ".[build]"
+python -m PyInstaller --clean --noconfirm workspace-browser.spec
+```
+
+The result is `dist/workspace-browser` (`dist/workspace-browser.exe` on Windows):
+
+```bash
+./dist/workspace-browser --config browser.toml
+```
+
+On Windows, launch the corresponding native build with:
+
+```powershell
+.\dist\workspace-browser.exe --config browser.toml
+```
+
+Kaleido 1.x requires Chrome or Chromium for Plotly PNG rendering. By default the spec uses Plotly's supported Chrome-for-Testing downloader, caches that platform-specific distribution under `.pyinstaller/kaleido-chrome/`, includes it in the executable, and sets `BROWSER_PATH` automatically at runtime. To produce a smaller executable that relies on Chrome already being installed on the target machine, build with:
+
+```bash
+SWB_BUNDLE_CHROME=0 python -m PyInstaller --clean --noconfirm workspace-browser.spec
+```
+
+In PowerShell, the opt-out form is `$env:SWB_BUNDLE_CHROME = "0"` followed by the same `python -m PyInstaller ...` command.
+
+PyInstaller output is specific to the operating system and CPU architecture used for the build, so build separately on Windows, Linux, and macOS (and separately for each CPU architecture being distributed). The same spec selects and bundles the matching Chrome-for-Testing build on each platform. The executable is self-contained, but `browser.toml`, workspace repositories configured by path, and generated/local data remain external inputs. A one-file build extracts its bundled runtime and Chrome into a temporary directory when launched, so its first startup is slower than running from the Python environment.
 
 ## Test
 

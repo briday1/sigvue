@@ -2,23 +2,32 @@
 title = "Signal Analysis Browser"
 
 [[workspaces]]
-use = "workspace_browser.examples.profile:create_sigmf_workspace"
-id = "recorded-signals"
+use = "examples.profile:create_generic_workspace"
+path = "./examples"
+id = "generic-example"
+name = "Generic Example Workspace"
+
+[[workspaces]]
+use = "examples.profile:create_sigmf_workspace"
+path = "./examples"
+id = "sigmf-viewer"
 name = "Recorded signals"
 
 [workspaces.config]
-data_root = "./src/workspace_browser/examples/data"
+data_root = "./examples/data"
 
 [[workspaces]]
-use = "workspace_browser.examples.profile:create_sigmf_matplotlib_workspace"
-id = "recorded-signals-matplotlib"
+use = "examples.profile:create_sigmf_matplotlib_workspace"
+path = "./examples"
+id = "sigmf-matplotlib-viewer"
 name = "Recorded signals (Matplotlib)"
 
 [workspaces.config]
-data_root = "./src/workspace_browser/examples/data"
+data_root = "./examples/data"
 
 [[workspaces]]
-use = "workspace_browser.examples.profile:create_lfm_collection_workspace"
+use = "examples.profile:create_lfm_collection_workspace"
+path = "./examples"
 id = "lfm-collection"
 name = "10 MHz LFM Collection"
 
@@ -26,7 +35,8 @@ name = "10 MHz LFM Collection"
 data_root = "./data/lfm-collection"
 
 [[workspaces]]
-use = "workspace_browser.examples.profile:create_lfm_full_recording_workspace"
+use = "examples.profile:create_lfm_full_recording_workspace"
+path = "./examples"
 id = "lfm-full-recording"
 name = "10 MHz LFM Collection (Whole Recording)"
 
@@ -34,9 +44,10 @@ name = "10 MHz LFM Collection (Whole Recording)"
 data_root = "./data/lfm-collection"
 
 [[workspaces]]
-use = "workspace_browser.examples.profile:create_pri_workspace"
-id = "pri-analysis"
+use = "examples.profile:create_pri_workspace"
+path = "./examples"
+id = "pri-waterfall"
 name = "PRI analysis"
 
 [workspaces.config]
-data_root = "./src/workspace_browser/examples/data"
+data_root = "./examples/data"

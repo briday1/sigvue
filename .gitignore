@@ -3,4 +3,7 @@ __pycache__/
 *.egg-info/
 .venv/
 .pytest_cache/
-data/
+/data/
+build/
+dist/
+.pyinstaller/

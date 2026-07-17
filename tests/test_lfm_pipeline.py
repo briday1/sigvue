@@ -5,14 +5,16 @@ from tempfile import TemporaryDirectory
 import numpy as np
 
 from workspace_browser.core.plugin import AnalysisContext
-from workspace_browser.examples.lfm_collection import create_workspace as create_buffered_workspace
-from workspace_browser.examples.lfm_full_recording import create_workspace as create_full_workspace
-from workspace_browser.examples.lfm_pipeline import (
+from examples.lfm_collection import create_workspace as create_buffered_workspace
+from examples.lfm_full_recording import create_workspace as create_full_workspace
+from examples.lfm_pipeline import (
     BufferedDelivery,
+    CHANNEL_COLORS,
     CollectionMember,
     LfmCollection,
     LfmInput,
     WholeFileDelivery,
+    _calibrate,
     _products,
     analyze_lfm,
 )
@@ -98,6 +100,33 @@ class LfmDeliveryTests(unittest.TestCase):
         np.testing.assert_allclose(aligned.slow_time_s, shifted.slow_time_s)
         self.assertAlmostEqual(0.05, shifted.slow_time_s[0])
 
+    def test_full_pri_psd_is_invariant_to_circular_fast_time_shift(self):
+        pri = 1_024
+        pulse = np.zeros(pri, dtype=np.complex64)
+        pulse[:64] = np.exp(1j * 2 * np.pi * 0.125 * np.arange(64))
+        baseline = np.tile(pulse, (4, 4))
+        shifted = np.tile(np.roll(pulse, 700), (4, 4))
+
+        baseline_products = _products(baseline, rate=1_024.0, pri=pri, start=0)
+        shifted_products = _products(shifted, rate=1_024.0, pri=pri, start=0)
+
+        self.assertEqual(512, baseline_products.frequencies_hz.size)
+        np.testing.assert_allclose(
+            baseline_products.psd_waterfall_dbm_hz,
+            shifted_products.psd_waterfall_dbm_hz,
+            atol=1e-10,
+        )
+        np.testing.assert_allclose(
+            baseline_products.psd_mean_dbm_hz,
+            shifted_products.psd_mean_dbm_hz,
+            atol=1e-10,
+        )
+        np.testing.assert_allclose(
+            baseline_products.psd_max_dbm_hz,
+            shifted_products.psd_max_dbm_hz,
+            atol=1e-10,
+        )
+
     def test_noise_tab_exercises_inline_number_and_dropdown_parameters(self):
         samples = np.ones((4, 100), dtype=np.complex64) * (100 + 25j)
         data = LfmInput(
@@ -116,13 +145,21 @@ class LfmDeliveryTests(unittest.TestCase):
         analyze_lfm(data, changed)
 
         inline = [control for control in changed.controls if control.placement == "inline"]
-        self.assertEqual(["adc_bits", "reference_noise_psd_dbm_hz", "noise_reference_lines"], [control.name for control in inline])
+        self.assertEqual(
+            ["phase_reference", "amplitude_reference", "adc_bits", "reference_noise_psd_dbm_hz", "noise_reference_lines"],
+            [control.name for control in inline],
+        )
+        self.assertEqual(
+            ("Channel 1", "Channel 2", "Channel 3", "Channel 4", "Min"),
+            next(control for control in inline if control.name == "amplitude_reference").options,
+        )
+        self.assertEqual("Min", next(control for control in inline if control.name == "amplitude_reference").default)
         self.assertEqual(["Waterfall", "Time Domain", "Frequency Domain", "Calibration"], [tab.label for tab in changed.tabs])
         switcher = changed.tabs[-1].nodes[0]
         self.assertEqual("view_switcher", switcher.kind)
         self.assertEqual(["Phase", "Amplitude", "Noise"], [node.props["label"] for node in switcher.children])
         self.assertTrue(all(node.kind == "grid" for node in switcher.children))
-        self.assertEqual(["view_slot", "view_slot"], [child.kind for child in switcher.children[0].children])
+        self.assertEqual(["column", "view_slot"], [child.kind for child in switcher.children[0].children])
         self.assertEqual(["column", "view_slot"], [child.kind for child in switcher.children[1].children])
         self.assertEqual(["column", "view_slot"], [child.kind for child in switcher.children[2].children])
         self.assertFalse(any(trace.type == "table" for key, figure in changed.figures.items() if key.endswith("-plot") for trace in figure.data))
@@ -136,6 +173,83 @@ class LfmDeliveryTests(unittest.TestCase):
         names = [trace.name or "" for trace in changed.figures["noise-plot"].data]
         self.assertIn("Expected noise PSD", names)
         self.assertFalse(any("measured floor" in name for name in names))
+
+        self.assertEqual(4, len(set(CHANNEL_COLORS)))
+        self.assertFalse(any(control.name.startswith("channel_") for control in changed.controls))
+        style_controls = [control for control in changed.controls if control.group == "Plot styles"]
+        self.assertEqual(16, len(style_controls))
+        self.assertEqual({"mean_trace", "max_trace", "noise_trace", "full_scale_trace"}, {control.picker for control in style_controls})
+        self.assertEqual("#087e8b", next(control for control in style_controls if control.name == "mean_trace_color").default)
+        self.assertEqual("#d35d35", next(control for control in style_controls if control.name == "max_trace_color").default)
+
+        for key in ("time-view-0", "frequency-view-0"):
+            self.assert_axes_share_range(changed.figures[key], "x")
+        for tab_index in (1, 2):
+            switcher = changed.tabs[tab_index].nodes[0]
+            self.assertEqual("view_switcher", switcher.kind)
+            self.assertEqual(
+                ["Multi", "Combined max", "Combined mean"],
+                [choice.props["label"] for choice in switcher.children],
+            )
+        for key in ("time-view-1", "time-view-2", "frequency-view-1", "frequency-view-2"):
+            self.assertEqual(12, len(changed.figures[key].data))
+            self.assertEqual(1, len(list(changed.figures[key].select_xaxes())))
+            self.assertEqual(CHANNEL_COLORS[0], changed.figures[key].data[0].line.color)
+        for key in ("waterfall-domain-0", "waterfall-domain-1"):
+            self.assert_axes_share_range(changed.figures[key], "x")
+            self.assert_axes_share_range(changed.figures[key], "y")
+        for key in (
+            "phase-plot",
+            "amplitude-plot",
+            "noise-plot",
+            "waterfall-domain-0",
+            "waterfall-domain-1",
+            "time-view-0",
+            "time-view-1",
+            "time-view-2",
+            "frequency-view-0",
+            "frequency-view-1",
+            "frequency-view-2",
+        ):
+            self.assertTrue(all(axis.mirror is True for axis in changed.figures[key].select_xaxes()))
+            self.assertTrue(all(axis.mirror is True for axis in changed.figures[key].select_yaxes()))
+
+    def test_calibration_reference_channel_controls_phase_and_amplitude_normalization(self):
+        count = 128
+        phases = np.asarray([0.1, 0.4, -0.7, 1.2])
+        amplitudes = np.asarray([100.0, 80.0, 60.0, 120.0])
+        tone = amplitudes[:, None] * np.exp(1j * phases[:, None]) * np.ones((4, count))
+        data = LfmInput(
+            sample_rate=1_000.0,
+            calibration_dbm=-20.0,
+            adc_bits=16,
+            pri_samples=16,
+            start_sample=0,
+            calibration_counts=tone.astype(np.complex64),
+            noise_counts=np.ones((4, count), dtype=np.complex64),
+            ota_counts=tone.astype(np.complex64),
+        )
+
+        selected = _calibrate(data, phase_reference="Channel 3", amplitude_reference="Channel 2")
+        self.assertEqual(2, selected.phase_reference_channel)
+        self.assertAlmostEqual(0.0, selected.phase_offsets[2], places=6)
+        self.assertEqual(1, selected.amplitude_reference_channel)
+        self.assertAlmostEqual(1.0, selected.amplitude_corrections[1])
+        self.assertGreater(selected.amplitude_corrections[2], 1.0)
+
+        minimum = _calibrate(data, amplitude_reference="Min")
+        self.assertEqual(2, minimum.amplitude_reference_channel)
+        self.assertEqual("Min (Channel 3)", minimum.amplitude_reference_label)
+        self.assertAlmostEqual(1.0, minimum.amplitude_corrections[2])
+        self.assertTrue(np.all(minimum.amplitude_corrections <= 1.0))
+
+    def assert_axes_share_range(self, figure, dimension: str) -> None:
+        references = []
+        for index in range(1, 5):
+            suffix = "" if index == 1 else str(index)
+            axis = getattr(figure.layout, f"{dimension}axis{suffix}")
+            references.append(axis.matches or f"{dimension}{suffix}")
+        self.assertEqual(1, len(set(references)))
 
     @staticmethod
     def _collection(root: Path, *, sample_count: int) -> LfmCollection:

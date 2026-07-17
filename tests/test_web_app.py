@@ -9,8 +9,8 @@ from unittest.mock import Mock
 
 from plotly.graph_objects import Figure
 
-from workspace_browser.examples.generic import GenericExampleWorkspace
-from workspace_browser.examples.sigmf import _read_recording
+from examples.generic import GenericExampleWorkspace
+from examples.sigmf import _read_recording
 from workspace_browser.web.application import (
     WorkspaceBrowserApp,
     WorkspaceModuleRegistration,
@@ -22,8 +22,11 @@ from workspace_browser.web.application import (
 
 
 class WebAppTests(unittest.TestCase):
+    def create_example_app(self):
+        return create_app(config_path=Path(__file__).resolve().parents[1] / "browser.example.toml")
+
     def test_create_app_has_example_workspace(self):
-        app = create_app()
+        app = self.create_example_app()
         workspaces = app.list_workspaces()
         self.assertEqual(6, len(workspaces))
         self.assertEqual(
@@ -32,7 +35,7 @@ class WebAppTests(unittest.TestCase):
         )
 
     def test_open_item_returns_layout_and_views(self):
-        app = create_app()
+        app = self.create_example_app()
         payload = app.open_item("generic-example", "item-1")
         self.assertEqual("item-1", payload["item"]["id"])
         self.assertNotIn("status", payload["item"])
@@ -41,12 +44,12 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual("markdown", payload["page"]["rendered_views"][0]["kind"])
 
     def test_discovery_payload_does_not_assign_item_status(self):
-        app = create_app()
+        app = self.create_example_app()
         items = app.list_items("sigmf-viewer", {})
         self.assertTrue(all("status" not in item for item in items))
 
     def test_sigmf_example_has_time_and_frequency_tabs(self):
-        app = create_app()
+        app = self.create_example_app()
         items = app.list_items("generic-example", {})
         self.assertIn("sigmf-tone-demo", {item["id"] for item in items})
         payload = app.open_item("generic-example", "sigmf-tone-demo")
@@ -63,7 +66,7 @@ class WebAppTests(unittest.TestCase):
         self.assertIsInstance(opened.page.views[0].callback({}), Figure)
 
     def test_workspace_controls_change_rendered_playback(self):
-        app = create_app()
+        app = self.create_example_app()
         payload = app.open_item(
             "generic-example",
             "sigmf-tone-demo",
@@ -75,7 +78,7 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(256, len(playback["data"][0]["x"]))
 
     def test_file_backed_sigmf_viewer_reads_recording(self):
-        app = create_app()
+        app = self.create_example_app()
         items = app.list_items("sigmf-viewer", {})
         self.assertEqual(
             ["four-channel", "single-channel-bursts", "two-channel-sweep"],
@@ -111,7 +114,7 @@ class WebAppTests(unittest.TestCase):
         self.assertTrue(all(view["update"] == "dynamic" for view in dynamic["rendered_views"]))
 
     def test_matplotlib_sigmf_viewer_uses_native_figures(self):
-        app = create_app()
+        app = self.create_example_app()
         items = app.list_items("sigmf-matplotlib-viewer", {})
         self.assertEqual(["four-channel", "single-channel-bursts", "two-channel-sweep"], [item["id"] for item in items])
         page = app.open_item("sigmf-matplotlib-viewer", "four-channel", {"__playback_time_seconds": "0.5"})["page"]
@@ -123,7 +126,7 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual("Matplotlib (PNG)", page["statistics"]["Renderer"])
 
     def test_pri_workspace_produces_waterfalls_and_max_holds(self):
-        app = create_app()
+        app = self.create_example_app()
         self.assertEqual(3, len(app.list_items("pri-waterfall", {})))
         page = app.open_item(
             "pri-waterfall",
@@ -142,6 +145,9 @@ class WebAppTests(unittest.TestCase):
         top_height = layout["yaxis"]["domain"][1] - layout["yaxis"]["domain"][0]
         bottom_height = layout["yaxis3"]["domain"][1] - layout["yaxis3"]["domain"][0]
         self.assertAlmostEqual(2.0, bottom_height / top_height)
+        self.assertEqual("x3", layout["xaxis"]["matches"])
+        self.assertEqual("x4", layout["xaxis2"]["matches"])
+        self.assertEqual("y3", layout["yaxis4"]["matches"])
         self.assertEqual(15, page["metadata"]["pri_count"])
         self.assertEqual("view_switcher", page["layout"]["children"][0]["kind"])
         self.assertEqual("1.5 s · 1200 samples", page["statistics"]["Buffer"])
@@ -156,7 +162,7 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(["Channel 1", "Channel 2", "Channel 3", "Channel 4"], [child["props"]["label"] for child in multichannel["layout"]["children"][0]["children"]])
 
     def test_sigmf_frame_reads_only_the_requested_pri_window(self):
-        metadata_path = Path(__file__).resolve().parents[1] / "src/workspace_browser/examples/data/single-channel-bursts.sigmf-meta"
+        metadata_path = Path(__file__).resolve().parents[1] / "examples/data/single-channel-bursts.sigmf-meta"
         recording = _read_recording(metadata_path)
         data_path = recording.data_path
         requested_reads: list[int] = []
@@ -197,14 +203,14 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual([240 * recording.bytes_per_frame], requested_reads)
 
     def test_launch_url_serves_browser_interface(self):
-        app = create_app()
+        app = self.create_example_app()
         handler_type = _make_handler(app)
         handler = handler_type.__new__(handler_type)
         handler.path = "/"
         handler._write_html = Mock()
         handler.do_GET()
         body = handler._write_html.call_args.args[0]
-        self.assertIn("Scientific Workspace Browser", body)
+        self.assertIn("Signal Analysis Browser", body)
         self.assertIn('id="fullscreen-toggle"', body)
         self.assertIn('id="header-details"', body)
         self.assertIn('id="header-download"', body)
@@ -215,6 +221,14 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("requestFullscreen()", body)
         self.assertIn("fullscreenchange", body)
         self.assertIn("catalog()", body)
+        self.assertNotIn("applyTheme();boot()", body)
+        self.assertIn("if(activeThemeRefresh)await activeThemeRefresh()", body)
+        self.assertIn("activeThemeRefresh=()=>refresh(true)", body)
+        self.assertIn('type="color"', body)
+        self.assertIn("control.group||'Analysis settings'", body)
+        self.assertIn('class="style-picker"', body)
+        self.assertIn("data-style-swatch", body)
+        self.assertIn("control.picker", body)
         self.assertIn('/assets/plotly.min.js', body)
         self.assertIn("updatePlotlyViews(p.rendered_views)", body)
         self.assertIn("updateMatplotlibViews(p.rendered_views)", body)
@@ -251,7 +265,7 @@ class WebAppTests(unittest.TestCase):
         self.assertNotIn('class="status"', body)
 
     def test_plotly_javascript_is_served(self):
-        app = create_app()
+        app = self.create_example_app()
         handler_type = _make_handler(app)
         handler = handler_type.__new__(handler_type)
         handler.path = "/assets/plotly.min.js"
@@ -261,7 +275,7 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("plotly.js", javascript)
 
     def test_mat_export_runs_as_a_background_job(self):
-        app = create_app()
+        app = self.create_example_app()
         job_id = app.start_export(
             "sigmf-viewer",
             "single-channel-bursts",
@@ -277,7 +291,7 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(b"MATL", path.read_bytes()[:4])
 
     def test_camera_export_runs_as_a_background_job(self):
-        app = create_app()
+        app = self.create_example_app()
         job_id = app.start_export(
             "sigmf-matplotlib-viewer",
             "single-channel-bursts",
@@ -306,9 +320,9 @@ class WebAppTests(unittest.TestCase):
 
     def test_module_reload_watcher_includes_source_and_sigmf_data(self):
         project_root = Path(__file__).resolve().parents[1]
-        watched = _module_watch_snapshot({project_root / "src"})
+        watched = _module_watch_snapshot({project_root / "src", project_root / "examples"})
         self.assertIn(project_root / "src/workspace_browser/web/application.py", watched)
-        self.assertIn(project_root / "src/workspace_browser/examples/data/four-channel.sigmf-data", watched)
+        self.assertIn(project_root / "examples/data/four-channel.sigmf-data", watched)
 
     def test_browser_refresh_reloads_workspace_module_without_restarting_app(self):
         with TemporaryDirectory() as directory:

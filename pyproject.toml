@@ -9,15 +9,10 @@ description = "Pure-Python scientific workspace browser framework"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "Scientific Workspace Browser" }]
-dependencies = ["kaleido>=1.0", "matplotlib>=3.7", "numpy>=1.24", "plotly>=5.0", "scipy>=1.10", "tomli>=2; python_version < '3.11'"]
+dependencies = ["kaleido>=1.0", "matplotlib>=3.7", "numpy>=1.24", "plotly>=6.1.1", "scipy>=1.10", "tomli>=2; python_version < '3.11'"]
 
-[project.entry-points."workspace_browser.workspaces"]
-generic-example = "workspace_browser.examples.profile:create_generic_workspace"
-sigmf-viewer = "workspace_browser.examples.profile:create_sigmf_workspace"
-sigmf-matplotlib-viewer = "workspace_browser.examples.profile:create_sigmf_matplotlib_workspace"
-lfm-collection = "workspace_browser.examples.profile:create_lfm_collection_workspace"
-lfm-full-recording = "workspace_browser.examples.profile:create_lfm_full_recording_workspace"
-pri-waterfall = "workspace_browser.examples.profile:create_pri_workspace"
+[project.optional-dependencies]
+build = ["certifi>=2024.2.2", "pyinstaller>=6.0"]
 
 [project.scripts]
 workspace-browser = "workspace_browser.web.application:main"
@@ -27,6 +22,3 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[tool.setuptools.package-data]
-workspace_browser = ["examples/data/*.sigmf-meta", "examples/data/*.sigmf-data"]

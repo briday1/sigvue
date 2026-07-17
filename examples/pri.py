@@ -8,8 +8,8 @@ from pathlib import Path
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from workspace_browser.examples.sigmf import SigMFRecording, _describe_recording, _read_recording
-from workspace_browser.examples.plot_style import ORANGE, TEAL, style_plotly
+from .sigmf import SigMFRecording, _describe_recording, _read_recording
+from .plot_style import ORANGE, TEAL, style_plotly
 from workspace_browser.plugin import AnalysisContext, AnalysisWorkspace, DirectorySource
 
 
@@ -115,6 +115,7 @@ def _combined_figure(
     figure = make_subplots(
         rows=2,
         cols=2,
+        shared_xaxes=True,
         row_heights=(1 / 3, 2 / 3),
         vertical_spacing=0.08,
         horizontal_spacing=0.08,
@@ -129,7 +130,7 @@ def _combined_figure(
     figure.update_yaxes(title_text="Maximum |amplitude|", row=1, col=1)
     figure.update_yaxes(title_text="Maximum magnitude (dBFS)", row=1, col=2)
     figure.update_yaxes(title_text="Buffer time (s)", row=2, col=1)
-    figure.update_yaxes(title_text="Buffer time (s)", row=2, col=2)
+    figure.update_yaxes(title_text="Buffer time (s)", matches="y3", row=2, col=2)
     figure.update_layout(
         showlegend=False,
         coloraxis={"colorbar": {"title": "Amplitude", "x": 0.46, "len": 0.58, "y": 0.29}},

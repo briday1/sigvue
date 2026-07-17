@@ -95,7 +95,10 @@ def _repository_path(value: object, profile_directory: Path) -> Path | None:
 
 
 def _add_repository_import_paths(repository: Path) -> None:
-    for candidate in (repository / "src", repository):
+    candidates = [repository / "src", repository]
+    if (repository / "__init__.py").is_file():
+        candidates.insert(0, repository.parent)
+    for candidate in candidates:
         if candidate.is_dir() and str(candidate) not in sys.path:
             sys.path.insert(0, str(candidate))
 

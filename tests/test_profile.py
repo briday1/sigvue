@@ -14,7 +14,7 @@ class BrowserProfileTests(unittest.TestCase):
         app = create_app(config_path=profile_path)
         self.assertEqual("Signal Analysis Browser", app.title)
         self.assertEqual(
-            ["recorded-signals", "recorded-signals-matplotlib", "lfm-collection", "lfm-full-recording", "pri-analysis"],
+            ["generic-example", "sigmf-viewer", "sigmf-matplotlib-viewer", "lfm-collection", "lfm-full-recording", "pri-waterfall"],
             [workspace["id"] for workspace in app.list_workspaces()],
         )
 
@@ -26,7 +26,7 @@ class BrowserProfileTests(unittest.TestCase):
             package = repository / "src" / package_name
             package.mkdir(parents=True)
             (package / "__init__.py").write_text(
-                "from workspace_browser.examples.generic import GenericExampleWorkspace\n"
+                "from examples.generic import GenericExampleWorkspace\n"
                 "def create_workspace(config):\n"
                 "    return GenericExampleWorkspace(identifier=config['id'], name=config['name'])\n",
                 encoding="utf-8",
@@ -80,7 +80,7 @@ class BrowserProfileTests(unittest.TestCase):
             root = Path(directory)
             module_name = f"direct_workspace_{uuid4().hex}"
             (root / f"{module_name}.py").write_text(
-                "from workspace_browser.examples.generic import GenericExampleWorkspace\n"
+                "from examples.generic import GenericExampleWorkspace\n"
                 "def build(config):\n"
                 "    return GenericExampleWorkspace(identifier=config['id'], name=config['name'])\n",
                 encoding="utf-8",

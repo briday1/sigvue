@@ -110,6 +110,30 @@ class PluginAuthoringTests(unittest.TestCase):
         self.assertEqual(0.25, ui.number("duration", default=0.1, minimum=0.01, step=0.01))
         self.assertEqual(["integer", "float"], [control.control_type for control in ui.controls])
 
+    def test_trace_style_returns_plotly_options_and_details_controls(self):
+        ui = AnalysisContext(
+            {
+                "average_line_style": "dashdot",
+                "average_marker": "diamond",
+                "average_color": "#123abc",
+                "average_width": "3.5",
+            }
+        )
+        style = ui.trace_style("average", label="Average", color="#087e8b")
+
+        self.assertEqual("lines+markers", style.mode)
+        self.assertEqual({"color": "#123abc", "width": 3.5, "dash": "dashdot"}, style.line)
+        self.assertEqual({"color": "#123abc", "symbol": "diamond"}, style.plotly_marker)
+        self.assertEqual(["color", "float", "select", "select"], [control.control_type for control in ui.controls])
+        self.assertTrue(all(control.placement == "details" for control in ui.controls))
+        self.assertTrue(all(control.group == "Plot styles" for control in ui.controls))
+        self.assertTrue(all(control.picker == "average" for control in ui.controls))
+        self.assertTrue(all(control.picker_label == "Average" for control in ui.controls))
+        self.assertEqual(["Color", "Line width", "Line style", "Marker"], [control.label for control in ui.controls])
+
+        with self.assertRaisesRegex(ValueError, "#RRGGBB"):
+            AnalysisContext({}).trace_style("invalid", color="teal")
+
     def test_inline_parameter_group_places_typed_controls_in_layout(self):
         def analyze(data, ui: AnalysisContext):
             with ui.tab("Parameterized"):

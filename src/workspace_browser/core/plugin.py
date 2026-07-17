@@ -13,6 +13,10 @@ from .models import ItemDescriptor, RefreshConfiguration, RefreshResult, Workspa
 from .page import ControlSpec, OpenedItem, PageDefinition, PlaybackConfiguration, PlaybackMode, ViewSpec
 
 
+def _is_hex_color(value: str) -> bool:
+    return len(value) == 7 and value.startswith("#") and all(character in "0123456789abcdefABCDEF" for character in value[1:])
+
+
 @dataclass(frozen=True)
 class DataResource:
     """A discoverable input. Sources can keep their native reference in `source`."""
@@ -38,6 +42,28 @@ class DataDelivery(Protocol):
     """Framework-side policy that prepares source data for one analysis run."""
 
     def prepare(self, source_data: Any, context: AnalysisContext) -> Any: ...
+
+
+@dataclass(frozen=True)
+class TraceStyle:
+    """Framework-managed trace appearance with Plotly-ready properties."""
+
+    line_style: str
+    marker: str
+    color: str
+    width: float
+
+    @property
+    def mode(self) -> str:
+        return "lines" if self.marker == "none" else "lines+markers"
+
+    @property
+    def line(self) -> dict[str, object]:
+        return {"color": self.color, "width": self.width, "dash": self.line_style}
+
+    @property
+    def plotly_marker(self) -> dict[str, object]:
+        return {} if self.marker == "none" else {"color": self.color, "symbol": self.marker}
 
 
 class DirectorySource:
@@ -133,9 +159,30 @@ class AnalysisContext:
         """Whether a live-capable playback request should use the newest buffer."""
         return str(self.values.get("__playback_follow_live", "false")).lower() in {"1", "true", "yes", "on"}
 
-    def select(self, name: str, *, default: object, options: Iterable[object], label: str | None = None) -> object:
+    def select(
+        self,
+        name: str,
+        *,
+        default: object,
+        options: Iterable[object],
+        label: str | None = None,
+        group: str | None = None,
+        picker: str | None = None,
+        picker_label: str | None = None,
+    ) -> object:
         choices = tuple(options)
-        self._add_control(ControlSpec(name=name, control_type="select", label=label, default=default, options=choices))
+        self._add_control(
+            ControlSpec(
+                name=name,
+                control_type="select",
+                label=label,
+                default=default,
+                options=choices,
+                group=group,
+                picker=picker,
+                picker_label=picker_label,
+            )
+        )
         value = self.values.setdefault(name, default)
         if isinstance(default, bool):
             return str(value).lower() in {"1", "true", "yes", "on"}
@@ -153,6 +200,9 @@ class AnalysisContext:
         maximum: int | float | None = None,
         step: int | float | None = None,
         label: str | None = None,
+        group: str | None = None,
+        picker: str | None = None,
+        picker_label: str | None = None,
     ) -> int | float:
         """Add an editable numeric input and return its current typed value."""
         control_type = "integer" if isinstance(default, int) and not isinstance(default, bool) else "float"
@@ -165,6 +215,9 @@ class AnalysisContext:
                 minimum=minimum,
                 maximum=maximum,
                 step=step,
+                group=group,
+                picker=picker,
+                picker_label=picker_label,
             )
         )
         try:
@@ -177,6 +230,91 @@ class AnalysisContext:
         if maximum is not None:
             value = min(value, maximum)
         return value
+
+    def color(
+        self,
+        name: str,
+        *,
+        default: str,
+        label: str | None = None,
+        group: str | None = None,
+        picker: str | None = None,
+        picker_label: str | None = None,
+    ) -> str:
+        """Add a native color-picker control and return a validated hex color."""
+        if not _is_hex_color(default):
+            raise ValueError("Color defaults must use #RRGGBB hex format")
+        self._add_control(
+            ControlSpec(
+                name=name,
+                control_type="color",
+                label=label,
+                default=default,
+                group=group,
+                picker=picker,
+                picker_label=picker_label,
+            )
+        )
+        value = str(self.values.setdefault(name, default))
+        return value if _is_hex_color(value) else default
+
+    def trace_style(
+        self,
+        name: str,
+        *,
+        label: str | None = None,
+        color: str = "#087e8b",
+        width: float = 1.5,
+        line_style: str = "solid",
+        marker: str = "none",
+        group: str = "Plot styles",
+    ) -> TraceStyle:
+        """Declare stored Details controls for one configurable plot trace."""
+        prefix = label or name.replace("_", " ").title()
+        selected_color = self.color(
+            f"{name}_color",
+            label="Color",
+            default=color,
+            group=group,
+            picker=name,
+            picker_label=prefix,
+        )
+        selected_width = float(
+            self.number(
+                f"{name}_width",
+                label="Line width",
+                default=float(width),
+                minimum=0.5,
+                maximum=10.0,
+                step=0.5,
+                group=group,
+                picker=name,
+                picker_label=prefix,
+            )
+        )
+        selected_style = str(
+            self.select(
+                f"{name}_line_style",
+                label="Line style",
+                default=line_style,
+                options=("solid", "dot", "dash", "dashdot"),
+                group=group,
+                picker=name,
+                picker_label=prefix,
+            )
+        )
+        selected_marker = str(
+            self.select(
+                f"{name}_marker",
+                label="Marker",
+                default=marker,
+                options=("none", "circle", "square", "diamond", "cross", "x"),
+                group=group,
+                picker=name,
+                picker_label=prefix,
+            )
+        )
+        return TraceStyle(selected_style, selected_marker, selected_color, selected_width)
 
     def _add_control(self, control: ControlSpec) -> None:
         if any(existing.name == control.name for existing in self.controls):
@@ -193,6 +331,9 @@ class AnalysisContext:
                 minimum=control.minimum,
                 maximum=control.maximum,
                 step=control.step,
+                group=control.group,
+                picker=control.picker,
+                picker_label=control.picker_label,
             )
             self._active_parameter_nodes.append(control_slot(control.name))
         self.controls.append(control)

@@ -11,13 +11,14 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from workspace_browser.plugin import AnalysisContext, AnalysisWorkspace, DataResource, DirectorySource, PlaybackMode
+from workspace_browser.plugin import AnalysisContext, AnalysisWorkspace, DataResource, DirectorySource, PlaybackMode, TraceStyle
 
-from .plot_style import ORANGE, TEAL, style_plotly
+from .plot_style import ORANGE, TEAL, hsv_channel_colors, style_plotly
 
 
 R_OHMS = 50.0
 THERMAL_NOISE_DBM_HZ = -174.0
+CHANNEL_COLORS = hsv_channel_colors(4)
 
 
 @dataclass(frozen=True)
@@ -210,6 +211,11 @@ def read_collection(path: Path) -> LfmCollection:
 class Calibration:
     phase_offsets: np.ndarray
     volts_per_count: np.ndarray
+    amplitude_corrections: np.ndarray
+    reference_volts_per_count: float
+    phase_reference_channel: int
+    amplitude_reference_channel: int
+    amplitude_reference_label: str
     noise_power_dbm: np.ndarray
     noise_psd_dbm_hz: np.ndarray
     noise_figure_db: np.ndarray
@@ -235,20 +241,39 @@ def analyze_lfm(data: LfmInput, ui: AnalysisContext) -> None:
     except (TypeError, ValueError):
         requested_adc_bits = data.adc_bits
     requested_adc_bits = min(32, max(2, requested_adc_bits))
-    calibration = _calibrate(data, adc_bits=requested_adc_bits)
+    phase_reference = str(ui.values.get("phase_reference", "Channel 1"))
+    amplitude_reference = str(ui.values.get("amplitude_reference", "Min"))
+    calibration = _calibrate(
+        data,
+        adc_bits=requested_adc_bits,
+        phase_reference=phase_reference,
+        amplitude_reference=amplitude_reference,
+    )
+    trace_styles = {
+        "mean": ui.trace_style("mean_trace", label="Mean / average", color=TEAL, width=1.5),
+        "max": ui.trace_style("max_trace", label="Max hold", color=ORANGE, width=1.5),
+        "noise": ui.trace_style("noise_trace", label="Noise reference", color="#8f9fa6", width=1.0, line_style="dot"),
+        "full_scale": ui.trace_style("full_scale_trace", label="Full scale", color="#60717d", width=1.0, line_style="dash"),
+    }
     ota = _apply_calibration(data.ota_counts, calibration)
     calibrated_tone = _apply_calibration(data.calibration_counts, calibration)
     calibrated_noise = data.noise_counts * calibration.volts_per_count[:, None]
     products = _products(ota, data.sample_rate, data.pri_samples, data.start_sample)
 
     phase_rows = [
-        {"Channel": channel + 1, "Phase correction": f"{-calibration.phase_offsets[channel] * 180 / pi:+.2f} deg"}
+        {
+            "Channel": channel + 1,
+            "Reference": "Yes" if channel == calibration.phase_reference_channel else "",
+            "Phase correction": f"{-calibration.phase_offsets[channel] * 180 / pi:+.2f} deg",
+        }
         for channel in range(4)
     ]
     amplitude_rows = [
         {
             "Channel": channel + 1,
+            "Reference": "Yes" if channel == calibration.amplitude_reference_channel else "",
             "Calibration magnitude": f"{np.sqrt(np.mean(np.abs(data.calibration_counts[channel]) ** 2)):.1f} counts",
+            "Normalization": f"{calibration.amplitude_corrections[channel]:.4f}x",
             "Scale": f"{calibration.volts_per_count[channel]:.4g} V/count",
             "Full scale": f"{calibration.full_scale_dbm[channel]:.2f} dBm",
         }
@@ -265,17 +290,53 @@ def analyze_lfm(data: LfmInput, ui: AnalysisContext) -> None:
             selector="buttons",
         )
     with ui.tab("Time Domain"):
-        ui.plot(_time_figure(products, calibration, ui.theme), key="time")
+        ui.view_switcher(
+            "View",
+            {
+                "Multi": _time_figure(products, calibration, trace_styles, ui.theme),
+                "Combined max": _combined_time_figure(products, calibration, "max", trace_styles, ui.theme),
+                "Combined mean": _combined_time_figure(products, calibration, "mean", trace_styles, ui.theme),
+            },
+            key="time-view",
+            selector="buttons",
+        )
     with ui.tab("Frequency Domain"):
-        ui.plot(_frequency_figure(products, calibration, ui.theme), key="frequency")
+        ui.view_switcher(
+            "View",
+            {
+                "Multi": _frequency_figure(products, calibration, trace_styles, ui.theme),
+                "Combined max": _combined_frequency_figure(products, calibration, "max", trace_styles, ui.theme),
+                "Combined mean": _combined_frequency_figure(products, calibration, "mean", trace_styles, ui.theme),
+            },
+            key="frequency-view",
+            selector="buttons",
+        )
     with ui.tab("Calibration", update="static"):
         with ui.switcher("Calibration view", key="calibration-view", selector="buttons"):
             with ui.switcher_view("Phase", columns=(0.24, 0.76)):
-                ui.table(phase_rows, key="phase-diagnostics")
-                ui.plot(_phase_figure(data.calibration_counts, calibration, data.sample_rate, ui.theme), key="phase-plot")
+                with ui.group("column"):
+                    with ui.parameter_group("Calibration parameters"):
+                        ui.select(
+                            "phase_reference",
+                            label="Phase reference",
+                            default="Channel 1",
+                            options=("Channel 1", "Channel 2", "Channel 3", "Channel 4"),
+                        )
+                    ui.table(phase_rows, key="phase-diagnostics", depends_on=("phase_reference",))
+                ui.plot(
+                    _phase_figure(data.calibration_counts, calibration, data.sample_rate, ui.theme),
+                    key="phase-plot",
+                    depends_on=("phase_reference",),
+                )
             with ui.switcher_view("Amplitude", columns=(0.3, 0.7)):
                 with ui.group("column"):
                     with ui.parameter_group("Calibration parameters"):
+                        ui.select(
+                            "amplitude_reference",
+                            label="Amplitude reference",
+                            default="Min",
+                            options=("Channel 1", "Channel 2", "Channel 3", "Channel 4", "Min"),
+                        )
                         ui.number(
                             "adc_bits",
                             label="Number of ADC bits",
@@ -284,8 +345,12 @@ def analyze_lfm(data: LfmInput, ui: AnalysisContext) -> None:
                             maximum=32,
                             step=1,
                         )
-                    ui.table(amplitude_rows, key="amplitude-diagnostics")
-                ui.plot(_amplitude_figure(calibrated_tone, data, ui.theme), key="amplitude-plot", depends_on=("adc_bits",))
+                    ui.table(amplitude_rows, key="amplitude-diagnostics", depends_on=("amplitude_reference", "adc_bits"))
+                ui.plot(
+                    _amplitude_figure(calibrated_tone, data, calibration, ui.theme),
+                    key="amplitude-plot",
+                    depends_on=("amplitude_reference", "adc_bits"),
+                )
             with ui.switcher_view("Noise", columns=(0.3, 0.7)):
                 with ui.group("column"):
                     with ui.parameter_group("Calibration parameters"):
@@ -326,12 +391,24 @@ def analyze_lfm(data: LfmInput, ui: AnalysisContext) -> None:
     ui.stat("Sample rate", f"{data.sample_rate / 1e6:g} MHz")
 
 
-def _calibrate(data: LfmInput, *, adc_bits: int | None = None) -> Calibration:
-    reference = data.calibration_counts[0]
+def _calibrate(
+    data: LfmInput,
+    *,
+    adc_bits: int | None = None,
+    phase_reference: str = "Channel 1",
+    amplitude_reference: str = "Min",
+) -> Calibration:
+    instantaneous_peak_power = np.max(np.abs(data.calibration_counts) ** 2, axis=1)
+    phase_reference_channel = _reference_channel(phase_reference, instantaneous_peak_power, allow_min=False)
+    amplitude_reference_channel = _reference_channel(amplitude_reference, instantaneous_peak_power, allow_min=True)
+    reference = data.calibration_counts[phase_reference_channel]
     phase_offsets = np.asarray([np.angle(np.mean(channel * np.conj(reference))) for channel in data.calibration_counts])
     desired_voltage = sqrt(2 * R_OHMS * 1e-3 * 10 ** (data.calibration_dbm / 10))
     count_magnitude = np.sqrt(np.mean(np.abs(data.calibration_counts) ** 2, axis=1))
-    volts_per_count = desired_voltage / np.maximum(count_magnitude, 1e-12)
+    peak_magnitude = np.sqrt(np.maximum(instantaneous_peak_power, 1e-24))
+    amplitude_corrections = peak_magnitude[amplitude_reference_channel] / peak_magnitude
+    reference_volts_per_count = desired_voltage / max(count_magnitude[amplitude_reference_channel], 1e-12)
+    volts_per_count = amplitude_corrections * reference_volts_per_count
     noise_voltage = data.noise_counts * volts_per_count[:, None]
     noise_watts = np.mean(np.abs(noise_voltage) ** 2, axis=1) / (2 * R_OHMS)
     noise_power_dbm = _db10(noise_watts / 1e-3)
@@ -341,12 +418,43 @@ def _calibrate(data: LfmInput, *, adc_bits: int | None = None) -> Calibration:
     effective_adc_bits = data.adc_bits if adc_bits is None else adc_bits
     full_scale_voltage = (2 ** (effective_adc_bits - 1) - 1) * volts_per_count
     full_scale_dbm = _db10((full_scale_voltage**2 / (2 * R_OHMS)) / 1e-3)
-    return Calibration(phase_offsets, volts_per_count, noise_power_dbm, noise_psd_dbm_hz, noise_figure_db, full_scale_dbm)
+    reference_label = (
+        f"Min (Channel {amplitude_reference_channel + 1})"
+        if amplitude_reference == "Min"
+        else f"Channel {amplitude_reference_channel + 1}"
+    )
+    return Calibration(
+        phase_offsets,
+        volts_per_count,
+        amplitude_corrections,
+        reference_volts_per_count,
+        phase_reference_channel,
+        amplitude_reference_channel,
+        reference_label,
+        noise_power_dbm,
+        noise_psd_dbm_hz,
+        noise_figure_db,
+        full_scale_dbm,
+    )
+
+
+def _reference_channel(value: str, peak_power: np.ndarray, *, allow_min: bool) -> int:
+    if allow_min and value == "Min":
+        return int(np.argmin(peak_power))
+    if value.startswith("Channel "):
+        try:
+            index = int(value.removeprefix("Channel ")) - 1
+        except ValueError:
+            index = 0
+        if 0 <= index < peak_power.size:
+            return index
+    return 0
 
 
 def _apply_calibration(counts: np.ndarray, calibration: Calibration) -> np.ndarray:
     rotations = np.exp(-1j * calibration.phase_offsets).astype(np.complex64)
-    return counts * calibration.volts_per_count[:, None] * rotations[:, None]
+    normalized = counts * calibration.amplitude_corrections[:, None]
+    return normalized * calibration.reference_volts_per_count * rotations[:, None]
 
 
 def _products(
@@ -356,6 +464,7 @@ def _products(
     start: int,
     max_rows: int = 384,
     max_fast_time_bins: int = 512,
+    max_frequency_bins: int = 512,
 ) -> Products:
     row_count = channels.shape[1] // pri
     if row_count < 1:
@@ -375,11 +484,17 @@ def _products(
     time_mean = _db10(mean_power.reshape(4, -1, fast_group_size).mean(axis=2) / 1e-3)
     time_max = _db10(max_power.reshape(4, -1, fast_group_size).max(axis=2) / 1e-3)
 
-    nfft = min(pri, 512)
-    frequencies = np.fft.fftshift(np.fft.fftfreq(nfft, d=1 / rate))
-    frequency_bin_hz = rate / nfft
-    psd_sum = np.zeros((4, nfft), dtype=np.float64)
-    psd_max = np.zeros((4, nfft), dtype=np.float64)
+    # Transform every sample in each PRI. Truncating the row here makes a
+    # shifted pulse disappear from the PSD even though it remains visible in
+    # the time waterfall. A rectangular full-row periodogram also preserves
+    # spectral magnitude under circular shifts; display reduction happens only
+    # after power has been calculated for every FFT bin.
+    frequency_group_size = max(1, ceil(pri / max_frequency_bins))
+    full_frequencies = np.fft.fftshift(np.fft.fftfreq(pri, d=1 / rate))
+    frequencies = _group_mean(full_frequencies, frequency_group_size)
+    frequency_bin_hz = rate / pri
+    psd_sum = np.zeros((4, frequencies.size), dtype=np.float64)
+    psd_max = np.zeros((4, frequencies.size), dtype=np.float64)
     time_waterfall = []
     psd_waterfall = []
     slow_time = []
@@ -390,8 +505,9 @@ def _products(
         waterfall_power = np.mean(block_power, axis=1)[:, :displayed_samples]
         waterfall_power = waterfall_power.reshape(4, -1, fast_group_size).mean(axis=2)
         time_waterfall.append(_db10(waterfall_power / 1e-3))
-        spectrum = np.fft.fftshift(np.fft.fft(block[:, :, :nfft], axis=2), axes=2)
-        psd = np.abs(spectrum) ** 2 / nfft**2 / (2 * R_OHMS) / frequency_bin_hz
+        spectrum = np.fft.fftshift(np.fft.fft(block, axis=2), axes=2)
+        full_psd = np.abs(spectrum) ** 2 / pri**2 / (2 * R_OHMS) / frequency_bin_hz
+        psd = _group_mean(full_psd, frequency_group_size)
         psd_sum += np.sum(psd, axis=1)
         psd_max = np.maximum(psd_max, np.max(psd, axis=1))
         psd_waterfall.append(_db10(np.mean(psd, axis=1) / 1e-3))
@@ -409,6 +525,16 @@ def _products(
         psd_hold,
         np.stack(psd_waterfall, axis=1),
     )
+
+
+def _group_mean(values: np.ndarray, group_size: int) -> np.ndarray:
+    """Average adjacent values on the final axis without dropping a tail."""
+    if group_size <= 1:
+        return values
+    starts = np.arange(0, values.shape[-1], group_size)
+    counts = np.diff(np.append(starts, values.shape[-1]))
+    shape = (1,) * (values.ndim - 1) + (counts.size,)
+    return np.add.reduceat(values, starts, axis=-1) / counts.reshape(shape)
 
 
 def _db10(value: Any) -> np.ndarray:
@@ -433,16 +559,23 @@ def _phase_figure(
     aligned = subset * np.exp(-1j * calibration.phase_offsets)[:, None]
     for channel in range(4):
         name = f"Channel {channel + 1}"
-        figure.add_trace(go.Scatter(x=time_us, y=np.abs(subset[channel]), name=name), row=1, col=1)
-        figure.add_trace(go.Scatter(x=time_us, y=np.unwrap(np.angle(subset[channel])), name=name, showlegend=False), row=2, col=1)
-        figure.add_trace(go.Scatter(x=time_us, y=np.unwrap(np.angle(aligned[channel])), name=name, showlegend=False), row=2, col=2)
+        line = {"color": CHANNEL_COLORS[channel]}
+        figure.add_trace(go.Scatter(x=time_us, y=np.abs(subset[channel]), name=name, line=line), row=1, col=1)
+        figure.add_trace(go.Scatter(x=time_us, y=np.unwrap(np.angle(subset[channel])), name=name, line=line, showlegend=False), row=2, col=1)
+        figure.add_trace(go.Scatter(x=time_us, y=np.unwrap(np.angle(aligned[channel])), name=name, line=line, showlegend=False), row=2, col=2)
     figure.update_xaxes(title_text="Time (us)")
-    return style_plotly(figure, title="Phase calibration", theme=theme)
+    return style_plotly(
+        figure,
+        title=f"Phase calibration · reference Channel {calibration.phase_reference_channel + 1}",
+        theme=theme,
+        boxed_axes=True,
+    )
 
 
 def _amplitude_figure(
     channels: np.ndarray,
     data: LfmInput,
+    calibration: Calibration,
     theme: str,
 ) -> go.Figure:
     figure = make_subplots(
@@ -455,12 +588,18 @@ def _amplitude_figure(
     for channel in range(4):
         power = _db10((np.abs(subset[channel]) ** 2 / (2 * R_OHMS)) / 1e-3)
         frequency, psd = _single_psd(subset[channel], data.sample_rate)
-        figure.add_trace(go.Scatter(x=time_us, y=power, name=f"Channel {channel + 1}"), row=1, col=1)
-        figure.add_trace(go.Scatter(x=frequency, y=psd, name=f"Channel {channel + 1}", showlegend=False), row=2, col=1)
+        line = {"color": CHANNEL_COLORS[channel]}
+        figure.add_trace(go.Scatter(x=time_us, y=power, name=f"Channel {channel + 1}", line=line), row=1, col=1)
+        figure.add_trace(go.Scatter(x=frequency, y=psd, name=f"Channel {channel + 1}", line=line, showlegend=False), row=2, col=1)
     figure.add_trace(go.Scatter(x=[time_us[0], time_us[-1]], y=[data.calibration_dbm] * 2, name="Incident power", line={"color": ORANGE, "dash": "dash"}), row=1, col=1)
     figure.update_xaxes(title_text="Time (us)", row=1, col=1)
     figure.update_xaxes(title_text="Frequency (Hz)", row=2, col=1)
-    return style_plotly(figure, title="Amplitude calibration", theme=theme)
+    return style_plotly(
+        figure,
+        title=f"Amplitude calibration · reference {calibration.amplitude_reference_label}",
+        theme=theme,
+        boxed_axes=True,
+    )
 
 
 def _noise_figure(
@@ -481,8 +620,9 @@ def _noise_figure(
     for channel in range(4):
         power = _db10((np.abs(subset[channel]) ** 2 / (2 * R_OHMS)) / 1e-3)
         frequency, psd = _averaged_psd(channels[channel], data.sample_rate)
-        figure.add_trace(go.Scatter(x=time_us, y=power, name=f"Channel {channel + 1}"), row=1, col=1)
-        figure.add_trace(go.Scatter(x=frequency, y=psd, name=f"Channel {channel + 1}", showlegend=False), row=2, col=1)
+        line = {"color": CHANNEL_COLORS[channel]}
+        figure.add_trace(go.Scatter(x=time_us, y=power, name=f"Channel {channel + 1}", line=line), row=1, col=1)
+        figure.add_trace(go.Scatter(x=frequency, y=psd, name=f"Channel {channel + 1}", line=line, showlegend=False), row=2, col=1)
     if reference_lines != "Expected only":
         for channel in range(4):
             figure.add_trace(go.Scatter(x=[-data.sample_rate / 2, data.sample_rate / 2], y=[calibration.noise_psd_dbm_hz[channel]] * 2, name=f"Ch {channel + 1} measured floor", line={"dash": "dot"}), row=2, col=1)
@@ -499,7 +639,7 @@ def _noise_figure(
         )
     figure.update_xaxes(title_text="Time (us)", row=1, col=1)
     figure.update_xaxes(title_text="Frequency (Hz)", row=2, col=1)
-    return style_plotly(figure, title="Terminated-noise calibration", theme=theme)
+    return style_plotly(figure, title="Terminated-noise calibration", theme=theme, boxed_axes=True)
 
 
 def _single_psd(samples: np.ndarray, rate: float) -> tuple[np.ndarray, np.ndarray]:
@@ -531,7 +671,13 @@ def _averaged_psd(
 
 
 def _waterfall_figure(products: Products, domain: str, theme: str) -> go.Figure:
-    figure = make_subplots(rows=2, cols=2, subplot_titles=[f"Channel {channel + 1}" for channel in range(4)])
+    figure = make_subplots(
+        rows=2,
+        cols=2,
+        shared_xaxes="all",
+        shared_yaxes="all",
+        subplot_titles=[f"Channel {channel + 1}" for channel in range(4)],
+    )
     for channel in range(4):
         if domain == "time":
             x, z, title = products.fast_time_us, products.time_waterfall_dbm[channel], "Power (dBm)"
@@ -540,40 +686,179 @@ def _waterfall_figure(products: Products, domain: str, theme: str) -> go.Figure:
         figure.add_trace(go.Heatmap(x=x, y=products.slow_time_s, z=z, colorscale="Viridis", showscale=channel == 3, colorbar={"title": title}), row=channel // 2 + 1, col=channel % 2 + 1)
     figure.update_yaxes(title_text="Relative slow time (s)", col=1)
     figure.update_xaxes(title_text="Fast time (us)" if domain == "time" else "Frequency (Hz)", row=2)
-    return style_plotly(figure, title="Fast-time power waterfall" if domain == "time" else "Frequency PSD waterfall", theme=theme)
+    return style_plotly(
+        figure,
+        title="Fast-time power waterfall" if domain == "time" else "Frequency PSD waterfall",
+        theme=theme,
+        boxed_axes=True,
+    )
 
 
-def _time_figure(products: Products, calibration: Calibration, theme: str) -> go.Figure:
-    figure = make_subplots(rows=2, cols=2, subplot_titles=[f"Channel {channel + 1}" for channel in range(4)])
+def _time_figure(
+    products: Products,
+    calibration: Calibration,
+    trace_styles: dict[str, TraceStyle],
+    theme: str,
+) -> go.Figure:
+    figure = make_subplots(
+        rows=2,
+        cols=2,
+        shared_xaxes="all",
+        subplot_titles=[f"Channel {channel + 1}" for channel in range(4)],
+    )
     for channel in range(4):
         row, col = channel // 2 + 1, channel % 2 + 1
         x = products.fast_time_us
         traces = (
-            (products.time_mean_dbm[channel], "Mean", TEAL, "solid"),
-            (products.time_max_dbm[channel], "Max hold", ORANGE, "solid"),
-            (np.full(x.size, calibration.noise_power_dbm[channel]), "Noise power", "#8f9fa6", "dot"),
-            (np.full(x.size, calibration.full_scale_dbm[channel]), "Full scale", "#60717d", "dash"),
+            (products.time_mean_dbm[channel], "Mean", trace_styles["mean"]),
+            (products.time_max_dbm[channel], "Max hold", trace_styles["max"]),
+            (np.full(x.size, calibration.noise_power_dbm[channel]), "Noise power", trace_styles["noise"]),
+            (np.full(x.size, calibration.full_scale_dbm[channel]), "Full scale", trace_styles["full_scale"]),
         )
-        for y, name, color, dash in traces:
-            figure.add_trace(go.Scatter(x=x, y=y, name=name, line={"color": color, "dash": dash}, showlegend=channel == 0), row=row, col=col)
+        for y, name, trace_style in traces:
+            figure.add_trace(
+                go.Scatter(
+                    x=x,
+                    y=y,
+                    name=name,
+                    mode=trace_style.mode,
+                    line=trace_style.line,
+                    marker=trace_style.plotly_marker,
+                    showlegend=channel == 0,
+                ),
+                row=row,
+                col=col,
+            )
     figure.update_xaxes(title_text="Fast time (us)", row=2)
     figure.update_yaxes(title_text="Power (dBm)", col=1)
-    return style_plotly(figure, title="Fast-time mean and max hold", theme=theme)
+    return style_plotly(figure, title="Fast-time mean and max hold", theme=theme, boxed_axes=True)
 
 
-def _frequency_figure(products: Products, calibration: Calibration, theme: str) -> go.Figure:
-    figure = make_subplots(rows=2, cols=2, subplot_titles=[f"Channel {channel + 1}" for channel in range(4)])
+def _combined_time_figure(
+    products: Products,
+    calibration: Calibration,
+    aggregation: str,
+    trace_styles: dict[str, TraceStyle],
+    theme: str,
+) -> go.Figure:
+    values = products.time_max_dbm if aggregation == "max" else products.time_mean_dbm
+    label = "Max hold" if aggregation == "max" else "Mean"
+    figure = _combined_channel_figure(
+        products.fast_time_us,
+        values,
+        calibration.noise_power_dbm,
+        calibration.full_scale_dbm,
+        label,
+        "Noise power",
+        trace_styles[aggregation],
+        trace_styles,
+    )
+    figure.update_xaxes(title_text="Fast time (us)")
+    figure.update_yaxes(title_text="Power (dBm)")
+    return style_plotly(figure, title=f"Combined fast-time {label.lower()}", theme=theme, boxed_axes=True)
+
+
+def _frequency_figure(
+    products: Products,
+    calibration: Calibration,
+    trace_styles: dict[str, TraceStyle],
+    theme: str,
+) -> go.Figure:
+    figure = make_subplots(
+        rows=2,
+        cols=2,
+        shared_xaxes="all",
+        subplot_titles=[f"Channel {channel + 1}" for channel in range(4)],
+    )
     for channel in range(4):
         row, col = channel // 2 + 1, channel % 2 + 1
         x = products.frequencies_hz
         traces = (
-            (products.psd_mean_dbm_hz[channel], "Average", TEAL, "solid"),
-            (products.psd_max_dbm_hz[channel], "Max hold", ORANGE, "solid"),
-            (np.full(x.size, calibration.noise_psd_dbm_hz[channel]), "Noise PSD", "#8f9fa6", "dot"),
-            (np.full(x.size, calibration.full_scale_dbm[channel]), "Full scale", "#60717d", "dash"),
+            (products.psd_mean_dbm_hz[channel], "Average", trace_styles["mean"]),
+            (products.psd_max_dbm_hz[channel], "Max hold", trace_styles["max"]),
+            (np.full(x.size, calibration.noise_psd_dbm_hz[channel]), "Noise PSD", trace_styles["noise"]),
+            (np.full(x.size, calibration.full_scale_dbm[channel]), "Full scale", trace_styles["full_scale"]),
         )
-        for y, name, color, dash in traces:
-            figure.add_trace(go.Scatter(x=x, y=y, name=name, line={"color": color, "dash": dash}, showlegend=channel == 0), row=row, col=col)
+        for y, name, trace_style in traces:
+            figure.add_trace(
+                go.Scatter(
+                    x=x,
+                    y=y,
+                    name=name,
+                    mode=trace_style.mode,
+                    line=trace_style.line,
+                    marker=trace_style.plotly_marker,
+                    showlegend=channel == 0,
+                ),
+                row=row,
+                col=col,
+            )
     figure.update_xaxes(title_text="Frequency (Hz)", row=2)
     figure.update_yaxes(title_text="PSD (dBm/Hz)", col=1)
-    return style_plotly(figure, title="Average and max-hold PSD", theme=theme)
+    return style_plotly(figure, title="Average and max-hold PSD", theme=theme, boxed_axes=True)
+
+
+def _combined_frequency_figure(
+    products: Products,
+    calibration: Calibration,
+    aggregation: str,
+    trace_styles: dict[str, TraceStyle],
+    theme: str,
+) -> go.Figure:
+    values = products.psd_max_dbm_hz if aggregation == "max" else products.psd_mean_dbm_hz
+    label = "Max hold" if aggregation == "max" else "Mean"
+    figure = _combined_channel_figure(
+        products.frequencies_hz,
+        values,
+        calibration.noise_psd_dbm_hz,
+        calibration.full_scale_dbm,
+        label,
+        "Noise PSD",
+        trace_styles[aggregation],
+        trace_styles,
+    )
+    figure.update_xaxes(title_text="Frequency (Hz)")
+    figure.update_yaxes(title_text="PSD (dBm/Hz)")
+    return style_plotly(figure, title=f"Combined {label.lower()} PSD", theme=theme, boxed_axes=True)
+
+
+def _combined_channel_figure(
+    x: np.ndarray,
+    values: np.ndarray,
+    noise_values: np.ndarray,
+    full_scale_values: np.ndarray,
+    value_label: str,
+    noise_label: str,
+    value_style: TraceStyle,
+    trace_styles: dict[str, TraceStyle],
+) -> go.Figure:
+    """Overlay channel results and their references while retaining channel identity."""
+    figure = go.Figure()
+    for channel, color in enumerate(CHANNEL_COLORS):
+        channel_name = f"Channel {channel + 1}"
+        figure.add_trace(
+            go.Scatter(
+                x=x,
+                y=values[channel],
+                name=f"{channel_name} {value_label}",
+                mode=value_style.mode,
+                line={**value_style.line, "color": color},
+                marker={**value_style.plotly_marker, "color": color},
+                legendgroup=channel_name,
+            )
+        )
+        for reference, reference_label, reference_style in (
+            (noise_values[channel], noise_label, trace_styles["noise"]),
+            (full_scale_values[channel], "Full scale", trace_styles["full_scale"]),
+        ):
+            figure.add_trace(
+                go.Scatter(
+                    x=x,
+                    y=np.full(x.size, reference),
+                    name=f"{channel_name} {reference_label}",
+                    mode="lines",
+                    line={**reference_style.line, "color": color},
+                    legendgroup=channel_name,
+                )
+            )
+    return figure

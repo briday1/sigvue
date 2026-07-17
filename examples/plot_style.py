@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from colorsys import hsv_to_rgb
 from typing import Any
 
 
@@ -12,7 +13,24 @@ TEAL = "#087e8b"
 ORANGE = "#d35d35"
 
 
-def style_plotly(figure: Any, *, title: str | None = None, theme: str = "light") -> Any:
+def hsv_channel_colors(count: int, *, saturation: float = 0.68, value: float = 0.78) -> tuple[str, ...]:
+    """Return stable channel colors sampled uniformly around the HSV hue wheel."""
+    if count < 1:
+        return ()
+    colors = []
+    for index in range(count):
+        red, green, blue = hsv_to_rgb(index / count, saturation, value)
+        colors.append(f"#{round(red * 255):02x}{round(green * 255):02x}{round(blue * 255):02x}")
+    return tuple(colors)
+
+
+def style_plotly(
+    figure: Any,
+    *,
+    title: str | None = None,
+    theme: str = "light",
+    boxed_axes: bool = False,
+) -> Any:
     """Give Plotly figures a compact, consistent scientific plotting treatment."""
     figure.update_layout(
         template="plotly_dark" if theme == "dark" else "simple_white",
@@ -26,8 +44,8 @@ def style_plotly(figure: Any, *, title: str | None = None, theme: str = "light")
     )
     grid = "#36515b" if theme == "dark" else GRID
     muted = "#a9bdc2" if theme == "dark" else MUTED
-    figure.update_xaxes(showline=True, linecolor=grid, gridcolor=grid, gridwidth=0.5, zeroline=False, ticks="outside", tickcolor=muted)
-    figure.update_yaxes(showline=True, linecolor=grid, gridcolor=grid, gridwidth=0.5, zeroline=False, ticks="outside", tickcolor=muted)
+    figure.update_xaxes(showline=True, mirror=boxed_axes, linecolor=grid, gridcolor=grid, gridwidth=0.5, zeroline=False, ticks="outside", tickcolor=muted)
+    figure.update_yaxes(showline=True, mirror=boxed_axes, linecolor=grid, gridcolor=grid, gridwidth=0.5, zeroline=False, ticks="outside", tickcolor=muted)
     return figure
 
 

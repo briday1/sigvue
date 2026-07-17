@@ -1,4 +1,4 @@
-"""Profile-compatible factories for the bundled workspaces."""
+"""Profile-compatible factories for the external example workspaces."""
 
 from __future__ import annotations
 

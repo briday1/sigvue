@@ -43,6 +43,9 @@ class ControlSpec:
     step: int | float | None = None
     label: str | None = None
     placement: str = "details"
+    group: str | None = None
+    picker: str | None = None
+    picker_label: str | None = None
 
 
 @dataclass(frozen=True)

@@ -14,7 +14,7 @@ from scripts.generate_lfm_collection import (
     noise_component_std,
     write_member,
 )
-from workspace_browser.examples.lfm_pipeline import _averaged_psd, _single_psd
+from examples.lfm_pipeline import _averaged_psd, _single_psd
 
 
 class LfmGeneratorTests(unittest.TestCase):

@@ -2,7 +2,7 @@ import unittest
 
 from workspace_browser.core.errors import DuplicateWorkspaceError
 from workspace_browser.core.models import WorkspaceMetadata
-from workspace_browser.examples.generic import GenericExampleWorkspace
+from examples.generic import GenericExampleWorkspace
 from workspace_browser.registry.registry import WorkspaceRegistry
 
 
