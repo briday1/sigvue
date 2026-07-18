@@ -38,8 +38,6 @@ class PlaybackConfiguration:
         if self.mode == "windowed":
             if self.duration_seconds <= 0:
                 raise ValueError("Windowed duration must be positive")
-            if len(self.overview_values) < 2:
-                raise ValueError("Windowed playback requires at least two overview values")
             if not all(isfinite(value) for value in self.overview_values):
                 raise ValueError("Windowed overview values must be finite")
             if not 0 <= self.window_start_seconds < self.window_end_seconds <= self.duration_seconds:

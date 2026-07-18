@@ -28,6 +28,7 @@ class WorkspaceLaunchSpec:
 @dataclass(frozen=True)
 class BrowserProfile:
     title: str | None
+    subtitle: str | None
     workspaces: tuple[WorkspaceLaunchSpec, ...]
 
 
@@ -71,7 +72,7 @@ def load_browser_profile(path: str | Path) -> BrowserProfile:
         _resolve_config_paths(configuration, profile_path.parent)
         specs.append(WorkspaceLaunchSpec(module_name, attribute, configuration, repository))
 
-    return BrowserProfile(browser.get("title"), tuple(specs))
+    return BrowserProfile(browser.get("title"), browser.get("subtitle"), tuple(specs))
 
 
 def _installed_entry_points() -> dict[str, EntryPoint]:

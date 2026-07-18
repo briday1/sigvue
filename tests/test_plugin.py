@@ -128,6 +128,14 @@ class PluginAuthoringTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "finite"):
             ui.windowed(duration=1.0, default_window=0.1, overview=(0.0, float("nan")))
 
+    def test_windowed_overview_is_optional_and_independent_of_sample_count(self):
+        ui = AnalysisContext({})
+        self.assertEqual((0.0, 2.0), ui.windowed(duration=60.0, default_window=2.0))
+        self.assertEqual((), ui.playback_config.overview_values)
+
+        ui.windowed(duration=60.0, default_window=2.0, overview=(0.25,))
+        self.assertEqual((0.25,), ui.playback_config.overview_values)
+
     def test_analysis_can_request_framework_live_refresh(self):
         def analyze(data, ui: AnalysisContext):
             ui.refresh(every=1.0)

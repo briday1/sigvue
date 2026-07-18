@@ -85,6 +85,7 @@ Select and configure it:
 # browser.toml
 [browser]
 title = "My Analysis Browser"
+subtitle = "Explore scientific and analytical results"
 
 [[workspaces]]
 use = "my-analysis"
@@ -134,11 +135,11 @@ Available lifecycle modes are:
 | `static` | No timeline | Return the complete or fixed input. |
 | `seek` | Play/pause, slider, editable time | Return the buffer at the requested time. |
 | `live` | Seek controls plus **Live** | Return historical buffers or follow a growing source. |
-| `windowed` | Full-record overview with movable and resizable handles | Return only the selected interval. |
+| `windowed` | Movable and resizable interval, optionally over a full-record overview | Return only the selected interval. |
 
 Use `ui.playback(...)` for static, seek, and live policies. In live mode, the delivery should check the currently available duration on each request.
 
-For windowed selection, the workspace chooses a low-resolution overview statistic and reads the returned interval:
+For windowed selection, the workspace reads the returned interval and may provide a low-resolution overview statistic:
 
 ```python
 start, end = ui.windowed(
@@ -152,7 +153,7 @@ start, end = ui.windowed(
 return recording.read(start, end)
 ```
 
-The framework draws and operates the range selector. Tabs and exports receive only the value returned by the delivery policy.
+`overview` is optional. When supplied, it may be any finite 1D summary and does not need one value per sample. The framework distributes its values uniformly over the recording duration, so block statistics, sliding-window results, and decimated summaries all work. The framework draws and operates the range selector; tabs and exports receive only the value returned by the delivery policy.
 
 For non-playback refresh, call `ui.refresh(every=1.0)`. The framework prevents overlapping refresh requests and updates mounted views.
 

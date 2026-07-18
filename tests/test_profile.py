@@ -34,6 +34,7 @@ class BrowserProfileTests(unittest.TestCase):
             profile_path.write_text(
                 "[browser]\n"
                 "title = 'Lab Browser'\n"
+                "subtitle = 'Review laboratory recordings'\n"
                 "[[workspaces]]\n"
                 "use = 'radar-analysis'\n"
                 "path = './radar-repository'\n"
@@ -54,11 +55,13 @@ class BrowserProfileTests(unittest.TestCase):
             try:
                 profile = load_browser_profile(profile_path)
                 self.assertEqual("Lab Browser", profile.title)
+                self.assertEqual("Review laboratory recordings", profile.subtitle)
                 self.assertEqual(repository.resolve(), profile.workspaces[0].watch_path)
                 self.assertEqual(str((root / "data/lab").resolve()), profile.workspaces[0].configuration["data_root"])
 
                 app = create_app(config_path=profile_path)
                 self.assertEqual("Lab Browser", app.title)
+                self.assertEqual("Review laboratory recordings", app.subtitle)
                 self.assertEqual(
                     [("lab-captures", "Lab captures"), ("field-tests", "Field tests")],
                     [(workspace["id"], workspace["name"]) for workspace in app.list_workspaces()],

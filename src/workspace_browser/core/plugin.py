@@ -364,12 +364,12 @@ class AnalysisContext:
         *,
         duration: float,
         default_window: float,
-        overview: Iterable[float],
+        overview: Iterable[float] | None = None,
         overview_label: str | None = None,
         minimum_window: float | None = None,
         step: float | None = None,
     ) -> tuple[float, float]:
-        """Select a movable interval over a plugin-defined full-record overview."""
+        """Select an interval, optionally drawn over a proportional 1D overview."""
         duration = float(duration)
         default_window = float(default_window)
         minimum = float(minimum_window if minimum_window is not None else (step or default_window / 20))
@@ -386,7 +386,7 @@ class AnalysisContext:
             start, end = 0.0, default_end
         start = min(duration - minimum, max(0.0, start))
         end = min(duration, max(start + minimum, end))
-        values = tuple(float(value) for value in overview)
+        values = () if overview is None else tuple(float(value) for value in overview)
         self.playback_config = PlaybackConfiguration(
             mode="windowed",
             duration_seconds=duration,
