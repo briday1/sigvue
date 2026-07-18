@@ -136,6 +136,7 @@ Available lifecycle modes are:
 | `seek` | Play/pause, slider, editable time | Return the buffer at the requested time. |
 | `live` | Seek controls plus **Live** | Return historical buffers or follow a growing source. |
 | `windowed` | Movable and resizable interval, optionally over a full-record overview | Return only the selected interval. |
+| `segmented` | Discrete markers with previous/next navigation | Return the selected regular or irregular segment. |
 
 Use `ui.playback(...)` for static, seek, and live policies. In live mode, the delivery should check the currently available duration on each request.
 
@@ -155,6 +156,23 @@ return recording.read(start, end)
 
 `overview` is optional. When supplied, it may be any finite 1D summary and does not need one value per sample. The framework distributes its values uniformly over the recording duration, so block statistics, sliding-window results, and decimated summaries all work. The framework draws and operates the range selector; tabs and exports receive only the value returned by the delivery policy.
 
+For irregular stored results, provide explicit segment descriptors and use the returned descriptor to load the matching result:
+
+```python
+from workspace_browser.plugin import Segment
+
+selected = ui.segmented(
+    duration=recording.duration,
+    segments=(
+        Segment("event-1", 1.25, 0.08, "First event"),
+        Segment("event-2", 4.90, 0.12, "Second event"),
+    ),
+)
+return results_by_id[selected.identifier]
+```
+
+Regular segments with gaps or overlaps can instead use `ui.segmented(duration=..., segment_duration=..., stride=...)`. Segmented mode only owns selection and navigation; the delivery policy decides whether selecting a marker reads raw data, computes one interval lazily, or loads an existing post-processing result.
+
 For non-playback refresh, call `ui.refresh(every=1.0)`. The framework prevents overlapping refresh requests and updates mounted views.
 
 ## Analysis UI
@@ -173,6 +191,7 @@ The commonly used `AnalysisContext` methods are:
 | `ui.trace_style(...)` | Add a compact color, width, line-style, and marker picker. |
 | `ui.stat(label, value)` | Add workflow-specific runtime or result details. |
 | `ui.once(key, factory, depends_on=...)` | Cache item-level work across dynamic updates. |
+| `ui.segmented(...)` | Select one regular or irregular timeline segment. |
 
 Plotly figures remain interactive. Matplotlib figures are rendered as responsive PNG images. Tabs can mix plots, tables, and text.
 
@@ -194,7 +213,7 @@ Every opened item provides:
 - **Download .mat**: the delivered data, controls, metadata, statistics, layout, and all registered views in one MATLAB structure.
 - **Camera**: every Plotly and Matplotlib view, including hidden tabs and switched choices, as PNG files in one ZIP.
 
-Exports run in a background executor. Static workspaces export the complete delivered value; seek and live workspaces export the current buffer; windowed workspaces export the selected interval. Workspace packages do not implement export handlers when using `AnalysisWorkspace`.
+Exports run in a background executor. Static workspaces export the complete delivered value; seek and live workspaces export the current buffer; windowed workspaces export the selected interval; segmented workspaces export the selected result. Workspace packages do not implement export handlers when using `AnalysisWorkspace`.
 
 Matplotlib PNG export requires no external browser. Plotly PNG export uses Kaleido, which is a required `workspace-browser` dependency. Kaleido 1.x uses Chrome or Chromium. If neither is installed, provision Plotly's compatible browser once:
 

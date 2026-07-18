@@ -10,7 +10,7 @@ from typing import Any, Callable, Iterable, Iterator, Protocol
 
 from .layout import LayoutNode, container, control_slot, view_slot
 from .models import ItemDescriptor, RefreshConfiguration, RefreshResult, WorkspaceMetadata
-from .page import ControlSpec, OpenedItem, PageDefinition, PlaybackConfiguration, PlaybackMode, ViewSpec
+from .page import ControlSpec, OpenedItem, PageDefinition, PlaybackConfiguration, PlaybackMode, Segment, ViewSpec
 
 
 def _is_hex_color(value: str) -> bool:
@@ -399,6 +399,58 @@ class AnalysisContext:
             overview_label=overview_label,
         )
         return start, end
+
+    def segmented(
+        self,
+        *,
+        duration: float,
+        segments: Iterable[Segment] | None = None,
+        segment_duration: float | None = None,
+        stride: float | None = None,
+        default: str | None = None,
+    ) -> Segment:
+        """Select one explicit or regularly generated interval for display."""
+        duration = float(duration)
+        if duration <= 0:
+            raise ValueError("Segmented duration must be positive")
+        if segments is not None and segment_duration is not None:
+            raise ValueError("Provide explicit segments or segment_duration, not both")
+        if segments is None:
+            if segment_duration is None:
+                raise ValueError("Segmented playback requires segments or segment_duration")
+            segment_duration = float(segment_duration)
+            stride = float(stride if stride is not None else segment_duration)
+            if segment_duration <= 0 or segment_duration > duration:
+                raise ValueError("Segment duration must be positive and within the recording")
+            if stride <= 0:
+                raise ValueError("Segment stride must be positive")
+            count = int((duration - segment_duration) // stride) + 1
+            descriptors = tuple(
+                Segment(
+                    identifier=f"segment-{index + 1}",
+                    start_seconds=index * stride,
+                    duration_seconds=segment_duration,
+                    label=f"Segment {index + 1}",
+                )
+                for index in range(count)
+            )
+        else:
+            descriptors = tuple(sorted(segments, key=lambda segment: segment.start_seconds))
+        if not descriptors:
+            raise ValueError("Segmented playback requires at least one segment")
+        identifiers = {segment.identifier for segment in descriptors}
+        requested = str(self.values.get("__segment_id", default or descriptors[0].identifier))
+        if requested not in identifiers:
+            requested = default if default in identifiers else descriptors[0].identifier
+        selected = next(segment for segment in descriptors if segment.identifier == requested)
+        self.playback_config = PlaybackConfiguration(
+            mode="segmented",
+            duration_seconds=duration,
+            loop=False,
+            segments=descriptors,
+            selected_segment_id=selected.identifier,
+        )
+        return selected
 
     def refresh(self, *, every: float, timeout: float = 30.0) -> None:
         """Ask the framework to rerun this analysis for a live source."""

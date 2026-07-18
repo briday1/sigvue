@@ -4,7 +4,7 @@ from tempfile import TemporaryDirectory
 
 import plotly.graph_objects as go
 
-from workspace_browser.plugin import AnalysisContext, AnalysisWorkspace, DataResource, DirectorySource
+from workspace_browser.plugin import AnalysisContext, AnalysisWorkspace, DataResource, DirectorySource, Segment
 
 
 class ExampleSource:
@@ -135,6 +135,25 @@ class PluginAuthoringTests(unittest.TestCase):
 
         ui.windowed(duration=60.0, default_window=2.0, overview=(0.25,))
         self.assertEqual((0.25,), ui.playback_config.overview_values)
+
+    def test_segmented_selects_irregular_predefined_interval(self):
+        ui = AnalysisContext({"__segment_id": "late"})
+        selected = ui.segmented(
+            duration=20.0,
+            segments=(
+                Segment("late", 13.25, 0.8, "Late event"),
+                Segment("early", 1.5, 0.2, "Early event"),
+            ),
+        )
+        self.assertEqual("late", selected.identifier)
+        self.assertEqual(["early", "late"], [segment.identifier for segment in ui.playback_config.segments])
+        self.assertEqual("segmented", ui.playback_config.mode)
+
+    def test_segmented_can_generate_regular_intervals_with_skips(self):
+        ui = AnalysisContext({"__segment_id": "segment-3"})
+        selected = ui.segmented(duration=10.0, segment_duration=1.0, stride=3.0)
+        self.assertEqual((0.0, 3.0, 6.0, 9.0), tuple(segment.start_seconds for segment in ui.playback_config.segments))
+        self.assertEqual("segment-3", selected.identifier)
 
     def test_analysis_can_request_framework_live_refresh(self):
         def analyze(data, ui: AnalysisContext):

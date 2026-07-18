@@ -8,7 +8,25 @@ from .layout import LayoutNode, validate_layout
 from .models import ItemDescriptor, RefreshConfiguration
 
 
-PlaybackMode = Literal["static", "seek", "live", "windowed"]
+PlaybackMode = Literal["static", "seek", "live", "windowed", "segmented"]
+
+
+@dataclass(frozen=True)
+class Segment:
+    """One addressable interval on a segmented recording timeline."""
+
+    identifier: str
+    start_seconds: float
+    duration_seconds: float
+    label: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.identifier:
+            raise ValueError("Segment identifier cannot be empty")
+        if not isfinite(self.start_seconds) or self.start_seconds < 0:
+            raise ValueError("Segment start must be a finite non-negative time")
+        if not isfinite(self.duration_seconds) or self.duration_seconds <= 0:
+            raise ValueError("Segment duration must be finite and positive")
 
 
 @dataclass(frozen=True)
@@ -25,9 +43,11 @@ class PlaybackConfiguration:
     minimum_window_seconds: float = 0.0
     overview_values: tuple[float, ...] = ()
     overview_label: str | None = None
+    segments: tuple[Segment, ...] = ()
+    selected_segment_id: str | None = None
 
     def __post_init__(self) -> None:
-        if self.mode not in {"static", "seek", "live", "windowed"}:
+        if self.mode not in {"static", "seek", "live", "windowed", "segmented"}:
             raise ValueError(f"Unknown playback mode: {self.mode}")
         if self.mode != "static" and self.duration_seconds < 0:
             raise ValueError("Playback duration cannot be negative")
@@ -44,6 +64,18 @@ class PlaybackConfiguration:
                 raise ValueError("Windowed selection must lie within the duration")
             if not 0 < self.minimum_window_seconds <= self.duration_seconds:
                 raise ValueError("Windowed minimum size must be positive and within the duration")
+        if self.mode == "segmented":
+            if self.duration_seconds <= 0:
+                raise ValueError("Segmented duration must be positive")
+            if not self.segments:
+                raise ValueError("Segmented playback requires at least one segment")
+            identifiers = [segment.identifier for segment in self.segments]
+            if len(set(identifiers)) != len(identifiers):
+                raise ValueError("Segment identifiers must be unique")
+            if any(segment.start_seconds + segment.duration_seconds > self.duration_seconds for segment in self.segments):
+                raise ValueError("Segments must lie within the recording duration")
+            if self.selected_segment_id not in identifiers:
+                raise ValueError("Selected segment must identify an available segment")
 
 
 @dataclass(frozen=True)
