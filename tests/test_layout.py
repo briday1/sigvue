@@ -1,8 +1,8 @@
 import unittest
 
-from workspace_browser.core.errors import InvalidLayoutError
-from workspace_browser.core.layout import container, control_slot, validate_layout, view_slot
-from workspace_browser.core.page import PageDefinition, ViewSpec
+from sigvue.core.errors import InvalidLayoutError
+from sigvue.core.layout import container, control_slot, validate_layout, view_slot
+from sigvue.core.page import PageDefinition, ViewSpec
 
 
 class LayoutTests(unittest.TestCase):

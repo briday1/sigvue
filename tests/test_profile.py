@@ -4,8 +4,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from uuid import uuid4
 
-from workspace_browser.profile import load_browser_profile
-from workspace_browser.web.application import create_app
+from sigvue.profile import load_browser_profile
+from sigvue.web.application import create_app
 
 
 class BrowserProfileTests(unittest.TestCase):
@@ -26,7 +26,7 @@ class BrowserProfileTests(unittest.TestCase):
                 "[project]\n"
                 f"name = '{package_name}'\n"
                 "version = '0.1.0'\n"
-                "[project.entry-points.\"workspace_browser.workspaces\"]\n"
+                "[project.entry-points.\"sigvue.workspaces\"]\n"
                 f"radar-analysis = '{package_name}:create_workspace'\n",
                 encoding="utf-8",
             )

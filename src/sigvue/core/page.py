@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from math import isfinite
-from typing import Any, Callable, Literal
+from typing import Callable, Literal
 
+from .capabilities import AnnotationCapability, ExportCapability
 from .layout import LayoutNode, validate_layout
 from .models import ItemDescriptor, RefreshConfiguration
 
 
 PlaybackMode = Literal["static", "seek", "live", "windowed", "segmented"]
+TimeUnit = Literal["auto", "ns", "us", "ms", "s", "min", "h", "d"]
 
 
 @dataclass(frozen=True)
@@ -31,7 +33,7 @@ class Segment:
 
 @dataclass(frozen=True)
 class PlaybackConfiguration:
-    """Framework-owned playback lifecycle expressed only in elapsed time."""
+    """Framework-owned playback lifecycle with canonical seconds and a display unit."""
 
     mode: PlaybackMode = "static"
     duration_seconds: float = 0.0
@@ -45,10 +47,13 @@ class PlaybackConfiguration:
     overview_label: str | None = None
     segments: tuple[Segment, ...] = ()
     selected_segment_id: str | None = None
+    time_unit: TimeUnit = "s"
 
     def __post_init__(self) -> None:
         if self.mode not in {"static", "seek", "live", "windowed", "segmented"}:
             raise ValueError(f"Unknown playback mode: {self.mode}")
+        if self.time_unit not in {"auto", "ns", "us", "ms", "s", "min", "h", "d"}:
+            raise ValueError(f"Unknown timeline display unit: {self.time_unit}")
         if self.mode != "static" and self.duration_seconds < 0:
             raise ValueError("Playback duration cannot be negative")
         if self.step_seconds <= 0:
@@ -115,7 +120,8 @@ class PageDefinition:
     refresh: RefreshConfiguration = field(default_factory=RefreshConfiguration)
     playback: PlaybackConfiguration = field(default_factory=PlaybackConfiguration)
     statistics: dict[str, object] = field(default_factory=dict)
-    export_callback: Callable[[dict[str, object]], Any] | None = None
+    annotation: AnnotationCapability | None = None
+    export: ExportCapability | None = None
 
     def validate(self) -> None:
         invalid_placements = {control.placement for control in self.controls} - {"details", "inline"}

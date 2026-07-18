@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from threading import Lock
 
-from workspace_browser.core.models import RefreshResult
+from sigvue.core.models import RefreshResult
 
 
 @dataclass

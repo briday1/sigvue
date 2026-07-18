@@ -1,7 +1,7 @@
 import unittest
 
-from workspace_browser.core.models import RefreshResult
-from workspace_browser.refresh.manager import RefreshManager
+from sigvue.core.models import RefreshResult
+from sigvue.refresh.manager import RefreshManager
 
 
 class RefreshManagerTests(unittest.TestCase):

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from workspace_browser.core.models import ItemDescriptor
+from sigvue.core.models import ItemDescriptor
 
 
 def search_items(items: list[ItemDescriptor], query: str) -> list[ItemDescriptor]:

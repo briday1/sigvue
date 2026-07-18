@@ -1,8 +1,8 @@
 import unittest
 from datetime import datetime, timezone
 
-from workspace_browser.catalog.browser import sort_items
-from workspace_browser.core.models import ItemDescriptor
+from sigvue.catalog.browser import sort_items
+from sigvue.core.models import ItemDescriptor
 
 
 class CatalogTests(unittest.TestCase):

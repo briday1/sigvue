@@ -1,6 +1,6 @@
 import unittest
 
-from workspace_browser.core.models import ItemDescriptor
+from sigvue.core.models import ItemDescriptor
 
 
 class ModelTests(unittest.TestCase):

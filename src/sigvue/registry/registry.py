@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from workspace_browser.core.contracts import Workspace
-from workspace_browser.core.errors import DuplicateWorkspaceError
+from sigvue.core.contracts import Workspace
+from sigvue.core.errors import DuplicateWorkspaceError
 
 
 @dataclass

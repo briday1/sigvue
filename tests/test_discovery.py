@@ -1,7 +1,7 @@
 import unittest
 from types import SimpleNamespace
 
-from workspace_browser.registry.discovery import _load_entrypoint
+from sigvue.registry.discovery import _load_entrypoint
 
 
 class DiscoveryTests(unittest.TestCase):

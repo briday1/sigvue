@@ -3,11 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from importlib.metadata import EntryPoint, entry_points
 
-from workspace_browser.core.contracts import Workspace
-from workspace_browser.core.errors import WorkspaceLoadError
+from sigvue.core.contracts import Workspace
+from sigvue.core.errors import WorkspaceLoadError
 
 
-ENTRY_POINT_GROUP = "workspace_browser.workspaces"
+ENTRY_POINT_GROUP = "sigvue.workspaces"
 
 
 @dataclass(frozen=True)

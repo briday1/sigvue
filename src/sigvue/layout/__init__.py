@@ -1,4 +1,4 @@
-from workspace_browser.core.layout import view_slot
+from sigvue.core.layout import view_slot
 
 from .components import (
     collapsible_panel,

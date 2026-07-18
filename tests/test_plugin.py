@@ -4,7 +4,7 @@ from tempfile import TemporaryDirectory
 
 import plotly.graph_objects as go
 
-from workspace_browser.plugin import (
+from sigvue.plugin import (
     AnalysisContext,
     AnalysisWorkspace,
     DataDelivery,
@@ -177,7 +177,7 @@ class PluginAuthoringTests(unittest.TestCase):
         page = workspace.open_item_with_values("recording", {"buffer_size": "3", "__playback_time_seconds": "1"}).page
         self.assertEqual((2, 3, 4), page.views[0].callback({"buffer_size": "3", "__playback_time_seconds": "1"}).data[0].y)
         self.assertEqual("seek", page.playback.mode)
-        self.assertEqual([2, 3, 4], page.export_callback({"buffer_size": "3", "__playback_time_seconds": "1"}))
+        self.assertIsNone(page.export)
 
     def test_windowed_delivery_receives_framework_selected_interval(self):
         class WindowedDelivery:
@@ -211,7 +211,7 @@ class PluginAuthoringTests(unittest.TestCase):
         self.assertEqual("Peak power", page.playback.overview_label)
         self.assertEqual((0.1, 0.8, 0.2, 1.0), page.playback.overview_values)
         self.assertEqual((2, 3), page.views[0].callback(values).data[0].y)
-        self.assertEqual([2, 3], page.export_callback(values))
+        self.assertIsNone(page.export)
 
     def test_windowed_overview_rejects_nonfinite_statistics(self):
         ui = AnalysisContext({})
@@ -225,6 +225,22 @@ class PluginAuthoringTests(unittest.TestCase):
 
         ui.windowed(duration=60.0, default_window=2.0, overview=(0.25,))
         self.assertEqual((0.25,), ui.playback_config.overview_values)
+
+    def test_pipeline_can_choose_timeline_display_units_without_changing_seconds(self):
+        playback = AnalysisContext({"__playback_time_seconds": "7200"})
+        self.assertEqual(7200.0, playback.playback(duration=172800.0, step=60.0, time_unit="h"))
+        self.assertEqual("h", playback.playback_config.time_unit)
+        self.assertEqual(172800.0, playback.playback_config.duration_seconds)
+
+        windowed = AnalysisContext({"__window_start_seconds": "0.0000001", "__window_end_seconds": "0.0000003"})
+        self.assertEqual(
+            (1e-7, 3e-7),
+            windowed.windowed(duration=1e-6, default_window=2e-7, minimum_window=1e-8, time_unit="ns"),
+        )
+        self.assertEqual("ns", windowed.playback_config.time_unit)
+
+        with self.assertRaisesRegex(ValueError, "display unit"):
+            AnalysisContext({}).playback(duration=1.0, time_unit="fortnight")
 
     def test_segmented_selects_irregular_predefined_interval(self):
         ui = AnalysisContext({"__segment_id": "late"})
@@ -265,6 +281,12 @@ class PluginAuthoringTests(unittest.TestCase):
         self.assertEqual(10, ui.number("count", default=4, minimum=1, maximum=10, step=1))
         self.assertEqual(0.25, ui.number("duration", default=0.1, minimum=0.01, step=0.01))
         self.assertEqual(["integer", "float"], [control.control_type for control in ui.controls])
+
+    def test_toggle_returns_boolean_and_declares_switch_control(self):
+        ui = AnalysisContext({"annotations": "false"})
+        self.assertFalse(ui.toggle("annotations", default=True, label="Show annotations"))
+        self.assertEqual("toggle", ui.controls[0].control_type)
+        self.assertEqual("Show annotations", ui.controls[0].label)
 
     def test_trace_style_returns_plotly_options_and_details_controls(self):
         ui = AnalysisContext(

@@ -1,8 +1,8 @@
 import unittest
 
-from workspace_browser.core.errors import DuplicateWorkspaceError
-from workspace_browser.core.models import WorkspaceMetadata
-from workspace_browser.registry.registry import WorkspaceRegistry
+from sigvue.core.errors import DuplicateWorkspaceError
+from sigvue.core.models import WorkspaceMetadata
+from sigvue.registry.registry import WorkspaceRegistry
 
 
 class StubWorkspace:

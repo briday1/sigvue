@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from workspace_browser.core.layout import LayoutNode, container
+from sigvue.core.layout import LayoutNode, container
 
 
 def tabs(*children: LayoutNode) -> LayoutNode:

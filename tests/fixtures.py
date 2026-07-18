@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from matplotlib.figure import Figure
 import plotly.graph_objects as go
 
-from workspace_browser.plugin import AnalysisWorkspace, DataResource
-from workspace_browser.web.application import WorkspaceBrowserApp
+from sigvue.plugin import Annotation, AnnotationField, CapabilityChoice, AnalysisWorkspace, DataResource
+from sigvue.web.application import SigvueApp
 
 
 class MemorySource:
@@ -15,6 +17,39 @@ class MemorySource:
 
     def open(self, resource):
         return resource.source
+
+
+class MemoryAnnotator:
+    fields = (
+        AnnotationField("comment", "Description / comment", "textarea", required=True),
+    )
+
+    def __init__(self):
+        self.entries = []
+
+    def discover(self, source_data):
+        return tuple(self.entries)
+
+    def annotate(self, source_data, delivered_data, request):
+        annotation = Annotation(
+            f"annotation-{len(self.entries) + 1}",
+            request.position_seconds,
+            request.duration_seconds,
+            None,
+            request.values["comment"],
+        )
+        self.entries.append(annotation)
+        return annotation
+
+
+class MemoryExporter:
+    scopes = (CapabilityChoice("buffer", "Current buffer"), CapabilityChoice("full", "Full file"))
+    formats = (CapabilityChoice("json", "JSON"),)
+
+    def export(self, source_data, delivered_data, request, directory: Path):
+        target = directory / f"recording-{request.scope}.json"
+        target.write_text(json.dumps({"scope": request.scope, "data": delivered_data}), encoding="utf-8")
+        return target
 
 
 def analyze_plotly(data, ui):
@@ -42,12 +77,14 @@ def create_workspace(config=None):
         name=str(values.get("name", "Test Workspace")),
         description="Framework test fixture",
         source=MemorySource(),
+        annotator=MemoryAnnotator(),
+        exporter=MemoryExporter(),
         analyze=analyze_plotly,
     )
 
 
-def create_test_app() -> WorkspaceBrowserApp:
-    app = WorkspaceBrowserApp(title="Signal Analysis Browser")
+def create_test_app() -> SigvueApp:
+    app = SigvueApp(title="Sigvue")
     app.register_workspace(create_workspace())
     app.register_workspace(
         AnalysisWorkspace(

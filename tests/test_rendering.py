@@ -2,8 +2,8 @@ import unittest
 
 from matplotlib.figure import Figure
 
-from workspace_browser.rendering.dispatch import RenderKind, detect_render_kind
-from workspace_browser.rendering.matplotlib_renderer import render_matplotlib_figure
+from sigvue.rendering.dispatch import RenderKind, detect_render_kind
+from sigvue.rendering.matplotlib_renderer import render_matplotlib_figure
 
 
 class RenderingTests(unittest.TestCase):

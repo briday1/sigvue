@@ -14,7 +14,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10 fallback
     import tomli as tomllib
 
 
-ENTRY_POINT_GROUP = "workspace_browser.workspaces"
+ENTRY_POINT_GROUP = "sigvue.workspaces"
 
 
 @dataclass(frozen=True)

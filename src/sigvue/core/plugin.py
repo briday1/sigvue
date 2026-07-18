@@ -11,9 +11,15 @@ from typing import Any, Callable, Generic, Iterable, Iterator, Protocol, TypeVar
 
 from plotly.colors import get_colorscale
 
+from .capabilities import (
+    AnnotationCapability,
+    DataAnnotator,
+    DataExporter,
+    ExportCapability,
+)
 from .layout import LayoutNode, container, control_slot, view_slot
 from .models import ItemDescriptor, RefreshConfiguration, RefreshResult, WorkspaceMetadata
-from .page import ControlSpec, OpenedItem, PageDefinition, PlaybackConfiguration, PlaybackMode, Segment, ViewSpec
+from .page import ControlSpec, OpenedItem, PageDefinition, PlaybackConfiguration, PlaybackMode, Segment, TimeUnit, ViewSpec
 
 
 def _is_hex_color(value: str) -> bool:
@@ -219,6 +225,27 @@ class AnalysisContext:
             return type(default)(value)
         except (TypeError, ValueError):
             return default
+
+    def toggle(
+        self,
+        name: str,
+        *,
+        default: bool = True,
+        label: str | None = None,
+        group: str | None = None,
+    ) -> bool:
+        """Add a compact on/off switch and return its current boolean value."""
+        self._add_control(
+            ControlSpec(
+                name=name,
+                control_type="toggle",
+                label=label,
+                default=bool(default),
+                group=group,
+            )
+        )
+        value = self.values.setdefault(name, default)
+        return value if isinstance(value, bool) else str(value).lower() in {"1", "true", "yes", "on"}
 
     def number(
         self,
@@ -455,6 +482,7 @@ class AnalysisContext:
         step: float = 0.35,
         refresh_interval: float | None = None,
         loop: bool = True,
+        time_unit: TimeUnit = "s",
     ) -> float:
         """Select static, seekable, or live-tail data delivery controls."""
         self.playback_config = PlaybackConfiguration(
@@ -463,6 +491,7 @@ class AnalysisContext:
             step_seconds=step,
             refresh_interval_seconds=refresh_interval,
             loop=loop,
+            time_unit=time_unit,
         )
         if mode == "static":
             return 0.0
@@ -477,6 +506,7 @@ class AnalysisContext:
         overview_label: str | None = None,
         minimum_window: float | None = None,
         step: float | None = None,
+        time_unit: TimeUnit = "s",
     ) -> tuple[float, float]:
         """Select an interval, optionally drawn over a proportional 1D overview."""
         duration = float(duration)
@@ -506,6 +536,7 @@ class AnalysisContext:
             minimum_window_seconds=minimum,
             overview_values=values,
             overview_label=overview_label,
+            time_unit=time_unit,
         )
         return start, end
 
@@ -517,6 +548,7 @@ class AnalysisContext:
         segment_duration: float | None = None,
         stride: float | None = None,
         default: str | None = None,
+        time_unit: TimeUnit = "s",
     ) -> Segment:
         """Select one explicit or regularly generated interval for display."""
         duration = float(duration)
@@ -558,6 +590,7 @@ class AnalysisContext:
             loop=False,
             segments=descriptors,
             selected_segment_id=selected.identifier,
+            time_unit=time_unit,
         )
         return selected
 
@@ -831,6 +864,8 @@ class AnalysisWorkspace:
         source: DataSource[SourceData],
         analyze: Callable[[SourceData, AnalysisContext], None],
         delivery: None = None,
+        annotator: DataAnnotator[SourceData, SourceData] | None = None,
+        exporter: DataExporter[SourceData, SourceData] | None = None,
         version: str = "0.1.0",
         category: str | None = None,
         tags: tuple[str, ...] = (),
@@ -846,6 +881,8 @@ class AnalysisWorkspace:
         source: DataSource[SourceData],
         analyze: Callable[[DeliveredData, AnalysisContext], None],
         delivery: DataDelivery[SourceData, DeliveredData],
+        annotator: DataAnnotator[SourceData, DeliveredData] | None = None,
+        exporter: DataExporter[SourceData, DeliveredData] | None = None,
         version: str = "0.1.0",
         category: str | None = None,
         tags: tuple[str, ...] = (),
@@ -860,6 +897,8 @@ class AnalysisWorkspace:
         source: DataSource[Any],
         analyze: Callable[[Any, AnalysisContext], None],
         delivery: DataDelivery[Any, Any] | None = None,
+        annotator: DataAnnotator[Any, Any] | None = None,
+        exporter: DataExporter[Any, Any] | None = None,
         version: str = "0.1.0",
         category: str | None = None,
         tags: tuple[str, ...] = (),
@@ -872,12 +911,33 @@ class AnalysisWorkspace:
             missing = _missing_methods(delivery, ("prepare",))
             detail = f"; missing {', '.join(missing)}" if missing else ""
             raise TypeError(f"delivery must implement DataDelivery.prepare(source_data, ui){detail}")
+        if annotator is not None and not isinstance(annotator, DataAnnotator):
+            missing = _missing_methods(annotator, ("discover", "annotate"))
+            detail = f"; missing {', '.join(missing)}" if missing else ""
+            raise TypeError(f"annotator must implement DataAnnotator{detail}")
+        if annotator is not None:
+            field_names = [field.name for field in annotator.fields]
+            if len(field_names) != len(set(field_names)):
+                raise ValueError("DataAnnotator field names must be unique")
+        if exporter is not None and not isinstance(exporter, DataExporter):
+            missing = _missing_methods(exporter, ("export",))
+            detail = f"; missing {', '.join(missing)}" if missing else ""
+            raise TypeError(f"exporter must implement DataExporter{detail}")
+        if exporter is not None:
+            if not exporter.scopes or not exporter.formats:
+                raise ValueError("DataExporter must provide at least one scope and format")
+            for choice_kind, choices in (("scope", exporter.scopes), ("format", exporter.formats)):
+                values = [choice.value for choice in choices]
+                if len(values) != len(set(values)):
+                    raise ValueError(f"DataExporter {choice_kind} values must be unique")
         if not callable(analyze):
             raise TypeError("analyze must be callable as analyze(delivered_data, ui)")
         self.metadata = WorkspaceMetadata(identifier, name, description, version, category, tags)
         self.source = source
         self.analyze = analyze
         self.delivery = delivery
+        self.annotator = annotator
+        self.exporter = exporter
         self._once_caches: dict[str, dict[tuple[object, ...], object]] = {}
         self._cache_lock = RLock()
 
@@ -955,7 +1015,29 @@ class AnalysisWorkspace:
             refresh=initial.refresh_config,
             metadata=initial.metadata,
             statistics=initial.statistics,
-            export_callback=lambda values: render(values)._delivered_data,
+            annotation=(
+                AnnotationCapability(
+                    fields=tuple(self.annotator.fields),
+                    discover_callback=lambda: tuple(self.annotator.discover(data)),
+                    annotate_callback=lambda requested_values, request: self.annotator.annotate(
+                        data, render(requested_values)._delivered_data, request
+                    ),
+                    timeline_color_control=getattr(self.annotator, "timeline_color_control", None),
+                )
+                if self.annotator is not None
+                else None
+            ),
+            export=(
+                ExportCapability(
+                    scopes=tuple(self.exporter.scopes),
+                    formats=tuple(self.exporter.formats),
+                    export_callback=lambda requested_values, request, directory: self.exporter.export(
+                        data, render(requested_values)._delivered_data, request, directory
+                    ),
+                )
+                if self.exporter is not None
+                else None
+            ),
         )
         page.validate()
         return OpenedItem(item=item, page=page)

@@ -5,15 +5,13 @@ import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from types import SimpleNamespace
 from unittest.mock import Mock
 
-from workspace_browser.plugin import AnalysisWorkspace, DirectorySource
-from workspace_browser.web.application import (
-    WorkspaceBrowserApp,
+from sigvue.plugin import AnalysisWorkspace, DirectorySource
+from sigvue.web.application import (
+    SigvueApp,
     WorkspaceModuleRegistration,
     _make_handler,
-    _export_stem,
     _module_watch_snapshot,
 )
 from tests.fixtures import create_test_app
@@ -36,7 +34,8 @@ class WebAppTests(unittest.TestCase):
         self.assertNotIn("status", payload["page"])
         self.assertIn("summary", payload["page"]["views"])
         self.assertEqual("markdown", payload["page"]["rendered_views"][0]["kind"])
-        self.assertFalse(payload["page"]["logging"]["enabled"])
+        self.assertTrue(payload["page"]["annotation"]["enabled"])
+        self.assertTrue(payload["page"]["export"]["enabled"])
         self.assertNotIn("Analysis runtime", payload["page"]["statistics"])
         self.assertRegex(payload["page"]["runtime_statistics"]["Analysis runtime"], r"^\d+\.\d ms$")
         self.assertRegex(payload["page"]["runtime_statistics"]["View callbacks"], r"^\d+\.\d ms$")
@@ -73,7 +72,7 @@ class WebAppTests(unittest.TestCase):
                 source=DirectorySource(root, pattern="*.dat", loader=lambda path: path.read_text(), recursive=True),
                 analyze=analyze,
             )
-            app = WorkspaceBrowserApp()
+            app = SigvueApp()
             app.register_workspace(workspace)
 
             root_listing = app.browse_items("nested-files", {})
@@ -86,50 +85,26 @@ class WebAppTests(unittest.TestCase):
             opened = app.open_item("nested-files", "campaign-a::capture.dat")
             self.assertEqual(["campaign-a"], opened["item"]["navigation_path"])
 
-    def test_seekable_file_item_writes_progress_log_beside_data(self):
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            source = root / "capture.dat"
-            source.write_text("samples", encoding="utf-8")
+    def test_plugin_annotation_is_created_and_rediscovered(self):
+        app = self.create_example_app()
+        result = app.write_item_annotation(
+            "test-workspace",
+            "recording",
+            {"__playback_time_seconds": "1.25"},
+            1.25,
+            0.25,
+            {"comment": "Check this interval"},
+        )
+        self.assertIsNone(result["label"])
+        self.assertEqual("Check this interval", result["comment"])
+        self.assertEqual(1.25, result["position_seconds"])
+        reopened = app.open_item("test-workspace", "recording")
+        self.assertEqual([result], reopened["page"]["annotation"]["entries"])
 
-            def analyze(data, ui):
-                ui.playback(mode="seek", duration=3.0, step=0.25)
-                gain = ui.number("gain", default=1.0, step=0.1)
-                with ui.tab("Signal"):
-                    ui.text(f"Gain {gain}", key="signal")
-
-            workspace = AnalysisWorkspace(
-                identifier="log-test",
-                name="Log test",
-                description="Progress log test",
-                source=DirectorySource(root, pattern="*.dat", loader=lambda path: path.read_text(encoding="utf-8")),
-                analyze=analyze,
-            )
-            app = WorkspaceBrowserApp()
-            app.register_workspace(workspace)
-            opened = app.open_item("log-test", "capture.dat", {"gain": "2", "__playback_time_seconds": "1.25"})
-            self.assertTrue(opened["page"]["logging"]["enabled"])
-
-            result = app.write_item_log(
-                "log-test",
-                "capture.dat",
-                {"gain": "2", "__playback_time_seconds": "1.25", "__playback_follow_live": "false"},
-                {"active_tab": "Signal", "view_selections": {"domain": "Frequency"}},
-            )
-            target = root / "logs" / result["filename"]
-            self.assertTrue(target.is_file())
-            self.assertIn("-t1.25s-", target.name)
-            note = target.read_text(encoding="utf-8")
-            self.assertIn("Playback mode: seek", note)
-            self.assertIn("Playback position: 1.25 s", note)
-            self.assertIn("Active tab: Signal", note)
-            self.assertIn('"domain": "Frequency"', note)
-            self.assertIn('"gain": "2"', note)
-            reopened = app.open_item("log-test", "capture.dat", {"__playback_time_seconds": "0"})
-            self.assertEqual(
-                [{"filename": result["filename"], "position_seconds": 1.25}],
-                reopened["page"]["logging"]["entries"],
-            )
+        buffer_refresh = app.open_item(
+            "test-workspace", "recording", {"__include_static_views": "false"}
+        )
+        self.assertIsNone(buffer_refresh["page"]["annotation"]["entries"])
 
     def test_launch_url_serves_browser_interface(self):
         app = self.create_example_app()
@@ -139,27 +114,38 @@ class WebAppTests(unittest.TestCase):
         handler._write_html = Mock()
         handler.do_GET()
         body = handler._write_html.call_args.args[0]
-        self.assertIn("Signal Analysis Browser", body)
+        self.assertIn("Sigvue", body)
         self.assertIn("Explore scientific and analytical results", body)
         self.assertIn('id="fullscreen-toggle"', body)
         self.assertIn('id="header-details"', body)
         self.assertIn('id="header-download"', body)
-        self.assertIn('id="header-camera"', body)
-        self.assertIn('id="header-log"', body)
-        self.assertLess(body.index('id="header-log"'), body.index('id="header-camera"'))
-        self.assertIn('class="sidebar-toggle icon-button"', body)
-        self.assertIn('<circle cx="12" cy="13" r="3.25"/>', body)
-        self.assertNotIn("📷", body)
-        self.assertIn("/exports?", body)
-        self.assertIn("runExport('mat'", body)
-        self.assertIn("runExport('png'", body)
-        self.assertIn("p.logging?.enabled", body)
+        self.assertIn('id="header-annotate"', body)
+        self.assertNotIn('id="header-camera"', body)
+        self.assertNotIn('id="header-log"', body)
+        self.assertIn("p.annotation?.enabled", body)
+        self.assertIn("p.export?.enabled", body)
+        self.assertIn('id="export-scope"', body)
+        self.assertIn('id="export-format"', body)
+        self.assertIn("data-annotation-field", body)
+        self.assertIn("populatePlotBoundAnnotationFields", body)
+        self.assertIn("plot?._fullLayout?.[binding.axis]?.range", body)
         self.assertIn("apiPost(`/workspaces/", body)
-        self.assertIn('id="log-markers"', body)
-        self.assertIn('class="log-marker"', body)
-        self.assertIn("activePlaybackSeek?.(marker.dataset.logPosition)", body)
-        self.assertIn("progressLogs.push(result)", body)
-        self.assertIn("button.innerHTML=original", body)
+        self.assertIn('<span class="annotation-marker', body)
+        self.assertIn("annotationMarkerGroups", body)
+        self.assertIn("annotationMarkerColor", body)
+        self.assertIn("--annotation-marker-color", body)
+        self.assertIn("timeline_color_control", body)
+        self.assertIn("position>duration", body)
+        self.assertIn("data-annotation-count", body)
+        self.assertIn("target.dataset.annotationSignature===signature", body)
+        self.assertIn("if(Array.isArray(p.annotation?.entries))", body)
+        self.assertNotIn("marker.onclick=()=>activeAnnotationSeek", body)
+        self.assertIn('class="toggle-control"', body)
+        self.assertIn("c.type==='checkbox'?String(c.checked):c.value", body)
+        self.assertIn("annotations.push(result)", body)
+        self.assertIn("const form=event.currentTarget", body)
+        self.assertIn("form.reset()", body)
+        self.assertNotIn("event.currentTarget.reset()", body)
         self.assertIn("requestFullscreen()", body)
         self.assertIn("fullscreenchange", body)
         self.assertIn("catalog()", body)
@@ -224,7 +210,11 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("function sizeDataStage()", body)
         self.assertIn('id="current-time"', body)
         self.assertIn('step="any"', body)
-        self.assertIn("const seek=async value=>", body)
+        self.assertIn("const seek=async(value,displayValue=false)=>", body)
+        self.assertIn("const timelineUnits=", body)
+        self.assertIn("function resolvedTimelineUnit(config)", body)
+        self.assertIn("canonicalTime(value,config)", body)
+        self.assertIn("formatTimelineTime", body)
         self.assertIn('id="jump-live"', body)
         self.assertIn("const isPlayback=['seek','live'].includes(p.playback.mode)", body)
         self.assertIn("isWindowed=p.playback.mode==='windowed'", body)
@@ -274,84 +264,87 @@ class WebAppTests(unittest.TestCase):
         javascript = handler._write_javascript.call_args.args[0]
         self.assertIn("plotly.js", javascript)
 
-    def test_progress_log_endpoint_routes_json_context(self):
+    def test_annotation_endpoint_routes_plugin_values(self):
         app = Mock()
-        app.write_item_log.return_value = {"filename": "capture-t1.25s-note.txt"}
+        app.write_item_annotation.return_value = {"id": "a1", "position_seconds": 1.25}
         handler_type = _make_handler(app)
         handler = handler_type.__new__(handler_type)
         payload = json.dumps(
             {
                 "control_values": {"gain": "2", "__playback_time_seconds": "1.25"},
-                "active_tab": "Signal",
-                "view_selections": {"domain": "Frequency"},
+                "position_seconds": 1.25,
+                "duration_seconds": 0.25,
+                "values": {"comment": "Check this"},
             }
         ).encode("utf-8")
-        handler.path = "/workspaces/log-test/items/capture.dat/logs"
+        handler.path = "/workspaces/test/items/capture.dat/annotations"
         handler.headers = {"Content-Length": str(len(payload))}
         handler.rfile = BytesIO(payload)
         handler._write_json = Mock()
         handler.do_POST()
 
-        app.write_item_log.assert_called_once_with(
-            "log-test",
+        app.write_item_annotation.assert_called_once_with(
+            "test",
             "capture.dat",
             {"gain": "2", "__playback_time_seconds": "1.25"},
-            {"active_tab": "Signal", "view_selections": {"domain": "Frequency"}},
+            1.25,
+            0.25,
+            {"comment": "Check this"},
         )
-        handler._write_json.assert_called_once_with(201, {"filename": "capture-t1.25s-note.txt"})
+        handler._write_json.assert_called_once_with(201, {"id": "a1", "position_seconds": 1.25})
 
-    def test_mat_export_runs_as_a_background_job(self):
+    def test_plugin_export_runs_as_a_background_job(self):
         app = self.create_example_app()
         job_id = app.start_export(
             "test-workspace",
             "recording",
             {"__playback_time_seconds": "0.5"},
-            "mat",
+            "buffer",
+            "json",
         )
         app._export_jobs[job_id].future.result(timeout=10)
         status = app.export_status(job_id)
         self.assertEqual("ready", status["status"])
-        self.assertEqual("mat", status["format"])
-        self.assertEqual("recording-t0.5s-seek-analysis.mat", status["files"][0]["name"])
+        self.assertEqual("json", status["format"])
+        self.assertEqual("recording-buffer.json", status["files"][0]["name"])
         path = app.export_file(job_id, status["files"][0]["name"])
-        self.assertEqual(b"MATL", path.read_bytes()[:4])
+        self.assertEqual("buffer", json.loads(path.read_text())["scope"])
 
-    def test_camera_export_runs_as_a_background_job(self):
+    def test_export_endpoint_routes_plugin_scope_and_format(self):
+        app = Mock()
+        app.start_export.return_value = "job-1"
+        handler_type = _make_handler(app)
+        handler = handler_type.__new__(handler_type)
+        payload = json.dumps({
+            "control_values": {"gain": "2"},
+            "scope": "full",
+            "format": "mat",
+        }).encode("utf-8")
+        handler.path = "/workspaces/test/items/capture.dat/exports"
+        handler.headers = {"Content-Length": str(len(payload))}
+        handler.rfile = BytesIO(payload)
+        handler._write_json = Mock()
+        handler.do_POST()
+
+        app.start_export.assert_called_once_with("test", "capture.dat", {"gain": "2"}, "full", "mat")
+        handler._write_json.assert_called_once_with(
+            202,
+            {"id": "job-1", "status": "pending", "status_url": "/exports/job-1"},
+        )
+
+    def test_workspace_without_exporter_rejects_export(self):
         app = self.create_example_app()
         job_id = app.start_export(
             "matplotlib-workspace",
             "recording",
             {"__playback_time_seconds": "0.5"},
-            "png",
+            "buffer",
+            "json",
         )
-        result = app._export_jobs[job_id].future.result(timeout=20)
+        with self.assertRaisesRegex(ValueError, "does not provide export support"):
+            app._export_jobs[job_id].future.result(timeout=10)
         status = app.export_status(job_id)
-        self.assertEqual("ready", status["status"])
-        self.assertEqual("png", status["format"])
-        self.assertGreater(result["plot_count"], 0)
-        path = app.export_file(job_id, status["files"][0]["name"])
-        self.assertEqual(b"PK", path.read_bytes()[:2])
-
-    def test_export_names_use_actual_delivered_window_time(self):
-        delivered = {
-            "sample_rate": 1_000.0,
-            "start_sample": 125,
-            "samples": SimpleNamespace(shape=(4, 20)),
-        }
-        self.assertEqual(
-            "capture-t0.125s-buffer0.02s-live",
-            _export_stem("capture", "live", {"__playback_time_seconds": 0.1}, delivered),
-        )
-        self.assertEqual(
-            "capture-t0.25s-buffer0.5s-windowed",
-            _export_stem(
-                "capture",
-                "windowed",
-                {"__window_start_seconds": 0.25, "__window_end_seconds": 0.75},
-                {},
-            ),
-        )
-        self.assertEqual("capture-full-static", _export_stem("capture", "static", {}, delivered))
+        self.assertEqual("error", status["status"])
 
     def test_module_reload_watcher_includes_source_and_sigmf_data(self):
         project_root = Path(__file__).resolve().parents[1]
@@ -359,18 +352,18 @@ class WebAppTests(unittest.TestCase):
             recording = Path(directory) / "capture.sigmf-data"
             recording.write_bytes(b"samples")
             watched = _module_watch_snapshot({project_root / "src", Path(directory)})
-            self.assertIn(project_root / "src/workspace_browser/web/application.py", watched)
+            self.assertIn(project_root / "src/sigvue/web/application.py", watched)
             self.assertIn(recording, watched)
 
     def test_browser_refresh_reloads_workspace_module_without_restarting_app(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
-            module_name = "workspace_browser_hot_reload_test"
+            module_name = "sigvue_hot_reload_test"
             module_path = root / f"{module_name}.py"
 
             def write_workspace(name: str) -> None:
                 module_path.write_text(
-                    "from workspace_browser.core.models import WorkspaceMetadata\n"
+                    "from sigvue.core.models import WorkspaceMetadata\n"
                     "class Workspace:\n"
                     f"    metadata = WorkspaceMetadata('hot', '{name}', 'Reload test', '0.1.0')\n",
                     encoding="utf-8",
@@ -379,7 +372,7 @@ class WebAppTests(unittest.TestCase):
             write_workspace("Before")
             sys.path.insert(0, directory)
             try:
-                app = WorkspaceBrowserApp(
+                app = SigvueApp(
                     reload_workspaces=True,
                     workspace_modules=(WorkspaceModuleRegistration(module_name, "Workspace", root),),
                 )
@@ -423,7 +416,7 @@ class WebAppTests(unittest.TestCase):
 
     def test_workspace_page_reload_reloads_browser_profile(self):
         app = Mock()
-        app.title = "Workspace browser"
+        app.title = "Sigvue"
         app.subtitle = "Workspace list"
         app.config_path = Path("browser.toml")
         handler_type = _make_handler(app)

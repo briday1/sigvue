@@ -3,20 +3,20 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "workspace-browser"
+name = "sigvue"
 version = "0.1.0"
-description = "Pure-Python scientific workspace browser framework"
+description = "Extensible signal viewer"
 readme = "README.md"
 requires-python = ">=3.10"
-authors = [{ name = "Scientific Workspace Browser" }]
-dependencies = ["kaleido>=1.0", "matplotlib>=3.7", "numpy>=1.24", "plotly>=6.1.1", "scipy>=1.10", "tomli>=2; python_version < '3.11'"]
+authors = [{ name = "Sigvue" }]
+dependencies = ["matplotlib>=3.7", "plotly>=6.1.1", "tomli>=2; python_version < '3.11'"]
 
 [project.optional-dependencies]
 build = ["certifi>=2024.2.2", "pyinstaller>=6.0"]
 
 [project.scripts]
-workspace-browser = "workspace_browser.web.application:main"
-workspace-browser-build = "workspace_browser._packaging.build:main"
+sigvue = "sigvue.web.application:main"
+sigvue-build = "sigvue._packaging.build:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -25,5 +25,5 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-workspace_browser = ["py.typed"]
-"workspace_browser._packaging" = ["*.spec"]
+sigvue = ["py.typed"]
+"sigvue._packaging" = ["*.spec"]

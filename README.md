@@ -1,19 +1,19 @@
-# Scientific Workspace Browser
+# Sigvue
 
-Scientific Workspace Browser turns file-backed analysis scripts into a local browser application. A workspace package decides:
+Sigvue turns file-backed analysis scripts into a local browser application. A workspace package decides:
 
 1. Which items are available.
 2. How an item is opened.
 3. What data is delivered for one analysis run.
 4. How that data is processed and displayed.
 
-The framework supplies the catalog, page layout, parameters, themes, refresh and playback controls, plot updates, exports, and HTTP service.
+The framework supplies the catalog, page layout, parameters, themes, refresh and playback controls, plot updates, background capability execution, and HTTP service.
 
 ## Install and run
 
 ```bash
-python -m pip install workspace-browser
-workspace-browser --config browser.toml
+python -m pip install sigvue
+sigvue --config browser.toml
 ```
 
 Open `http://127.0.0.1:8000`. The package contains no built-in workspaces; `browser.toml` chooses which independently installed or local workspace packages to load.
@@ -28,6 +28,8 @@ Most workspace packages implement one factory and two ordinary functions:
 | Source `discover()` / `open()` | Yes | List items and open the selected item. `DirectorySource` implements this for files. |
 | `analyze(data, ui)` | Yes | Process the delivered data and register plots, tables, text, parameters, and layout. |
 | Delivery `prepare(source_data, ui)` | No | Select or transform data before `analyze`, including buffering, seeking, live reads, or window selection. |
+| `DataAnnotator` | No | Discover and persist domain-native annotations. No contract means no Annotate UI. |
+| `DataExporter` | No | Advertise scope/format choices and serialize domain data. No contract means no Download UI. |
 | Package entry point | Yes for profile loading | Give the factory a stable name for `browser.toml`. |
 
 The data passed between these hooks is owned by the workspace package. The framework does not require a particular file format, array shape, reader, or analysis library.
@@ -54,7 +56,7 @@ analyze(delivered_data: DeliveredData, ui: AnalysisContext) -> None
 type checker therefore catches a delivery that expects the wrong reader type or
 an analysis function that expects something other than the delivery output.
 The installed package includes a `py.typed` marker, so these checks also work
-when `workspace-browser` is installed from a wheel.
+when `sigvue` is installed from a wheel.
 
 Implementations may explicitly inherit the interfaces, which is recommended
 for readability:
@@ -62,7 +64,7 @@ for readability:
 ```python
 from collections.abc import Iterable
 
-from workspace_browser.plugin import AnalysisContext, DataDelivery, DataResource, DataSource
+from sigvue.plugin import AnalysisContext, DataDelivery, DataResource, DataSource
 
 
 class MySource(DataSource[Recording]):
@@ -99,7 +101,7 @@ from typing import TypedDict
 
 import plotly.graph_objects as go
 
-from workspace_browser.plugin import AnalysisContext, AnalysisWorkspace, DirectorySource
+from sigvue.plugin import AnalysisContext, AnalysisWorkspace, DirectorySource
 
 
 class ResultFile(TypedDict):
@@ -143,7 +145,7 @@ Advertise the factory in the workspace package:
 
 ```toml
 # pyproject.toml in the workspace package
-[project.entry-points."workspace_browser.workspaces"]
+[project.entry-points."sigvue.workspaces"]
 my-analysis = "my_workspace.workspace:create_workspace"
 ```
 
@@ -189,7 +191,7 @@ Without a delivery object, `analyze` receives exactly what the source opened. A 
 ```python
 from dataclasses import dataclass
 
-from workspace_browser.plugin import AnalysisContext, DataDelivery
+from sigvue.plugin import AnalysisContext, DataDelivery
 
 
 @dataclass(frozen=True)
@@ -231,6 +233,24 @@ Available lifecycle modes are:
 
 Use `ui.playback(...)` for static, seek, and live policies. In live mode, the delivery should check the currently available duration on each request.
 
+Timeline values remain canonical seconds between the browser, delivery, annotations,
+and exports, but a pipeline can choose the unit used by every framework-owned display:
+
+```python
+position = ui.playback(
+    mode="seek",
+    duration=3 * 86_400,
+    step=60,
+    time_unit="h",
+)
+```
+
+Pass `time_unit=` to `ui.playback`, `ui.windowed`, or `ui.segmented`. Supported
+values are `"ns"`, `"us"`, `"ms"`, `"s"`, `"min"`, `"h"`, and `"d"`.
+`"auto"` chooses a sensible unit from the full duration. Editable boxes display
+and accept that unit while the delivery continues receiving seconds, so changing
+presentation units cannot change sample addressing or persisted annotation times.
+
 For windowed selection, the workspace reads the returned interval and may provide a low-resolution overview statistic:
 
 ```python
@@ -241,6 +261,7 @@ start, end = ui.windowed(
     step=0.001,
     overview=recording.summary_values(),
     overview_label="Activity",
+    time_unit="ms",
 )
 return recording.read(start, end)
 ```
@@ -250,7 +271,7 @@ return recording.read(start, end)
 For irregular stored results, provide explicit segment descriptors and use the returned descriptor to load the matching result:
 
 ```python
-from workspace_browser.plugin import Segment
+from sigvue.plugin import Segment
 
 selected = ui.segmented(
     duration=recording.duration,
@@ -299,22 +320,27 @@ with ui.tab("Reference", update="static"):
     )
 ```
 
-## Export and logging
+## Optional annotation and export capabilities
 
-Every opened item provides:
+Annotation and download are plugin-owned capabilities. If a workspace does not pass an
+`annotator=` or `exporter=` to `AnalysisWorkspace`, the corresponding header menu is not
+shown. The framework supplies typed field/choice helpers, renders the controls, and runs
+exports on its background executor; the plugin decides how annotations are persisted and
+how its domain data is serialized.
 
-- **Download .mat**: the delivered data, controls, metadata, statistics, layout, and all registered views in one MATLAB structure.
-- **Camera**: every Plotly and Matplotlib view, including hidden tabs and switched choices, as PNG files in one ZIP.
+Implement `DataAnnotator` to discover timeline annotations and add one from the current
+delivered value. Implement `DataExporter` to advertise scope and format choices and write
+one result file into the supplied directory. `CapabilityChoice`, `AnnotationField`,
+`AnnotationPlotBinding`, `Annotation`, `AnnotationRequest`, and `ExportRequest` are
+available from `sigvue.plugin`.
+This keeps formats such as SigMF annotations, MAT, JSON, or a domain-specific archive out
+of the framework.
 
-Exports run in a background executor. Static workspaces export the complete delivered value; seek and live workspaces export the current buffer; windowed workspaces export the selected interval; segmented workspaces export the selected result. Workspace packages do not implement export handlers when using `AnalysisWorkspace`.
-
-Matplotlib PNG export requires no external browser. Plotly PNG export uses Kaleido, which is a required `workspace-browser` dependency. Kaleido 1.x uses Chrome or Chromium. If neither is installed, provision Plotly's compatible browser once:
-
-```bash
-plotly_get_chrome
-```
-
-Local file-backed seek and live items also provide **Log**. It stores timestamped review notes in a `logs/` directory beside the source and marks them on the timeline.
+Plot-oriented plugins can attach an `AnnotationPlotBinding` to a numeric
+`AnnotationField`. When the annotation menu opens, Sigvue fills that input from the
+currently visible lower or upper edge of the named Plotly axis. The plugin declares the
+unit transform and may add the current playback position for buffer-relative plot axes;
+the resulting editable value is still persisted entirely by the plugin.
 
 ## HTTP API
 
@@ -326,36 +352,28 @@ The browser UI uses the same local JSON API available to integrations:
 | `GET /workspaces` | Registered workspaces. |
 | `GET /workspaces/{workspace_id}/items` | Discovered items. |
 | `GET /workspaces/{workspace_id}/items/{item_id}` | Page definition and rendered views. Query parameters carry controls and timeline state. |
-| `GET /workspaces/{workspace_id}/items/{item_id}/exports?format=mat|png` | Start a background export. |
+| `POST /workspaces/{workspace_id}/items/{item_id}/exports` | Start a plugin-owned background export with `scope`, `format`, and `control_values`. |
 | `GET /exports/{job_id}` | Poll export status. |
 | `GET /exports/{job_id}/{filename}` | Download a completed export. |
-| `POST /workspaces/{workspace_id}/items/{item_id}/logs` | Write a progress note for a seek/live item. |
+| `POST /workspaces/{workspace_id}/items/{item_id}/annotations` | Add an annotation through the plugin contract. |
 
 ## PyPI and standalone distribution
 
 The PyPI wheel contains:
 
-- The browser server and both export implementations.
-- Dependency metadata that installs Plotly, Matplotlib, and Kaleido.
-- The PyInstaller spec and Kaleido runtime hook under `workspace_browser._packaging`.
-- The `workspace-browser-build` command.
+- The browser server and typed plugin contracts.
+- Dependency metadata that installs Plotly and Matplotlib.
+- The PyInstaller spec under `sigvue._packaging`.
+- The `sigvue-build` command.
 
-Chrome is intentionally not placed in the platform-independent Python wheel. A normal installation uses an existing Chrome/Chromium or the copy installed by `plotly_get_chrome`.
-
-To build a platform-specific, one-file executable with Chrome included:
+To build a platform-specific, one-file executable:
 
 ```bash
-python -m pip install "workspace-browser[build]"
-workspace-browser-build
+python -m pip install "sigvue[build]"
+sigvue-build
 ```
 
-The result is `dist/workspace-browser` or `dist/workspace-browser.exe`. Build separately on Windows, Linux, and macOS. To create a smaller executable that relies on a browser installed on the target machine:
-
-```bash
-SWB_BUNDLE_CHROME=0 workspace-browser-build
-```
-
-In PowerShell, set `$env:SWB_BUNDLE_CHROME = "0"` before running the command.
+The result is `dist/sigvue` or `dist/sigvue.exe`. Build separately on Windows, Linux, and macOS.
 
 Workspace packages, `browser.toml`, and data remain external to the executable.
 
@@ -366,4 +384,4 @@ python -m pip install -e ".[build]"
 PYTHONPATH=src python -m unittest discover -s tests -q
 ```
 
-Neutral, runnable workspace packages are maintained separately so the framework distribution stays format-independent: [Scientific Workspace Browser Examples](https://github.com/briday1/Scientific-Workspace-Browser-Examples).
+Neutral, runnable workspace packages are maintained separately so the framework distribution stays format-independent: [Sigvue Examples](https://github.com/briday1/sigvue-examples).
