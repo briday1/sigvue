@@ -9,6 +9,7 @@ from sigvue.plugin import (
     AnalysisWorkspace,
     DataDelivery,
     DataResource,
+    DiscoveryColumn,
     DataSource,
     DirectorySource,
     Segment,
@@ -24,6 +25,21 @@ class ExampleSource:
 
 
 class PluginAuthoringTests(unittest.TestCase):
+    def test_discovery_columns_are_typed_and_unique(self):
+        column = DiscoveryColumn("sample_rate", "Sampling rate", "si", unit="sample/s")
+        self.assertEqual("sample_rate", column.key)
+        with self.assertRaisesRegex(ValueError, "Only SI"):
+            DiscoveryColumn("date", "Date", "datetime", unit="s")
+        with self.assertRaisesRegex(ValueError, "keys must be unique"):
+            AnalysisWorkspace(
+                identifier="duplicate-columns",
+                name="Duplicate columns",
+                description="test",
+                source=ExampleSource(),
+                analyze=lambda data, ui: None,
+                discovery_columns=(column, column),
+            )
+
     def test_public_source_and_delivery_protocols_are_runtime_checkable(self):
         class TypedDelivery(DataDelivery[list[int], tuple[int, ...]]):
             def prepare(self, source_data: list[int], ui: AnalysisContext) -> tuple[int, ...]:
@@ -238,6 +254,18 @@ class PluginAuthoringTests(unittest.TestCase):
             windowed.windowed(duration=1e-6, default_window=2e-7, minimum_window=1e-8, time_unit="ns"),
         )
         self.assertEqual("ns", windowed.playback_config.time_unit)
+        samples = AnalysisContext({})
+        self.assertEqual(
+            (0.0, 256.0),
+            samples.windowed(
+                duration=4096,
+                default_window=256,
+                minimum_window=16,
+                step=16,
+                time_unit="samples",
+            ),
+        )
+        self.assertEqual("samples", samples.playback_config.time_unit)
 
         with self.assertRaisesRegex(ValueError, "display unit"):
             AnalysisContext({}).playback(duration=1.0, time_unit="fortnight")
@@ -295,22 +323,26 @@ class PluginAuthoringTests(unittest.TestCase):
                 "average_marker": "diamond",
                 "average_color": "#123abc",
                 "average_width": "3.5",
+                "average_opacity": "0.4",
             }
         )
         style = ui.trace_style("average", label="Average", color="#087e8b")
 
         self.assertEqual("lines+markers", style.mode)
-        self.assertEqual({"color": "#123abc", "width": 3.5, "dash": "dashdot"}, style.line)
-        self.assertEqual({"color": "#123abc", "symbol": "diamond"}, style.plotly_marker)
-        self.assertEqual(["color", "float", "select", "select"], [control.control_type for control in ui.controls])
+        self.assertEqual({"color": "rgba(18,58,188,0.4)", "width": 3.5, "dash": "dashdot"}, style.line)
+        self.assertEqual({"color": "rgba(18,58,188,0.4)", "symbol": "diamond"}, style.plotly_marker)
+        self.assertEqual("rgba(255,255,255,0.4)", style.color_with_opacity("#ffffff"))
+        self.assertEqual(["color", "float", "float", "select", "select"], [control.control_type for control in ui.controls])
         self.assertTrue(all(control.placement == "details" for control in ui.controls))
         self.assertTrue(all(control.group == "Plot styles" for control in ui.controls))
         self.assertTrue(all(control.picker == "average" for control in ui.controls))
         self.assertTrue(all(control.picker_label == "Average" for control in ui.controls))
-        self.assertEqual(["Color", "Line width", "Line style", "Marker"], [control.label for control in ui.controls])
+        self.assertEqual(["Color", "Line width", "Opacity", "Line style", "Marker"], [control.label for control in ui.controls])
 
         with self.assertRaisesRegex(ValueError, "#RRGGBB"):
             AnalysisContext({}).trace_style("invalid", color="teal")
+        with self.assertRaisesRegex(ValueError, "between 0 and 1"):
+            AnalysisContext({}).trace_style("invalid", opacity=1.1)
 
     def test_colormap_picker_returns_choice_and_serializes_gradient_previews(self):
         ui = AnalysisContext({"waterfall_colormap": "Cividis"})

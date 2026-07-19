@@ -141,6 +141,43 @@ to the source root; files are not flattened and directories are not presented as
 fake analysis items. A custom source can provide the same behavior by setting
 `DataResource(navigation_path=("campaign", "day-2"), ...)`.
 
+### Discovery columns
+
+Each workspace can declare the metadata columns shown beside discovered files.
+The workspace supplies raw values in `DataResource.summary`; Sigvue owns table
+rendering, null display, search, and sorting:
+
+```python
+from sigvue.plugin import AnalysisWorkspace, DataResource, DiscoveryColumn
+
+columns = (
+    DiscoveryColumn("date", "Date", kind="datetime"),
+    DiscoveryColumn("sample_rate", "Sampling rate", kind="si", unit="sample/s"),
+    DiscoveryColumn("rf_frequency", "RF frequency", kind="si", unit="Hz"),
+)
+
+resource = DataResource(
+    identifier="recording-1",
+    title="Recording 1",
+    location="recording-1.sigmf-meta",
+    summary={
+        "date": "2026-07-19T12:00:00Z",
+        "sample_rate": 10_000_000,
+        "rf_frequency": None,
+    },
+)
+
+workspace = AnalysisWorkspace(
+    # ...normal workspace arguments...
+    discovery_columns=columns,
+)
+```
+
+Column kinds are `text`, `number`, `datetime`, and `si`. Missing values remain
+visible as unavailable values and sort after populated values in either sort
+direction. Browser search includes titles, paths, tags, and every declared
+summary value.
+
 Advertise the factory in the workspace package:
 
 ```toml
@@ -302,7 +339,7 @@ The commonly used `AnalysisContext` methods are:
 | `ui.limits(...)` | Add paired numeric boxes with a shared dual-handle limits bar. |
 | `ui.parameter_group(...)` | Place parameters directly inside the current view. |
 | `ui.view_switcher(...)` | Switch local views with buttons or a dropdown without creating another tab. |
-| `ui.trace_style(...)` | Add a compact color, width, line-style, and marker picker. |
+| `ui.trace_style(...)` | Add a compact color, width, opacity, line-style, and marker picker. |
 | `ui.stat(label, value)` | Add workflow-specific runtime or result details. |
 | `ui.once(key, factory, depends_on=...)` | Cache item-level work across dynamic updates. |
 | `ui.segmented(...)` | Select one regular or irregular timeline segment. |
@@ -338,9 +375,11 @@ of the framework.
 
 Plot-oriented plugins can attach an `AnnotationPlotBinding` to a numeric
 `AnnotationField`. When the annotation menu opens, Sigvue fills that input from the
-currently visible lower or upper edge of the named Plotly axis. The plugin declares the
-unit transform and may add the current playback position for buffer-relative plot axes;
-the resulting editable value is still persisted entirely by the plugin.
+currently visible lower or upper edge of the named axis. A pipeline can set
+`selection_policy="box_preferred"` on the binding to prefer the latest compatible Plotly
+box-selection bounds; deselecting or double-clicking clears the captured box. The plugin
+declares the unit transform and may add the current playback position for buffer-relative
+plot axes; the resulting editable value is still persisted entirely by the plugin.
 
 ## HTTP API
 

@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from threading import RLock
 from time import perf_counter
-from typing import Any, Callable, Generic, Iterable, Iterator, Protocol, TypeVar, overload, runtime_checkable
+from typing import Any, Callable, Generic, Iterable, Iterator, Literal, Protocol, TypeVar, overload, runtime_checkable
 
 from plotly.colors import get_colorscale
 
@@ -27,6 +27,24 @@ def _is_hex_color(value: str) -> bool:
 
 
 @dataclass(frozen=True)
+class DiscoveryColumn:
+    """One plugin-defined, sortable column in the discovered-data browser."""
+
+    key: str
+    label: str
+    kind: Literal["text", "number", "datetime", "si"] = "text"
+    unit: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.key or not self.label:
+            raise ValueError("Discovery columns require a key and label")
+        if self.kind not in {"text", "number", "datetime", "si"}:
+            raise ValueError(f"Unknown discovery column kind: {self.kind}")
+        if self.kind != "si" and self.unit is not None:
+            raise ValueError("Only SI discovery columns accept a unit")
+
+
+@dataclass(frozen=True)
 class DataResource:
     """A discoverable input. Sources can keep their native reference in `source`."""
 
@@ -36,7 +54,7 @@ class DataResource:
     subtitle: str | None = None
     timestamp: datetime | None = None
     tags: tuple[str, ...] = ()
-    summary: dict[str, str] = field(default_factory=dict)
+    summary: dict[str, object | None] = field(default_factory=dict)
     navigation_path: tuple[str, ...] | None = None
 
 
@@ -79,6 +97,7 @@ class TraceStyle:
     marker: str
     color: str
     width: float
+    opacity: float = 1.0
 
     @property
     def mode(self) -> str:
@@ -86,11 +105,19 @@ class TraceStyle:
 
     @property
     def line(self) -> dict[str, object]:
-        return {"color": self.color, "width": self.width, "dash": self.line_style}
+        return {"color": self.color_with_opacity(), "width": self.width, "dash": self.line_style}
 
     @property
     def plotly_marker(self) -> dict[str, object]:
-        return {} if self.marker == "none" else {"color": self.color, "symbol": self.marker}
+        return {} if self.marker == "none" else {"color": self.color_with_opacity(), "symbol": self.marker}
+
+    def color_with_opacity(self, color: str | None = None) -> str:
+        """Return a Plotly color carrying this style's opacity."""
+        selected = self.color if color is None else color
+        if self.opacity >= 1 or not _is_hex_color(selected):
+            return selected
+        red, green, blue = (int(selected[index : index + 2], 16) for index in (1, 3, 5))
+        return f"rgba({red},{green},{blue},{self.opacity:.3g})"
 
 
 class DirectorySource(Generic[LoadedData]):
@@ -402,9 +429,12 @@ class AnalysisContext:
         width: float = 1.5,
         line_style: str = "solid",
         marker: str = "none",
+        opacity: float = 1.0,
         group: str = "Plot styles",
     ) -> TraceStyle:
         """Declare stored Details controls for one configurable plot trace."""
+        if not 0 <= float(opacity) <= 1:
+            raise ValueError("Trace opacity defaults must be between 0 and 1")
         prefix = label or name.replace("_", " ").title()
         selected_color = self.color(
             f"{name}_color",
@@ -422,6 +452,19 @@ class AnalysisContext:
                 minimum=0.5,
                 maximum=10.0,
                 step=0.5,
+                group=group,
+                picker=name,
+                picker_label=prefix,
+            )
+        )
+        selected_opacity = float(
+            self.number(
+                f"{name}_opacity",
+                label="Opacity",
+                default=float(opacity),
+                minimum=0.0,
+                maximum=1.0,
+                step=0.05,
                 group=group,
                 picker=name,
                 picker_label=prefix,
@@ -449,7 +492,7 @@ class AnalysisContext:
                 picker_label=prefix,
             )
         )
-        return TraceStyle(selected_style, selected_marker, selected_color, selected_width)
+        return TraceStyle(selected_style, selected_marker, selected_color, selected_width, selected_opacity)
 
     def _add_control(self, control: ControlSpec) -> None:
         if any(existing.name == control.name for existing in self.controls):
@@ -869,6 +912,7 @@ class AnalysisWorkspace:
         version: str = "0.1.0",
         category: str | None = None,
         tags: tuple[str, ...] = (),
+        discovery_columns: tuple[DiscoveryColumn, ...] = (),
     ) -> None: ...
 
     @overload
@@ -886,6 +930,7 @@ class AnalysisWorkspace:
         version: str = "0.1.0",
         category: str | None = None,
         tags: tuple[str, ...] = (),
+        discovery_columns: tuple[DiscoveryColumn, ...] = (),
     ) -> None: ...
 
     def __init__(
@@ -902,6 +947,7 @@ class AnalysisWorkspace:
         version: str = "0.1.0",
         category: str | None = None,
         tags: tuple[str, ...] = (),
+        discovery_columns: tuple[DiscoveryColumn, ...] = (),
     ) -> None:
         if not isinstance(source, DataSource):
             missing = _missing_methods(source, ("discover", "open"))
@@ -932,7 +978,13 @@ class AnalysisWorkspace:
                     raise ValueError(f"DataExporter {choice_kind} values must be unique")
         if not callable(analyze):
             raise TypeError("analyze must be callable as analyze(delivered_data, ui)")
+        if any(not isinstance(column, DiscoveryColumn) for column in discovery_columns):
+            raise TypeError("discovery_columns must contain DiscoveryColumn values")
+        column_keys = [column.key for column in discovery_columns]
+        if len(column_keys) != len(set(column_keys)):
+            raise ValueError("Discovery column keys must be unique")
         self.metadata = WorkspaceMetadata(identifier, name, description, version, category, tags)
+        self.discovery_columns = discovery_columns
         self.source = source
         self.analyze = analyze
         self.delivery = delivery

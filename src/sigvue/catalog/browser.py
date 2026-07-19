@@ -15,6 +15,9 @@ def search_items(items: list[ItemDescriptor], query: str) -> list[ItemDescriptor
         if needle in item.title.lower()
         or (item.subtitle and needle in item.subtitle.lower())
         or (item.searchable_text and needle in item.searchable_text.lower())
+        or (item.source_reference and needle in item.source_reference.lower())
+        or any(needle in tag.lower() for tag in item.tags)
+        or any(needle in str(value).lower() for value in item.summary_fields.values() if value is not None)
     ]
 
 
@@ -39,6 +42,15 @@ def sort_items(items: list[ItemDescriptor], by: str = "title", descending: bool 
             ),
             reverse=descending,
         )
+    if by != "title":
+        populated = [item for item in items if item.summary_fields.get(by) is not None]
+        missing = [item for item in items if item.summary_fields.get(by) is None]
+
+        def summary_value(item: ItemDescriptor):
+            value = item.summary_fields[by]
+            return value if isinstance(value, (int, float)) else str(value).casefold()
+
+        return sorted(populated, key=summary_value, reverse=descending) + missing
     return sorted(items, key=lambda item: item.title.lower(), reverse=descending)
 
 

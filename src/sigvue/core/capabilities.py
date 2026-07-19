@@ -33,6 +33,7 @@ class AnnotationPlotBinding:
     scale: float = 1.0
     offset: float = 0.0
     offset_source: Literal["none", "playback"] = "none"
+    selection_policy: Literal["axis", "box_preferred"] = "axis"
 
     def __post_init__(self) -> None:
         if not self.view or not self.axis:
@@ -43,6 +44,8 @@ class AnnotationPlotBinding:
             raise ValueError("Plot binding scale and offset must be finite, with a non-zero scale")
         if self.offset_source not in {"none", "playback"}:
             raise ValueError(f"Unknown plot binding offset source: {self.offset_source}")
+        if self.selection_policy not in {"axis", "box_preferred"}:
+            raise ValueError(f"Unknown plot binding selection policy: {self.selection_policy}")
 
 
 @dataclass(frozen=True)

@@ -1,0 +1,166 @@
+name: Publish to PyPI
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: publish-pypi
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Test, version, and build
+    if: github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.set-version.outputs.version }}
+
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install package and release tools
+        run: python -m pip install --upgrade pip build pytest twine -e .
+
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Generate version from PyPI and repository tags
+        id: set-version
+        shell: bash
+        run: |
+          git fetch --tags --force
+
+          NEXT_VERSION="$(python3 <<'PYTHON_EOF'
+          import json
+          import re
+          import subprocess
+          import tomllib
+          import urllib.error
+          import urllib.request
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]
+          package_name = project["name"]
+          year = datetime.now(timezone.utc).year
+          version_pattern = re.compile(rf"^{year}\.(\d+)$")
+          numbers: list[int] = []
+
+          def include(version: str) -> None:
+              match = version_pattern.fullmatch(version)
+              if match:
+                  numbers.append(int(match.group(1)))
+
+          include(project["version"])
+
+          tags = subprocess.check_output(
+              ["git", "tag", "--list", f"v{year}.*"],
+              text=True,
+          ).splitlines()
+          for tag in tags:
+              include(tag.removeprefix("v"))
+
+          request = urllib.request.Request(
+              f"https://pypi.org/pypi/{package_name}/json",
+              headers={"User-Agent": f"{package_name}-publish-workflow/1.0"},
+          )
+          try:
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  releases = json.load(response).get("releases", {})
+          except urllib.error.HTTPError as exc:
+              if exc.code != 404:
+                  raise
+              releases = {}
+
+          for version in releases:
+              include(version)
+
+          next_number = max(numbers, default=0) + 1
+          print(f"{year}.{next_number}")
+          PYTHON_EOF
+          )"
+
+          echo "version=$NEXT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Generated version: $NEXT_VERSION"
+
+      - name: Update package version
+        env:
+          VERSION: ${{ steps.set-version.outputs.version }}
+        run: |
+          python3 <<'PYTHON_EOF'
+          import os
+          import re
+          from pathlib import Path
+
+          path = Path("pyproject.toml")
+          content = path.read_text(encoding="utf-8")
+          updated, count = re.subn(
+              r'(?m)^version\s*=\s*"[^"]+"',
+              f'version = "{os.environ["VERSION"]}"',
+              content,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit("Expected exactly one project version in pyproject.toml")
+          path.write_text(updated, encoding="utf-8")
+          PYTHON_EOF
+          grep '^version' pyproject.toml
+
+      - name: Build and validate distribution
+        run: |
+          python -m build
+          python -m twine check dist/*
+
+      - name: Commit version and tag release
+        env:
+          VERSION: ${{ steps.set-version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml
+          git commit -m "chore: bump version to $VERSION [skip ci]"
+          git tag -a "v$VERSION" -m "Release v$VERSION"
+          git push --atomic origin HEAD:main "refs/tags/v$VERSION"
+
+      - name: Store distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: sigvue-${{ steps.set-version.outputs.version }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish sigvue ${{ needs.prepare.outputs.version }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Download distribution
+        uses: actions/download-artifact@v4
+        with:
+          name: sigvue-${{ needs.prepare.outputs.version }}
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}

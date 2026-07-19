@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime, timezone
 
-from sigvue.catalog.browser import sort_items
+from sigvue.catalog.browser import search_items, sort_items
 from sigvue.core.models import ItemDescriptor
 
 
@@ -16,6 +16,19 @@ class CatalogTests(unittest.TestCase):
         ]
         sorted_items = sort_items(items, by="timestamp")
         self.assertEqual(["old", "new", "none"], [item.identifier for item in sorted_items])
+
+    def test_summary_fields_are_searchable_and_sortable_with_nulls_last(self):
+        items = [
+            ItemDescriptor("none", "Unknown", tags=("quiet",), summary_fields={"sample_rate": None}),
+            ItemDescriptor("fast", "Fast", summary_fields={"sample_rate": 10_000_000.0}),
+            ItemDescriptor("slow", "Slow", summary_fields={"sample_rate": 2_000_000.0}),
+        ]
+        self.assertEqual(["fast"], [item.identifier for item in search_items(items, "10000000")])
+        self.assertEqual(["none"], [item.identifier for item in search_items(items, "quiet")])
+        self.assertEqual(
+            ["slow", "fast", "none"],
+            [item.identifier for item in sort_items(items, by="sample_rate")],
+        )
 
 
 if __name__ == "__main__":

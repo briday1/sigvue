@@ -9,6 +9,15 @@ class CapabilityTests(unittest.TestCase):
         field = AnnotationField("frequency_lower_hz", "Lower frequency", "number", plot_binding=binding)
         self.assertEqual("waterfall", field.plot_binding.view)
         self.assertEqual(1e6, field.plot_binding.scale)
+        self.assertEqual("axis", field.plot_binding.selection_policy)
+        self.assertEqual(
+            "box_preferred",
+            AnnotationPlotBinding(
+                "waterfall", "xaxis2", "lower", selection_policy="box_preferred"
+            ).selection_policy,
+        )
+        with self.assertRaisesRegex(ValueError, "selection policy"):
+            AnnotationPlotBinding("waterfall", "xaxis2", "lower", selection_policy="always")
 
     def test_annotation_frequency_bounds_must_be_paired_and_increasing(self):
         with self.assertRaises(ValueError):

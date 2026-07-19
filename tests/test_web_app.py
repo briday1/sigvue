@@ -26,6 +26,15 @@ class WebAppTests(unittest.TestCase):
         workspaces = app.list_workspaces()
         self.assertEqual({"test-workspace", "matplotlib-workspace"}, {workspace["id"] for workspace in workspaces})
 
+    def test_workspace_defines_sortable_discovery_columns(self):
+        listing = self.create_example_app().browse_items("test-workspace", {})
+        self.assertEqual(
+            ["date", "sample_rate", "rf_frequency"],
+            [column["key"] for column in listing["columns"]],
+        )
+        self.assertEqual(2_000_000.0, listing["items"][0]["summary_fields"]["sample_rate"])
+        self.assertIsNone(listing["items"][0]["summary_fields"]["rf_frequency"])
+
     def test_open_item_returns_layout_and_views(self):
         app = self.create_example_app()
         payload = app.open_item("test-workspace", "recording")
@@ -128,13 +137,19 @@ class WebAppTests(unittest.TestCase):
         self.assertIn('id="export-format"', body)
         self.assertIn("data-annotation-field", body)
         self.assertIn("populatePlotBoundAnnotationFields", body)
-        self.assertIn("plot?._fullLayout?.[binding.axis]?.range", body)
+        self.assertIn("binding.selection_policy==='box_preferred'", body)
+        self.assertIn("plotSelectionRange", body)
+        self.assertIn("plotly_selected", body)
+        self.assertIn("plotly_deselect", body)
         self.assertIn("apiPost(`/workspaces/", body)
         self.assertIn('<span class="annotation-marker', body)
         self.assertIn("annotationMarkerGroups", body)
         self.assertIn("annotationMarkerColor", body)
         self.assertIn("--annotation-marker-color", body)
         self.assertIn("timeline_color_control", body)
+        self.assertIn("data-sort", body)
+        self.assertIn("discoveryValue", body)
+        self.assertIn("summary_fields", body)
         self.assertIn("position>duration", body)
         self.assertIn("data-annotation-count", body)
         self.assertIn("target.dataset.annotationSignature===signature", body)

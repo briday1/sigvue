@@ -7,13 +7,18 @@ from pathlib import Path
 from matplotlib.figure import Figure
 import plotly.graph_objects as go
 
-from sigvue.plugin import Annotation, AnnotationField, CapabilityChoice, AnalysisWorkspace, DataResource
+from sigvue.plugin import Annotation, AnnotationField, CapabilityChoice, AnalysisWorkspace, DataResource, DiscoveryColumn
 from sigvue.web.application import SigvueApp
 
 
 class MemorySource:
     def discover(self):
-        return [DataResource("recording", "Recording", source=(1.0, 2.0, 3.0, 4.0))]
+        return [DataResource(
+            "recording",
+            "Recording",
+            source=(1.0, 2.0, 3.0, 4.0),
+            summary={"date": "2026-01-02T03:04:05Z", "sample_rate": 2_000_000.0, "rf_frequency": None},
+        )]
 
     def open(self, resource):
         return resource.source
@@ -80,6 +85,11 @@ def create_workspace(config=None):
         annotator=MemoryAnnotator(),
         exporter=MemoryExporter(),
         analyze=analyze_plotly,
+        discovery_columns=(
+            DiscoveryColumn("date", "Date", "datetime"),
+            DiscoveryColumn("sample_rate", "Sampling rate", "si", unit="sample/s"),
+            DiscoveryColumn("rf_frequency", "RF frequency", "si", unit="Hz"),
+        ),
     )
 
 

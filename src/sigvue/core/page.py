@@ -10,7 +10,7 @@ from .models import ItemDescriptor, RefreshConfiguration
 
 
 PlaybackMode = Literal["static", "seek", "live", "windowed", "segmented"]
-TimeUnit = Literal["auto", "ns", "us", "ms", "s", "min", "h", "d"]
+TimeUnit = Literal["auto", "samples", "ns", "us", "ms", "s", "min", "h", "d"]
 
 
 @dataclass(frozen=True)
@@ -52,7 +52,7 @@ class PlaybackConfiguration:
     def __post_init__(self) -> None:
         if self.mode not in {"static", "seek", "live", "windowed", "segmented"}:
             raise ValueError(f"Unknown playback mode: {self.mode}")
-        if self.time_unit not in {"auto", "ns", "us", "ms", "s", "min", "h", "d"}:
+        if self.time_unit not in {"auto", "samples", "ns", "us", "ms", "s", "min", "h", "d"}:
             raise ValueError(f"Unknown timeline display unit: {self.time_unit}")
         if self.mode != "static" and self.duration_seconds < 0:
             raise ValueError("Playback duration cannot be negative")
