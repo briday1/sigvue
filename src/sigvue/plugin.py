@@ -12,7 +12,7 @@ from sigvue.core.plugin import (
     TraceStyle,
     ViewContext,
 )
-from sigvue.core.page import PlaybackMode, Segment, TimeUnit
+from sigvue.core.page import AxisNavigation, PlaybackMode, Segment, TimeUnit
 from sigvue.core.capabilities import (
     Annotation,
     AnnotationField,
@@ -26,6 +26,7 @@ from sigvue.core.capabilities import (
 
 __all__ = [
     "AnalysisWorkspace",
+    "AxisNavigation",
     "Annotation",
     "AnnotationField",
     "AnnotationPlotBinding",

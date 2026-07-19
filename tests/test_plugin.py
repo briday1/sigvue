@@ -9,10 +9,12 @@ from sigvue.plugin import (
     AnalysisWorkspace,
     DataDelivery,
     DataResource,
+    DeliveryContext,
     DiscoveryColumn,
     DataSource,
     DirectorySource,
     Segment,
+    ViewContext,
 )
 
 
@@ -33,6 +35,13 @@ def identity_process(data, settings):
 
 
 class PluginAuthoringTests(unittest.TestCase):
+    def test_lifecycle_context_protocols_expose_only_their_public_stage(self):
+        self.assertTrue(hasattr(DeliveryContext, "number"))
+        self.assertTrue(hasattr(DeliveryContext, "windowed"))
+        self.assertFalse(hasattr(DeliveryContext, "plot"))
+        self.assertTrue(hasattr(ViewContext, "plot"))
+        self.assertFalse(hasattr(ViewContext, "playback"))
+
     def test_workspace_uses_only_the_split_lifecycle_contract(self):
         with self.assertRaisesRegex(TypeError, "unexpected keyword argument 'analyze'"):
             AnalysisWorkspace(
@@ -379,11 +388,24 @@ class PluginAuthoringTests(unittest.TestCase):
             duration=60.0,
             default_window=2.0,
             overview_series=((0.1, 0.2), (0.8, 0.9)),
+            overview_durations=(10.0, 60.0),
             overview_switcher="channel",
         )
         self.assertEqual((0.1, 0.2), ui.playback_config.overview_values)
         self.assertEqual(((0.1, 0.2), (0.8, 0.9)), ui.playback_config.overview_series)
+        self.assertEqual((10.0, 60.0), ui.playback_config.overview_durations_seconds)
         self.assertEqual("channel", ui.playback_config.overview_switcher_key)
+
+    def test_windowed_overview_rejects_ambiguous_single_and_switched_values(self):
+        ui = AnalysisContext({})
+        with self.assertRaisesRegex(ValueError, "not both"):
+            ui.windowed(
+                duration=60.0,
+                default_window=2.0,
+                overview=(0.1, 0.2),
+                overview_series=((0.1, 0.2), (0.8, 0.9)),
+                overview_switcher="channel",
+            )
 
     def test_windowed_overview_series_requires_a_view_switcher(self):
         ui = AnalysisContext({})
@@ -392,6 +414,17 @@ class PluginAuthoringTests(unittest.TestCase):
                 duration=60.0,
                 default_window=2.0,
                 overview_series=((0.1, 0.2), (0.8, 0.9)),
+            )
+
+    def test_windowed_overview_durations_must_match_the_series(self):
+        ui = AnalysisContext({})
+        with self.assertRaisesRegex(ValueError, "match"):
+            ui.windowed(
+                duration=60.0,
+                default_window=2.0,
+                overview_series=((0.1, 0.2), (0.8, 0.9)),
+                overview_durations=(10.0,),
+                overview_switcher="channel",
             )
 
     def test_pipeline_can_choose_timeline_display_units_without_changing_seconds(self):
@@ -625,6 +658,34 @@ class PluginAuthoringTests(unittest.TestCase):
         page = workspace.open_item("recording").page
         self.assertEqual(4, len(page.views))
         self.assertEqual(["buttons", "dropdown"], [node.props["selector"] for node in page.layout.children])
+
+    def test_plot_axis_navigation_is_an_explicit_page_contract(self):
+        def analyze(data, ui: AnalysisContext):
+            with ui.tab("Spectrum"):
+                ui.plot(go.Figure(), key="spectrum", axis_navigation="bounded")
+                ui.view_switcher(
+                    "Channel",
+                    {"One": go.Figure(), "Two": go.Figure()},
+                    key="channel",
+                    axis_navigation="bounded",
+                )
+
+        workspace = AnalysisWorkspace(
+            identifier="bounded-plots",
+            name="Bounded plots",
+            description="Explicit plot navigation",
+            source=ExampleSource(),
+            configure=no_parameters,
+            process=identity_process,
+            present=analyze,
+        )
+        page = workspace.open_item("recording").page
+        self.assertEqual(["bounded", "bounded", "bounded"], [view.axis_navigation for view in page.views])
+
+        ui = AnalysisContext({})
+        with self.assertRaisesRegex(ValueError, "axis_navigation"):
+            with ui.tab("Invalid"):
+                ui.plot(go.Figure(), axis_navigation="locked")
 
     def test_static_views_are_cached_while_dynamic_views_follow_playback(self):
         builds = {"static": 0}

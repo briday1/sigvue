@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from math import isfinite
-from typing import Callable, Literal
+from typing import Callable, Iterator, Literal
 
 from .capabilities import AnnotationCapability, ExportCapability
 from .layout import LayoutNode, validate_layout
@@ -11,6 +11,7 @@ from .models import ItemDescriptor, RefreshConfiguration
 
 PlaybackMode = Literal["static", "seek", "live", "windowed", "segmented"]
 TimeUnit = Literal["auto", "samples", "ns", "us", "ms", "s", "min", "h", "d"]
+AxisNavigation = Literal["free", "bounded"]
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,7 @@ class PlaybackConfiguration:
     minimum_window_seconds: float = 0.0
     overview_values: tuple[float, ...] = ()
     overview_series: tuple[tuple[float, ...], ...] = ()
+    overview_durations_seconds: tuple[float, ...] = ()
     overview_switcher_key: str | None = None
     overview_label: str | None = None
     segments: tuple[Segment, ...] = ()
@@ -75,6 +77,20 @@ class PlaybackConfiguration:
                 raise ValueError("Windowed overview series must be finite")
             if self.overview_series and not self.overview_switcher_key:
                 raise ValueError("Windowed overview series require a view switcher key")
+            if self.overview_switcher_key and not self.overview_series:
+                raise ValueError("A windowed overview switcher requires overview series")
+            if any(not series for series in self.overview_series):
+                raise ValueError("Windowed overview series cannot be empty")
+            if self.overview_durations_seconds:
+                if len(self.overview_durations_seconds) != len(self.overview_series):
+                    raise ValueError("Windowed overview durations must match the overview series")
+                if not all(
+                    isfinite(duration) and 0 < duration <= self.duration_seconds
+                    for duration in self.overview_durations_seconds
+                ):
+                    raise ValueError(
+                        "Windowed overview durations must be finite, positive, and within the full duration"
+                    )
             if not 0 <= self.window_start_seconds < self.window_end_seconds <= self.duration_seconds:
                 raise ValueError("Windowed selection must lie within the duration")
             if not 0 < self.minimum_window_seconds <= self.duration_seconds:
@@ -116,6 +132,7 @@ class ViewSpec:
     name: str
     callback: Callable[[dict[str, object]], object]
     update_policy: str = "dynamic"
+    axis_navigation: AxisNavigation = "free"
 
 
 @dataclass(frozen=True)
@@ -140,11 +157,32 @@ class PageDefinition:
         invalid_updates = {view.update_policy for view in self.views} - {"static", "dynamic"}
         if invalid_updates:
             raise ValueError(f"Unknown view update policies: {', '.join(sorted(invalid_updates))}")
+        invalid_axis_navigation = {view.axis_navigation for view in self.views} - {"free", "bounded"}
+        if invalid_axis_navigation:
+            raise ValueError(
+                f"Unknown axis-navigation policies: {', '.join(sorted(invalid_axis_navigation))}"
+            )
         view_names = {view.name for view in self.views}
         validate_layout(self.layout, view_names, {control.name for control in self.controls})
+        if self.playback.overview_switcher_key:
+            switcher_keys = {
+                str(node.props["key"])
+                for node in _walk_layout(self.layout)
+                if node.kind == "view_switcher" and node.props.get("key")
+            }
+            if self.playback.overview_switcher_key not in switcher_keys:
+                raise ValueError(
+                    "Windowed overview switcher must identify a view switcher in the page layout"
+                )
 
 
 @dataclass(frozen=True)
 class OpenedItem:
     item: ItemDescriptor
     page: PageDefinition
+
+
+def _walk_layout(node: LayoutNode) -> Iterator[LayoutNode]:
+    yield node
+    for child in node.children:
+        yield from _walk_layout(child)

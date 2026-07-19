@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from threading import RLock
 from time import perf_counter
-from typing import Any, Callable, Generic, Iterable, Iterator, Literal, Protocol, TypeAlias, TypeVar, overload, runtime_checkable
+from typing import Any, Callable, ContextManager, Generic, Iterable, Iterator, Literal, Mapping, Protocol, TypeVar, overload, runtime_checkable
 
 from plotly.colors import get_colorscale
 
@@ -21,7 +21,7 @@ from .capabilities import (
 )
 from .layout import LayoutNode, container, control_slot, view_slot
 from .models import ItemDescriptor, RefreshConfiguration, RefreshResult, WorkspaceMetadata
-from .page import ControlSpec, OpenedItem, PageDefinition, PlaybackConfiguration, PlaybackMode, Segment, TimeUnit, ViewSpec
+from .page import AxisNavigation, ControlSpec, OpenedItem, PageDefinition, PlaybackConfiguration, PlaybackMode, Segment, TimeUnit, ViewSpec
 
 
 def _is_hex_color(value: str) -> bool:
@@ -164,6 +164,187 @@ class TraceStyle:
         return f"rgba({red},{green},{blue},{self.opacity:.3g})"
 
 
+class DeliveryContext(ParameterContext, Protocol):
+    """Delivery controls, timeline selection, refresh, and item-level caching."""
+
+    @property
+    def time(self) -> float: ...
+
+    @property
+    def following_live(self) -> bool: ...
+
+    def playback(
+        self,
+        *,
+        mode: PlaybackMode = "seek",
+        duration: float = 0.0,
+        step: float = 0.35,
+        refresh_interval: float | None = None,
+        loop: bool = True,
+        time_unit: TimeUnit = "s",
+    ) -> float: ...
+
+    def windowed(
+        self,
+        *,
+        duration: float,
+        default_window: float,
+        overview: Iterable[float] | None = None,
+        overview_series: Iterable[Iterable[float]] | None = None,
+        overview_durations: Iterable[float] | None = None,
+        overview_switcher: str | None = None,
+        overview_label: str | None = None,
+        minimum_window: float | None = None,
+        step: float | None = None,
+        time_unit: TimeUnit = "s",
+    ) -> tuple[float, float]: ...
+
+    def segmented(
+        self,
+        *,
+        duration: float,
+        segments: Iterable[Segment] | None = None,
+        segment_duration: float | None = None,
+        stride: float | None = None,
+        default: str | None = None,
+        time_unit: TimeUnit = "s",
+    ) -> Segment: ...
+
+    def refresh(self, *, every: float, timeout: float = 30.0) -> None: ...
+
+    def once(self, key: str, factory: Callable[[], Any], *, depends_on: Iterable[str] = ()) -> Any: ...
+
+
+class ViewContext(ParameterContext, Protocol):
+    """Controls, layout, and renderables available during presentation."""
+
+    @property
+    def theme(self) -> str: ...
+
+    def color(
+        self,
+        name: str,
+        *,
+        default: str,
+        label: str | None = None,
+        group: str | None = None,
+        picker: str | None = None,
+        picker_label: str | None = None,
+    ) -> str: ...
+
+    def colormap(
+        self,
+        name: str,
+        *,
+        default: str,
+        options: Iterable[str],
+        label: str | None = None,
+        group: str = "Plot styles",
+    ) -> str: ...
+
+    def limits(
+        self,
+        name: str,
+        *,
+        default: tuple[float, float],
+        minimum: float,
+        maximum: float,
+        step: float = 1.0,
+        label: str | None = None,
+        group: str = "Plot styles",
+    ) -> tuple[float, float]: ...
+
+    def trace_style(
+        self,
+        name: str,
+        *,
+        label: str | None = None,
+        color: str = "#087e8b",
+        width: float = 1.5,
+        line_style: str = "solid",
+        marker: str = "none",
+        opacity: float = 1.0,
+        group: str = "Plot styles",
+    ) -> TraceStyle: ...
+
+    def stat(self, label: str, value: object) -> None: ...
+
+    def once(self, key: str, factory: Callable[[], Any], *, depends_on: Iterable[str] = ()) -> Any: ...
+
+    def tab(
+        self,
+        label: str,
+        *,
+        columns: int | tuple[float, ...] = 1,
+        update: str = "dynamic",
+    ) -> ContextManager[None]: ...
+
+    def group(self, direction: str = "column", **props: object) -> ContextManager[None]: ...
+
+    def parameter_group(self, label: str | None = None, *, columns: int = 1) -> ContextManager[None]: ...
+
+    def place_parameters(self, *names: str, label: str | None = None, columns: int = 1) -> None: ...
+
+    def switcher(self, label: str, *, key: str, selector: str = "buttons") -> ContextManager[None]: ...
+
+    def switcher_view(
+        self,
+        label: str,
+        *,
+        columns: int | tuple[float, ...] = 1,
+    ) -> ContextManager[None]: ...
+
+    def view(
+        self,
+        value: object | Callable[[], object],
+        *,
+        key: str | None = None,
+        update: str | None = None,
+        depends_on: Iterable[str] = (),
+        axis_navigation: AxisNavigation = "free",
+    ) -> None: ...
+
+    def plot(
+        self,
+        figure: object | Callable[[], object],
+        *,
+        key: str | None = None,
+        update: str | None = None,
+        depends_on: Iterable[str] = (),
+        axis_navigation: AxisNavigation = "free",
+    ) -> None: ...
+
+    def text(
+        self,
+        value: str | Callable[[], str],
+        *,
+        key: str | None = None,
+        update: str | None = None,
+        depends_on: Iterable[str] = (),
+    ) -> None: ...
+
+    def table(
+        self,
+        rows: object | Callable[[], object],
+        *,
+        key: str | None = None,
+        update: str | None = None,
+        depends_on: Iterable[str] = (),
+    ) -> None: ...
+
+    def view_switcher(
+        self,
+        label: str,
+        views: Mapping[str, object | Callable[[], object]],
+        *,
+        key: str,
+        selector: str = "buttons",
+        update: str | None = None,
+        depends_on: Iterable[str] = (),
+        axis_navigation: AxisNavigation = "free",
+    ) -> None: ...
+
+
 class DirectorySource(Generic[LoadedData]):
     """Framework-owned discovery for the common directory-of-inputs case."""
 
@@ -235,6 +416,7 @@ class AnalysisContext:
         self.controls: list[ControlSpec] = []
         self.figures: dict[str, object] = {}
         self.figure_updates: dict[str, str] = {}
+        self.figure_axis_navigation: dict[str, AxisNavigation] = {}
         self.tabs: list[_Tab] = []
         self.playback_config = PlaybackConfiguration()
         self.refresh_config = RefreshConfiguration()
@@ -591,6 +773,7 @@ class AnalysisContext:
         default_window: float,
         overview: Iterable[float] | None = None,
         overview_series: Iterable[Iterable[float]] | None = None,
+        overview_durations: Iterable[float] | None = None,
         overview_switcher: str | None = None,
         overview_label: str | None = None,
         minimum_window: float | None = None,
@@ -605,6 +788,8 @@ class AnalysisContext:
             raise ValueError("Windowed duration must be positive")
         if default_window <= 0:
             raise ValueError("Default window must be positive")
+        if overview is not None and overview_series is not None:
+            raise ValueError("Provide overview or overview_series, not both")
         minimum = min(duration, max(minimum, 1e-12))
         default_end = min(duration, max(minimum, default_window))
         try:
@@ -618,6 +803,11 @@ class AnalysisContext:
             ()
             if overview_series is None
             else tuple(tuple(float(value) for value in values) for values in overview_series)
+        )
+        durations = (
+            ()
+            if overview_durations is None
+            else tuple(float(value) for value in overview_durations)
         )
         values = (
             tuple(float(value) for value in overview)
@@ -634,6 +824,7 @@ class AnalysisContext:
             minimum_window_seconds=minimum,
             overview_values=values,
             overview_series=series,
+            overview_durations_seconds=durations,
             overview_switcher_key=overview_switcher,
             overview_label=overview_label,
             time_unit=time_unit,
@@ -869,6 +1060,7 @@ class AnalysisContext:
         key: str | None = None,
         update: str | None = None,
         depends_on: Iterable[str] = (),
+        axis_navigation: AxisNavigation = "free",
     ) -> None:
         """Add any supported renderable: plot, table, text, markdown, or image."""
         if self._active_parameter_nodes is not None:
@@ -880,8 +1072,10 @@ class AnalysisContext:
             raise ValueError(f"Duplicate view key: {view_key}")
         policy = update or self._active_tab.update
         self._validate_update(policy)
+        self._validate_axis_navigation(axis_navigation)
         self.figures[view_key] = self._resolve_figure(view_key, value, policy, depends_on)
         self.figure_updates[view_key] = policy
+        self.figure_axis_navigation[view_key] = axis_navigation
         self._active_nodes.append(view_slot(view_key))
 
     def plot(
@@ -891,8 +1085,16 @@ class AnalysisContext:
         key: str | None = None,
         update: str | None = None,
         depends_on: Iterable[str] = (),
+        axis_navigation: AxisNavigation = "free",
     ) -> None:
-        self.view(figure, key=key, update=update, depends_on=depends_on)
+        """Add a plot, optionally constraining pan and reset to its declared axis ranges."""
+        self.view(
+            figure,
+            key=key,
+            update=update,
+            depends_on=depends_on,
+            axis_navigation=axis_navigation,
+        )
 
     def text(
         self,
@@ -917,12 +1119,13 @@ class AnalysisContext:
     def view_switcher(
         self,
         label: str,
-        views: dict[str, object | Callable[[], object]],
+        views: Mapping[str, object | Callable[[], object]],
         *,
         key: str,
         selector: str = "buttons",
         update: str | None = None,
         depends_on: Iterable[str] = (),
+        axis_navigation: AxisNavigation = "free",
     ) -> None:
         """Add locally switchable views without creating tabs or analysis controls."""
         if self._active_tab is None:
@@ -935,6 +1138,7 @@ class AnalysisContext:
             raise ValueError("View switchers require at least one view")
         policy = update or self._active_tab.update
         self._validate_update(policy)
+        self._validate_axis_navigation(axis_navigation)
         self._switcher_keys.add(key)
         slots = []
         for index, (view_label, figure) in enumerate(views.items()):
@@ -943,6 +1147,7 @@ class AnalysisContext:
                 raise ValueError(f"Duplicate view-switcher key: {view_key}")
             self.figures[view_key] = self._resolve_figure(view_key, figure, policy, depends_on)
             self.figure_updates[view_key] = policy
+            self.figure_axis_navigation[view_key] = axis_navigation
             slots.append(view_slot(view_key, label=view_label))
         if self._active_nodes is None:
             raise RuntimeError("ui.view_switcher() must be used inside ui.tab()")
@@ -952,6 +1157,11 @@ class AnalysisContext:
     def _validate_update(update: str) -> None:
         if update not in {"static", "dynamic"}:
             raise ValueError("update must be 'static' or 'dynamic'")
+
+    @staticmethod
+    def _validate_axis_navigation(axis_navigation: str) -> None:
+        if axis_navigation not in {"free", "bounded"}:
+            raise ValueError("axis_navigation must be 'free' or 'bounded'")
 
     def _resolve_figure(
         self,
@@ -978,10 +1188,6 @@ class AnalysisContext:
         if not tab_nodes:
             raise ValueError("Analysis must add at least one view")
         return tab_nodes[0] if len(tab_nodes) == 1 else container("tabs", tab_nodes)
-
-
-DeliveryContext: TypeAlias = AnalysisContext
-ViewContext: TypeAlias = AnalysisContext
 
 
 class AnalysisWorkspace:
@@ -1257,7 +1463,12 @@ class AnalysisWorkspace:
 
         initial = render(values)
         views = tuple(
-            ViewSpec(name, lambda values, key=name: render(values).figures[key], initial.figure_updates[name])
+            ViewSpec(
+                name,
+                lambda values, key=name: render(values).figures[key],
+                initial.figure_updates[name],
+                initial.figure_axis_navigation[name],
+            )
             for name in initial.figures
         )
         item = next(item for item in self.discover_items() if item.identifier == item_id)

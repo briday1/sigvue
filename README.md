@@ -668,6 +668,7 @@ start, end = ui.windowed(
     duration=recording.duration,
     default_window=0.1,
     overview_series=tuple(channel.power_summary() for channel in recording.channels),
+    overview_durations=tuple(channel.duration for channel in recording.channels),
     overview_switcher="recording-channel",
     overview_label="Received power (dBFS)",
 )
@@ -675,6 +676,12 @@ start, end = ui.windowed(
 # Use the same key later in presentation.
 ui.view_switcher("Channel", channel_figures, key="recording-channel", selector="dropdown")
 ```
+
+`overview_durations` is optional. For collections whose members have different
+lengths, it makes the framework display the selected member's actual start,
+stop, width, and total duration. The requested interval remains expressed in
+seconds; members shorter than that interval can clamp it to their available
+range in their delivery implementation.
 
 For irregular stored results, provide explicit segment descriptors and use the returned descriptor to load the matching result:
 
@@ -700,12 +707,15 @@ For non-playback refresh, call `ui.refresh(every=1.0)`. The framework prevents o
 `ParameterContext`, received by `configure`, intentionally exposes only
 `number`, `select`, and `toggle`. That keeps processing inputs separate from
 figure construction and layout. `ViewContext`, received by `present`, provides
-the display and layout surface:
+the display and layout surface. These are real typed protocols, not aliases of
+the internal request context, so an editor or type checker exposes only the API
+appropriate to each lifecycle stage. `DeliveryContext` likewise contains only
+delivery parameters plus timeline, refresh, and item-cache operations.
 
 | Method | Purpose |
 | --- | --- |
 | `ui.tab(label, columns=..., update=...)` | Add a tab and choose its layout and static/dynamic lifecycle. |
-| `ui.plot(figure, key=...)` | Display a native Plotly or Matplotlib figure. |
+| `ui.plot(figure, key=..., axis_navigation=...)` | Display a native Plotly or Matplotlib figure; use `"bounded"` to constrain Plotly navigation to declared ranges. |
 | `ui.table(value, key=...)` | Display tabular data. |
 | `ui.text(value, key=...)` | Display text or Markdown diagnostics. |
 | `ui.number(...)`, `ui.select(...)`, `ui.toggle(...)` | Declare display-only parameters during presentation. |
@@ -716,9 +726,13 @@ the display and layout surface:
 | `ui.view_switcher(...)` | Switch local views with buttons or a dropdown without creating another tab. |
 | `ui.trace_style(...)` | Add a compact color, width, opacity, line-style, and marker picker. |
 | `ui.stat(label, value)` | Add workflow-specific runtime or result details. |
-| `ui.segmented(...)` | Select one regular or irregular timeline segment. |
 
 Plotly figures remain interactive. Matplotlib figures are rendered as responsive PNG images. Tabs can mix plots, tables, and text.
+For plots whose data bounds are also their valid navigation bounds, set
+`axis_navigation="bounded"` on `ui.plot` or `ui.view_switcher`. Sigvue derives
+the limits from the explicit Plotly axis ranges, owns pan clamping and
+double-click reset, and does not require framework-specific keys in the Plotly
+figure metadata.
 
 Use `update="static"` for item context that should be rendered once and
 `update="dynamic"` for views that follow delivery. Expensive domain work
@@ -789,6 +803,13 @@ currently visible lower or upper edge of the named axis. A pipeline can set
 box-selection bounds; deselecting or double-clicking clears the captured box. The plugin
 declares the unit transform and may add the current playback position for buffer-relative
 plot axes; the resulting editable value is still persisted entirely by the plugin.
+When `view` names a view-switcher key instead of one concrete plot, Sigvue resolves the
+binding against that switcher's active plot. The same selection is supplied to the
+annotator as `AnnotationRequest.view_selections`, allowing a collection workspace to
+persist into the selected member without turning that member choice into a processing
+parameter. A discovered `Annotation` may carry the corresponding `view_selections`
+mapping; Sigvue then shows its timeline marker only while those local view choices are
+active.
 
 ## HTTP API
 

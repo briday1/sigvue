@@ -31,11 +31,13 @@ class MemoryAnnotator:
 
     def __init__(self):
         self.entries = []
+        self.last_request = None
 
     def discover(self, source_data):
         return tuple(self.entries)
 
     def annotate(self, source_data, delivered_data, request):
+        self.last_request = request
         annotation = Annotation(
             f"annotation-{len(self.entries) + 1}",
             request.position_seconds,

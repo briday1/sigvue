@@ -4,6 +4,7 @@ from abc import abstractmethod
 from dataclasses import dataclass, field
 from math import isfinite
 from pathlib import Path
+from types import MappingProxyType
 from typing import Callable, Iterable, Literal, Mapping, Protocol, TypeVar, runtime_checkable
 
 
@@ -80,6 +81,7 @@ class Annotation:
     comment: str | None = None
     frequency_lower_hz: float | None = None
     frequency_upper_hz: float | None = None
+    view_selections: Mapping[str, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.identifier:
@@ -97,6 +99,16 @@ class Annotation:
             lower, upper = frequencies
             if not isfinite(lower) or not isfinite(upper) or lower >= upper:
                 raise ValueError("Annotation frequency bounds must be finite and increasing")
+        if any(
+            not isinstance(key, str)
+            or not key.strip()
+            or isinstance(index, bool)
+            or not isinstance(index, int)
+            or index < 0
+            for key, index in self.view_selections.items()
+        ):
+            raise ValueError("Annotation view selections require names and non-negative indexes")
+        object.__setattr__(self, "view_selections", MappingProxyType(dict(self.view_selections)))
 
 
 @dataclass(frozen=True)
@@ -106,6 +118,7 @@ class AnnotationRequest:
     position_seconds: float
     duration_seconds: float | None = None
     values: Mapping[str, str] = field(default_factory=dict)
+    view_selections: Mapping[str, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not isfinite(self.position_seconds) or self.position_seconds < 0:
@@ -114,6 +127,21 @@ class AnnotationRequest:
             not isfinite(self.duration_seconds) or self.duration_seconds < 0
         ):
             raise ValueError("Annotation durations must be finite and non-negative")
+        if any(not isinstance(key, str) or not key.strip() for key in self.values):
+            raise ValueError("Annotation values require non-empty string names")
+        if any(not isinstance(value, str) for value in self.values.values()):
+            raise ValueError("Annotation values must be strings")
+        if any(
+            not isinstance(key, str)
+            or not key.strip()
+            or isinstance(index, bool)
+            or not isinstance(index, int)
+            or index < 0
+            for key, index in self.view_selections.items()
+        ):
+            raise ValueError("Annotation view selections require names and non-negative indexes")
+        object.__setattr__(self, "values", MappingProxyType(dict(self.values)))
+        object.__setattr__(self, "view_selections", MappingProxyType(dict(self.view_selections)))
 
 
 @runtime_checkable

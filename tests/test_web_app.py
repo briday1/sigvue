@@ -100,7 +100,7 @@ class WebAppTests(unittest.TestCase):
         result = app.write_item_annotation(
             "test-workspace",
             "recording",
-            {"__playback_time_seconds": "1.25"},
+            {"__playback_time_seconds": "1.25", "__view_selection_channel": "2"},
             1.25,
             0.25,
             {"comment": "Check this interval"},
@@ -108,6 +108,10 @@ class WebAppTests(unittest.TestCase):
         self.assertIsNone(result["label"])
         self.assertEqual("Check this interval", result["comment"])
         self.assertEqual(1.25, result["position_seconds"])
+        self.assertEqual(
+            {"channel": 2},
+            app.registry.get("test-workspace").annotator.last_request.view_selections,
+        )
         reopened = app.open_item("test-workspace", "recording")
         self.assertEqual([result], reopened["page"]["annotation"]["entries"])
 
@@ -137,6 +141,8 @@ class WebAppTests(unittest.TestCase):
         self.assertIn('id="export-scope"', body)
         self.assertIn('id="export-format"', body)
         self.assertIn("data-annotation-field", body)
+        self.assertIn("annotationBoundPlot", body)
+        self.assertIn("__view_selection_", body)
         self.assertIn("populatePlotBoundAnnotationFields", body)
         self.assertIn("binding.selection_policy==='box_preferred'", body)
         self.assertIn("plotSelectionRange", body)
@@ -260,9 +266,14 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("__window_end_seconds:windowEnd", body)
         self.assertIn("config.overview_values", body)
         self.assertIn("config.overview_series", body)
+        self.assertIn("config.overview_durations_seconds", body)
         self.assertIn("config.overview_switcher_key", body)
         self.assertIn("redrawWindowOverview?.()", body)
         self.assertIn("rememberPlotResetRanges", body)
+        self.assertIn("plotly_relayouting", body)
+        self.assertIn("constrainPlotDuringPan", body)
+        self.assertIn("view?.axis_navigation==='bounded'", body)
+        self.assertIn("changedPlotResetRanges", body)
         self.assertIn("resetPlotAxes(plot)", body)
         self.assertIn("return false", body)
         self.assertIn("modeBarButtonsToAdd:['select2d']", body)
