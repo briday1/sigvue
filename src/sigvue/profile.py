@@ -23,6 +23,7 @@ class WorkspaceLaunchSpec:
     attribute: str
     configuration: dict[str, Any] = field(default_factory=dict)
     watch_path: Path | None = None
+    metadata_overrides: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -70,7 +71,16 @@ def load_browser_profile(path: str | Path) -> BrowserProfile:
                 configuration.setdefault(name, entry[name])
         configuration.setdefault("profile_dir", str(profile_path.parent))
         _resolve_config_paths(configuration, profile_path.parent)
-        specs.append(WorkspaceLaunchSpec(module_name, attribute, configuration, repository))
+        metadata_overrides = _workspace_metadata_overrides(entry, reference)
+        specs.append(
+            WorkspaceLaunchSpec(
+                module_name,
+                attribute,
+                configuration,
+                repository,
+                metadata_overrides,
+            )
+        )
 
     return BrowserProfile(browser.get("title"), browser.get("subtitle"), tuple(specs))
 
@@ -136,3 +146,31 @@ def _resolve_config_paths(configuration: dict[str, Any], profile_directory: Path
             path = Path(value).expanduser()
             if not path.is_absolute():
                 configuration[key] = str((profile_directory / path).resolve())
+
+
+def _workspace_metadata_overrides(entry: dict[str, Any], reference: str) -> dict[str, Any]:
+    """Validate browser-owned presentation metadata for one workspace instance."""
+    overrides: dict[str, Any] = {}
+    names = {
+        "id": "identifier",
+        "name": "display_name",
+        "description": "description",
+        "category": "category",
+        "icon": "icon",
+    }
+    for source_name, target_name in names.items():
+        if source_name not in entry:
+            continue
+        value = entry[source_name]
+        if not isinstance(value, str):
+            raise ValueError(f"Workspace '{reference}' {source_name} must be a string")
+        if source_name in {"id", "name"} and not value.strip():
+            raise ValueError(f"Workspace '{reference}' {source_name} must be non-empty")
+        overrides[target_name] = value
+
+    if "tags" in entry:
+        tags = entry["tags"]
+        if not isinstance(tags, list) or any(not isinstance(tag, str) or not tag.strip() for tag in tags):
+            raise ValueError(f"Workspace '{reference}' tags must be an array of non-empty strings")
+        overrides["tags"] = tuple(tags)
+    return overrides

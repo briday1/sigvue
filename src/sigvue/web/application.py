@@ -39,6 +39,7 @@ from plotly.offline import get_plotlyjs
 
 from sigvue.catalog.browser import filter_items, paginate_items, search_items, sort_items
 from sigvue.core.capabilities import Annotation, AnnotationRequest, ExportRequest
+from sigvue.core.models import WorkspaceMetadata
 from sigvue.profile import WorkspaceLaunchSpec, load_browser_profile
 from sigvue.registry.registry import WorkspaceRegistry
 from sigvue.rendering import render_matplotlib_figure
@@ -246,6 +247,27 @@ class WorkspaceModuleRegistration:
     attribute: str
     watch_path: Path | None = None
     configuration: dict[str, Any] = field(default_factory=dict)
+    metadata_overrides: dict[str, Any] = field(default_factory=dict)
+
+
+class _ConfiguredWorkspace:
+    """Delegate analysis behavior while giving one profile entry its own identity."""
+
+    def __init__(self, workspace: Any, overrides: dict[str, Any]) -> None:
+        self._workspace = workspace
+        metadata = workspace.metadata
+        self.metadata = WorkspaceMetadata(
+            identifier=overrides.get("identifier", metadata.identifier),
+            display_name=overrides.get("display_name", metadata.display_name),
+            description=overrides.get("description", metadata.description),
+            version=metadata.version,
+            category=overrides.get("category", metadata.category),
+            tags=overrides.get("tags", metadata.tags),
+            icon=overrides.get("icon", metadata.icon),
+        )
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._workspace, name)
 
 
 @dataclass
@@ -394,6 +416,8 @@ class SigvueApp:
                 for component in registration.attribute.split("."):
                     target = getattr(target, component)
                 workspace = _instantiate_workspace(target, registration.configuration)
+                if registration.metadata_overrides:
+                    workspace = _ConfiguredWorkspace(workspace, registration.metadata_overrides)
                 replacement.register(workspace)
 
             self.registry = replacement
@@ -725,7 +749,13 @@ def _instantiate_workspace(target: Any, configuration: dict[str, Any]) -> Any:
 
 
 def _profile_registration(spec: WorkspaceLaunchSpec) -> WorkspaceModuleRegistration:
-    return WorkspaceModuleRegistration(spec.module_name, spec.attribute, spec.watch_path, spec.configuration)
+    return WorkspaceModuleRegistration(
+        spec.module_name,
+        spec.attribute,
+        spec.watch_path,
+        spec.configuration,
+        spec.metadata_overrides,
+    )
 
 
 def create_app(

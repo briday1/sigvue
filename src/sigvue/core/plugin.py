@@ -389,7 +389,7 @@ class AnalysisContext:
         label: str | None = None,
         group: str = "Plot styles",
     ) -> tuple[float, float]:
-        """Add paired numeric limits with editable boxes and a dual-handle bar."""
+        """Add ordered lower and upper limits through paired numeric inputs."""
         lower_default, upper_default = (float(default[0]), float(default[1]))
         minimum, maximum, step = float(minimum), float(maximum), float(step)
         if minimum >= maximum:
@@ -890,7 +890,7 @@ class AnalysisContext:
             for tab in self.tabs
         ]
         if not tab_nodes:
-            raise ValueError("Analysis must add at least one plot")
+            raise ValueError("Analysis must add at least one view")
         return tab_nodes[0] if len(tab_nodes) == 1 else container("tabs", tab_nodes)
 
 

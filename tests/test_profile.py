@@ -19,7 +19,7 @@ class BrowserProfileTests(unittest.TestCase):
             (package / "__init__.py").write_text(
                 "from tests.fixtures import create_workspace as fixture_workspace\n"
                 "def create_workspace(config):\n"
-                "    return fixture_workspace(config)\n",
+                "    return fixture_workspace()\n",
                 encoding="utf-8",
             )
             (repository / "pyproject.toml").write_text(
@@ -40,6 +40,9 @@ class BrowserProfileTests(unittest.TestCase):
                 "path = './radar-repository'\n"
                 "id = 'lab-captures'\n"
                 "name = 'Lab captures'\n"
+                "description = 'Laboratory waterfall review'\n"
+                "category = 'laboratory'\n"
+                "tags = ['configured', 'lab']\n"
                 "[workspaces.config]\n"
                 "data_root = './data/lab'\n"
                 "[[workspaces]]\n"
@@ -66,6 +69,9 @@ class BrowserProfileTests(unittest.TestCase):
                     [("lab-captures", "Lab captures"), ("field-tests", "Field tests")],
                     [(workspace["id"], workspace["name"]) for workspace in app.list_workspaces()],
                 )
+                self.assertEqual("Laboratory waterfall review", app.list_workspaces()[0]["description"])
+                self.assertEqual("laboratory", app.list_workspaces()[0]["category"])
+                self.assertEqual(["configured", "lab"], app.list_workspaces()[0]["tags"])
 
                 profile_path.write_text(
                     "[browser]\n"

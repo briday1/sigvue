@@ -1,13 +1,56 @@
 # Sigvue
 
-Sigvue turns file-backed analysis scripts into a local browser application. A workspace package decides:
+Sigvue turns file-backed analysis scripts into a local browser application. A
+workspace package decides:
 
 1. Which items are available.
 2. How an item is opened.
 3. What data is delivered for one analysis run.
 4. How that data is processed and displayed.
 
-The framework supplies the catalog, page layout, parameters, themes, refresh and playback controls, plot updates, background capability execution, and HTTP service.
+The framework supplies the catalog, page layout, parameters, themes, refresh
+and playback controls, plot updates, background capability execution, and HTTP
+service.
+
+## Mental model
+
+A workspace is an adapter between domain code and the Sigvue runtime. Plugin
+code owns data semantics; the framework owns application lifecycle and UI
+state.
+
+```mermaid
+flowchart LR
+    subgraph Configuration["Deployment configuration"]
+        Profile["browser.toml<br/>instance name, tags, data root"]
+    end
+
+    subgraph Plugin["Workspace package"]
+        Factory["create_workspace(config)"]
+        Source["DataSource<br/>discover and open"]
+        Delivery["DataDelivery<br/>select or transform"]
+        Analyze["analyze(data, ui)<br/>process and declare views"]
+        Capabilities["DataAnnotator / DataExporter"]
+    end
+
+    subgraph Framework["Sigvue framework"]
+        Runtime["AnalysisWorkspace runtime"]
+        Context["AnalysisContext<br/>controls, timeline, layout"]
+        Browser["Catalog and browser UI"]
+    end
+
+    Profile -->|configures one instance| Factory
+    Factory -->|returns| Runtime
+    Source -->|required| Runtime
+    Delivery -.->|optional| Runtime
+    Analyze -->|required| Runtime
+    Capabilities -.->|optional| Runtime
+    Runtime -->|creates and supplies| Context
+    Runtime -->|produces pages for| Browser
+```
+
+The same factory may appear multiple times in `browser.toml`. Each entry creates
+a separate workspace instance with its own identity, tags, and data
+configuration while reusing the same source, delivery, and analysis code.
 
 ## Install and run
 
@@ -20,36 +63,146 @@ Open `http://127.0.0.1:8000`. The package contains no built-in workspaces; `brow
 
 ## The workspace-author contract
 
-Most workspace packages implement one factory and two ordinary functions:
+Most workspace packages define one factory, one source, and one analysis
+function. Delivery, annotation, and export are independent optional contracts.
+Import public plugin types from `sigvue.plugin`; `sigvue.core` is framework
+implementation detail.
 
-| Hook | Required | Responsibility |
+### What `create_workspace()` constructs
+
+`create_workspace(config)` must return one `AnalysisWorkspace`. These are the
+values passed to its constructor:
+
+| Constructor value | Required | Created by | Used for |
+| --- | --- | --- | --- |
+| `identifier`, `name`, `description` | Yes | Plugin defaults; profile may override | Standalone identity and fallback catalog metadata. |
+| `source: DataSource[SourceData]` | Yes | Plugin | Discover `DataResource` records and open one domain value. |
+| `analyze(data, ui)` | Yes | Plugin | Process delivered data and declare controls, views, statistics, and layout. |
+| `delivery: DataDelivery[SourceData, DeliveredData]` | No | Plugin | Select a buffer, choose a segment, follow live data, or transform the opened value. |
+| `annotator: DataAnnotator[...]` | No | Plugin | Discover and persist domain-native annotations. Enables **Annotate**. |
+| `exporter: DataExporter[...]` | No | Plugin | Advertise formats/scopes and serialize domain data. Enables **Download**. |
+| `discovery_columns` | No | Plugin | Define sortable metadata columns populated by `DataResource.summary`. |
+| `version`, `category`, `tags` | No | Plugin defaults; profile may override display metadata | Catalog presentation and search. |
+
+The factory does **not** construct `AnalysisContext`, `PageDefinition`,
+`PlaybackConfiguration`, or `OpenedItem`. The framework creates those objects
+for each request. A source or its `DirectorySource.describe` callback creates
+`DataResource` values during discovery, not normally in the factory itself.
+
+Public object ownership is intentionally narrow:
+
+| Public object | Who creates it? | Where it is used |
 | --- | --- | --- |
-| `create_workspace(config)` | Yes | Construct and return an `AnalysisWorkspace`. |
-| Source `discover()` / `open()` | Yes | List items and open the selected item. `DirectorySource` implements this for files. |
-| `analyze(data, ui)` | Yes | Process the delivered data and register plots, tables, text, parameters, and layout. |
-| Delivery `prepare(source_data, ui)` | No | Select or transform data before `analyze`, including buffering, seeking, live reads, or window selection. |
-| `DataAnnotator` | No | Discover and persist domain-native annotations. No contract means no Annotate UI. |
-| `DataExporter` | No | Advertise scope/format choices and serialize domain data. No contract means no Download UI. |
-| Package entry point | Yes for profile loading | Give the factory a stable name for `browser.toml`. |
+| `AnalysisWorkspace` | Plugin factory | Returned from `create_workspace()`. |
+| `DataSource` implementation | Plugin factory | Passed as required `source=`. |
+| `DirectorySource` | Plugin factory | Optional concrete replacement for writing a custom source. |
+| `DataResource` | Source | Returned by `discover()`; later passed back to `open()`. |
+| `DataDelivery` implementation | Plugin factory | Passed as optional `delivery=`. |
+| `DiscoveryColumn` | Plugin factory | Passed in optional `discovery_columns=`. |
+| `DataAnnotator` / `DataExporter` | Plugin factory | Passed as optional capability objects. |
+| `AnnotationField`, `CapabilityChoice` | Plugin capability | Advertise framework-rendered capability inputs. |
+| `AnnotationRequest`, `ExportRequest` | Framework | Passed into plugin capability methods. |
+| `AnalysisContext` | Framework | Passed into delivery and analysis for the current request. |
+| `Segment` | Plugin delivery or analysis | Passed into `ui.segmented(...)`. |
+| `TraceStyle` | Framework | Returned by `ui.trace_style(...)` for plotting code. |
 
-The data passed between these hooks is owned by the workspace package. The framework does not require a particular file format, array shape, reader, or analysis library.
+A fully populated factory has this shape; every line marked optional may simply
+be omitted:
 
-### Typed lifecycle contracts
+```python
+def create_workspace(config):
+    return AnalysisWorkspace(
+        identifier="my-analysis",                 # required fallback metadata
+        name="My Analysis",                       # required fallback metadata
+        description="Inspect domain recordings.", # required fallback metadata
+        source=MySource(config["data_root"]),      # required DataSource
+        analyze=analyze,                           # required callable
+        delivery=MyDelivery(),                     # optional DataDelivery
+        annotator=MyAnnotator(),                   # optional capability
+        exporter=MyExporter(),                     # optional capability
+        discovery_columns=MY_COLUMNS,              # optional catalog schema
+        category="signal analysis",               # optional fallback metadata
+        tags=("windowed", "domain-format"),        # optional fallback metadata
+    )
+```
+
+### Contract relationships
+
+```mermaid
+classDiagram
+    direction LR
+
+    class AnalysisWorkspace {
+        +metadata
+        +discover_items()
+        +open_item(item_id)
+    }
+    class DataSource {
+        <<required protocol>>
+        +discover() Iterable~DataResource~
+        +open(resource) SourceData
+    }
+    class DirectorySource {
+        <<concrete helper>>
+    }
+    class DataResource {
+        +identifier: str
+        +title: str
+        +source: object
+        +summary: dict
+    }
+    class DataDelivery {
+        <<optional protocol>>
+        +prepare(source_data, ui) DeliveredData
+    }
+    class AnalyzeFunction {
+        <<required callable>>
+        +analyze(delivered_data, ui) None
+    }
+    class AnalysisContext {
+        <<framework-created>>
+        +controls
+        +timeline
+        +tabs and views
+    }
+    class DataAnnotator {
+        <<optional protocol>>
+    }
+    class DataExporter {
+        <<optional protocol>>
+    }
+
+    AnalysisWorkspace *-- DataSource : source
+    DirectorySource ..|> DataSource : implements
+    DataSource --> DataResource : discovers
+    AnalysisWorkspace o-- DataDelivery : delivery
+    AnalysisWorkspace --> AnalyzeFunction : analyze
+    AnalysisWorkspace o-- DataAnnotator : annotator
+    AnalysisWorkspace o-- DataExporter : exporter
+    DataDelivery ..> AnalysisContext : receives
+    AnalyzeFunction ..> AnalysisContext : receives
+```
+
+### Typed data path
 
 `DataSource` and `DataDelivery` are public, generic, runtime-checkable
 interfaces. Their type parameters describe the complete data path:
 
-```text
-DataSource[SourceData]
-    discover() -> Iterable[DataResource]
-    open(resource) -> SourceData
-                           │
-                           ▼
-DataDelivery[SourceData, DeliveredData]       optional
-    prepare(source_data, ui) -> DeliveredData
-                           │
-                           ▼
-analyze(delivered_data: DeliveredData, ui: AnalysisContext) -> None
+```mermaid
+flowchart LR
+    Resource["DataResource"]
+    Source["DataSource&lt;SourceData&gt;"]
+    Opened["SourceData<br/>domain reader or loaded object"]
+    Delivery["DataDelivery&lt;SourceData, DeliveredData&gt;<br/>optional"]
+    Delivered["DeliveredData<br/>buffer, segment, result, or transformed value"]
+    Analyze["analyze(DeliveredData, AnalysisContext)"]
+
+    Resource -->|open| Source
+    Source --> Opened
+    Opened -->|no delivery: pass through| Analyze
+    Opened -.->|delivery configured| Delivery
+    Delivery -.-> Delivered
+    Delivered -.-> Analyze
 ```
 
 `AnalysisWorkspace` has typed constructor overloads connecting these stages. A
@@ -58,8 +211,8 @@ an analysis function that expects something other than the delivery output.
 The installed package includes a `py.typed` marker, so these checks also work
 when `sigvue` is installed from a wheel.
 
-Implementations may explicitly inherit the interfaces, which is recommended
-for readability:
+Implementations should explicitly inherit the interfaces when practical; this
+makes the contract visible and lets type checkers verify the whole path:
 
 ```python
 from collections.abc import Iterable
@@ -86,16 +239,66 @@ class WindowDelivery(DataDelivery[Recording, SampleWindow]):
 
 Explicitly inherited methods are abstract, so an incomplete subclass cannot be
 instantiated. Inheritance is not required: structurally compatible objects also
-satisfy the interfaces. At runtime, `AnalysisWorkspace` validates that sources provide
-`discover()` and `open()`, deliveries provide `prepare()`, analysis is callable,
-discovery returns `DataResource` objects, and resource identifiers are unique.
-Failures identify the missing method or invalid discovery value directly.
+satisfy the interfaces. At runtime, `AnalysisWorkspace` validates that sources
+provide `discover()` and `open()`, deliveries provide `prepare()`, analysis is
+callable, discovery returns `DataResource` objects, and resource identifiers
+are unique. Failures identify the missing method or invalid discovery value
+directly.
+
+### Request lifecycle
+
+The factory runs when the profile is loaded or reloaded. Source I/O, delivery,
+and analysis run later, when the browser discovers or opens data.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser as Browser UI
+    participant Runtime as Sigvue runtime
+    participant Factory as create_workspace
+    participant Source as DataSource
+    participant Context as AnalysisContext
+    participant Delivery as DataDelivery
+    participant Analyze as analyze
+
+    Runtime->>Factory: create_workspace(config)
+    Factory-->>Runtime: AnalysisWorkspace
+
+    User->>Browser: Open workspace
+    Browser->>Runtime: List discovered items
+    Runtime->>Source: discover()
+    Source-->>Runtime: Iterable of DataResource
+    Runtime-->>Browser: Catalog rows
+
+    User->>Browser: Open item or change state
+    Browser->>Runtime: item id + controls + timeline state
+    Runtime->>Source: open(resource)
+    Source-->>Runtime: SourceData
+    Runtime->>Context: create request-scoped context
+
+    opt delivery configured
+        Runtime->>Delivery: prepare(SourceData, Context)
+        Delivery->>Context: declare/select timeline state
+        Delivery-->>Runtime: DeliveredData
+    end
+
+    Runtime->>Analyze: analyze(DeliveredData or SourceData, Context)
+    Analyze->>Context: declare controls, tabs, views, and stats
+    Context-->>Runtime: validated page definition
+    Runtime-->>Browser: rendered page and update policy
+```
+
+`source.open()` is called for the selected item on each page request. A domain
+reader may therefore be lightweight and read only the requested interval when
+delivery calls it. `ui.once(...)` is available for item-level work that should
+survive dynamic requests.
 
 ### Minimal file-backed workspace
 
 ```python
 # src/my_workspace/workspace.py
 import json
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TypedDict
 
@@ -121,19 +324,26 @@ def analyze(result: ResultFile, ui: AnalysisContext) -> None:
         ui.plot(figure, key="values")
 
 
-def create_workspace(config):
+def create_workspace(config: Mapping[str, object]) -> AnalysisWorkspace:
+    source = DirectorySource[ResultFile](
+        Path(str(config["data_root"])),
+        pattern="*.result.json",
+        loader=load_result,
+    )
     return AnalysisWorkspace(
-        identifier=config["id"],
-        name=config["name"],
+        # Required fallback metadata; browser.toml may override it per instance.
+        identifier="result-analysis",
+        name="Result Analysis",
         description="Inspect result files.",
-        source=DirectorySource(
-            config["data_root"],
-            pattern="*.result.json",
-            loader=load_result,
-        ),
+        # Required contracts.
+        source=source,
         analyze=analyze,
     )
 ```
+
+That is the complete minimal contract: one `DirectorySource` and one analysis
+callable assembled into `AnalysisWorkspace`. Add delivery or capabilities only
+when the workflow needs them.
 
 Set `recursive=True` on `DirectorySource` to preserve nested directories in the
 browser. The framework derives folder breadcrumbs from each file's path relative
@@ -148,6 +358,8 @@ The workspace supplies raw values in `DataResource.summary`; Sigvue owns table
 rendering, null display, search, and sorting:
 
 ```python
+from pathlib import Path
+
 from sigvue.plugin import AnalysisWorkspace, DataResource, DiscoveryColumn
 
 columns = (
@@ -159,7 +371,7 @@ columns = (
 resource = DataResource(
     identifier="recording-1",
     title="Recording 1",
-    location="recording-1.sigmf-meta",
+    source=Path("recording-1.sigmf-meta"),
     summary={
         "date": "2026-07-19T12:00:00Z",
         "sample_rate": 10_000_000,
@@ -198,12 +410,59 @@ subtitle = "Explore scientific and analytical results"
 use = "my-analysis"
 id = "results"
 name = "Results"
+description = "Inspect the current campaign results"
+category = "laboratory"
+tags = ["campaign", "review"]
 
 [workspaces.config]
 data_root = "./data"
 ```
 
-`config` contains the `[workspaces.config]` values plus `id`, `name`, and `profile_dir`. Relative paths resolve from the directory containing `browser.toml`.
+Top-level `id`, `name`, `description`, `category`, `tags`, and `icon` belong to
+that displayed workspace instance and override the factory's default metadata.
+This lets multiple entries use the same factory while appearing as distinct
+workspaces. The factory receives `[workspaces.config]` for data and analysis
+behavior. For compatibility, `id` and `name` are also present in `config`;
+`profile_dir` is always supplied. Relative paths resolve from the directory
+containing `browser.toml`.
+
+```toml
+[[workspaces]]
+use = "my-analysis"
+id = "campaign-a"
+name = "Campaign A"
+tags = ["field", "2026"]
+[workspaces.config]
+data_root = "./data/campaign-a"
+
+[[workspaces]]
+use = "my-analysis"
+id = "campaign-b"
+name = "Campaign B"
+tags = ["laboratory", "reference"]
+[workspaces.config]
+data_root = "./data/campaign-b"
+```
+
+```mermaid
+flowchart LR
+    EntryPoint["one package entry point<br/>my-analysis"]
+    Factory["one create_workspace(config) implementation"]
+    ConfigA["campaign-a config<br/>data/campaign-a"]
+    ConfigB["campaign-b config<br/>data/campaign-b"]
+    InstanceA["workspace instance<br/>Campaign A"]
+    InstanceB["workspace instance<br/>Campaign B"]
+
+    EntryPoint --> Factory
+    Factory --> InstanceA
+    Factory --> InstanceB
+    ConfigA --> InstanceA
+    ConfigB --> InstanceB
+```
+
+These are two registered workspace instances, not two plugin implementations.
+Their framework routes and catalog identities are isolated by their unique
+top-level `id` values.
 
 For an uninstalled workspace under development, add its repository path:
 
@@ -283,10 +542,13 @@ position = ui.playback(
 ```
 
 Pass `time_unit=` to `ui.playback`, `ui.windowed`, or `ui.segmented`. Supported
-values are `"ns"`, `"us"`, `"ms"`, `"s"`, `"min"`, `"h"`, and `"d"`.
-`"auto"` chooses a sensible unit from the full duration. Editable boxes display
-and accept that unit while the delivery continues receiving seconds, so changing
-presentation units cannot change sample addressing or persisted annotation times.
+physical-time values are `"ns"`, `"us"`, `"ms"`, `"s"`, `"min"`, `"h"`, and
+`"d"`; `"auto"` chooses a sensible unit from the full duration. Editable boxes
+display and accept that unit while delivery continues receiving canonical
+seconds, so changing presentation units cannot change sample addressing or
+persisted annotation times. `time_unit="samples"` is an explicit normalized
+coordinate mode for data without a known sample rate; in that mode the pipeline
+supplies and consumes sample coordinates instead of physical seconds.
 
 For windowed selection, the workspace reads the returned interval and may provide a low-resolution overview statistic:
 
@@ -336,7 +598,7 @@ The commonly used `AnalysisContext` methods are:
 | `ui.text(value, key=...)` | Display text or Markdown diagnostics. |
 | `ui.number(...)`, `ui.select(...)`, `ui.color(...)` | Declare stored user parameters. |
 | `ui.colormap(...)` | Add a compact Plotly colormap picker with low-to-high gradient previews. |
-| `ui.limits(...)` | Add paired numeric boxes with a shared dual-handle limits bar. |
+| `ui.limits(...)` | Add validated paired numeric bounds. |
 | `ui.parameter_group(...)` | Place parameters directly inside the current view. |
 | `ui.view_switcher(...)` | Switch local views with buttons or a dropdown without creating another tab. |
 | `ui.trace_style(...)` | Add a compact color, width, opacity, line-style, and marker picker. |
@@ -364,6 +626,38 @@ Annotation and download are plugin-owned capabilities. If a workspace does not p
 shown. The framework supplies typed field/choice helpers, renders the controls, and runs
 exports on its background executor; the plugin decides how annotations are persisted and
 how its domain data is serialized.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser as Browser UI
+    participant Runtime as Sigvue runtime
+    participant Delivery as Current delivery
+    participant Annotator as DataAnnotator
+    participant Exporter as DataExporter
+
+    opt annotator configured
+        Runtime->>Annotator: discover(SourceData)
+        Annotator-->>Runtime: annotations
+        Runtime-->>Browser: annotation fields and timeline markers
+        User->>Browser: submit annotation
+        Browser->>Runtime: values + current timeline/plot bounds
+        Runtime->>Delivery: prepare current DeliveredData
+        Runtime->>Annotator: annotate(SourceData, DeliveredData, AnnotationRequest)
+        Annotator-->>Runtime: persisted Annotation
+    end
+
+    opt exporter configured
+        Runtime-->>Browser: scopes and formats
+        User->>Browser: request export
+        Browser->>Runtime: scope + format + control values
+        Runtime->>Delivery: prepare current DeliveredData
+        Runtime->>Exporter: export(SourceData, DeliveredData, ExportRequest, directory)
+        Note over Runtime,Exporter: export runs on the framework background executor
+        Exporter-->>Runtime: output path
+        Runtime-->>Browser: downloadable result
+    end
+```
 
 Implement `DataAnnotator` to discover timeline annotations and add one from the current
 delivered value. Implement `DataExporter` to advertise scope and format choices and write
