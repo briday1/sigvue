@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sigvue"
-version = "2026.11"
+version = "2026.12"
 description = "Extensible signal viewer"
 readme = "README_PYPI.md"
 requires-python = ">=3.10"
