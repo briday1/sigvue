@@ -5,3 +5,4 @@
 - [ ] Oh, there's a lot of runtime stuff not in the runtime section of the ui in details. I want them all there but then a total as well
 - [ ] Do we still support Matplotlib figures? I want to.
 - [ ] Make a matplotlib-based example, I guess like the waterfall one, but with matplotlib. I guess there will be differences? It should be formatted nice and stuff.
+- [ ] When switching off of a particular view to the workspace (or even like clicking back), it can be slow. It's fine if it has to be slow but it like changes the formatting and the render order can be better. It's better to hang on the current view and then just load the new view when it can.
