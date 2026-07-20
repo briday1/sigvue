@@ -1,0 +1,8 @@
+- [ ] Move prev/next to the left side of bar
+- [ ] Why doesn't the box select show up on all waterfall workspaces?
+- [ ] Why so slow on Windows machine with actually pretty decent specs, but flies on Mac? Is it GPU-limited? I don't have a good GPU, but good memory/processor
+- [ ] Improve render speed
+- [ ] Give "total" for runtime analysis
+- [ ] Add data loading as it's own part of runtime analysis
+- [ ] Do we still support Matplotlib figures? I want to.
+- [ ] Make a matplotlib-based example, I guess like the waterfall one, but with matplotlib. I guess there will be differences? It should be formatted nice and stuff.
