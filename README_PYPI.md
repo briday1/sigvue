@@ -1,3 +1,5 @@
+<!-- Generated from README.md by scripts/build_pypi_readme.py. Do not edit directly. -->
+
 # Sigvue
 
 Sigvue turns file-backed analysis scripts into a local browser application. A
@@ -19,37 +21,7 @@ A workspace is an adapter between domain code and the Sigvue runtime. Plugin
 code owns data semantics; the framework owns application lifecycle and UI
 state.
 
-```mermaid
-flowchart LR
-    subgraph Configuration["Deployment configuration"]
-        Profile["browser.toml<br/>instance name, tags, data root"]
-    end
-
-    subgraph Plugin["Workspace package"]
-        Factory["create_workspace(config)"]
-        Source["Source<br/>discover and open"]
-        Delivery["Delivery<br/>select or transform"]
-        Analysis["Analysis<br/>configure + process"]
-        Presentation["Presentation<br/>present views and layout"]
-        Capabilities["Annotator / Exporter"]
-    end
-
-    subgraph Framework["Sigvue framework"]
-        Runtime["Workspace"]
-        Contexts["DeliveryContext / ParameterContext / ViewContext"]
-        Browser["Catalog and browser UI"]
-    end
-
-    Profile -->|configures one instance| Factory
-    Factory -->|returns| Runtime
-    Source -->|required| Runtime
-    Delivery -.->|optional| Runtime
-    Analysis -->|required| Runtime
-    Presentation -->|required| Runtime
-    Capabilities -.->|optional| Runtime
-    Runtime -->|creates and supplies| Contexts
-    Runtime -->|produces pages for| Browser
-```
+![Mental model diagram](https://raw.githubusercontent.com/briday1/sigvue/main/docs/pypi-diagrams/01-mental-model.svg)
 
 The same factory may appear multiple times in `browser.toml`. Each entry creates
 a separate workspace instance with its own identity, tags, and data
@@ -212,79 +184,7 @@ def create_workspace(config):
 
 ### Contract relationships
 
-```mermaid
-classDiagram
-    direction LR
-
-    class Workspace {
-        +metadata
-        +discover_items()
-        +open_item(item_id)
-    }
-    class Source {
-        <<framework base object>>
-        +discover() Iterable~DataResource~
-        +open(resource) SourceData
-    }
-    class DirectorySource {
-        <<concrete helper>>
-    }
-    class DataResource {
-        +identifier: str
-        +title: str
-        +source: object
-        +summary: dict
-    }
-    class Delivery {
-        <<framework base object>>
-        +prepare(source_data, ui) DeliveredData
-    }
-    class Analysis {
-        +process(delivered_data, settings) Products
-        +configure(delivered_data, ui) Settings
-    }
-    class Presentation {
-        +present(products, ui) None
-    }
-    class ParameterContext {
-        <<framework-created>>
-        +number()
-        +select()
-        +toggle()
-    }
-    class DeliveryContext {
-        <<framework-created delivery context>>
-        +playback()
-        +windowed()
-        +segmented()
-    }
-    class ViewContext {
-        <<framework-created>>
-        +tabs and views
-        +display controls
-        +statistics
-    }
-    class Annotator {
-        <<optional framework base object>>
-    }
-    class Exporter {
-        <<optional framework base object>>
-    }
-
-    Workspace *-- Source : source
-    DirectorySource ..|> Source : implements
-    Source --> DataResource : discovers
-    Workspace o-- Delivery : delivery
-    Workspace --> Analysis : analysis
-    Workspace --> Presentation : presentation
-    Workspace o-- Annotator : annotator
-    Workspace o-- Exporter : exporter
-    Delivery ..> DeliveryContext : receives
-    Analysis ..> ParameterContext : configure receives
-    Presentation ..> ViewContext : present receives
-    ParameterContext <|-- DeliveryContext : extends
-    ParameterContext <|-- ViewContext : extends
-```
+![Contract relationships diagram](https://raw.githubusercontent.com/briday1/sigvue/main/docs/pypi-diagrams/02-contract-relationships.svg)
 
 ### Typed data path
 
@@ -292,30 +192,7 @@ classDiagram
 objects. Pipeline-specific subclasses implement their named lifecycle methods.
 Together their type parameters describe the complete data path:
 
-```mermaid
-flowchart LR
-    Resource["DataResource"]
-    Source["Source&lt;SourceData&gt;"]
-    Opened["SourceData<br/>domain reader or loaded object"]
-    Delivery["Delivery&lt;SourceData, DeliveredData&gt;<br/>optional"]
-    Delivered["DeliveredData<br/>buffer, segment, result, or transformed value"]
-    Input["ProcessingInput<br/>SourceData or DeliveredData"]
-    Configure["configure(ProcessingInput, ParameterContext)<br/>returns Settings or None"]
-    Settings["Settings or None"]
-    Process["process(ProcessingInput, Settings or None)<br/>returns Products"]
-    Present["present(Products, ViewContext)"]
-
-    Resource -->|open| Source
-    Source --> Opened
-    Opened -->|no delivery: pass through| Input
-    Opened -.->|delivery configured| Delivery
-    Delivery -.-> Delivered
-    Delivered --> Input
-    Input --> Configure
-    Configure --> Settings
-    Settings --> Process
-    Process --> Present
-```
+![Typed data path diagram](https://raw.githubusercontent.com/briday1/sigvue/main/docs/pypi-diagrams/03-typed-data-path.svg)
 
 The objects make every boundary explicit at construction time: the workspace
 cannot accept a look-alike object that merely happens to have a method with the
@@ -386,54 +263,7 @@ The factory runs when the profile is loaded or reloaded. Source I/O, delivery,
 configuration, processing, and presentation run later, when the browser opens
 data or changes request state.
 
-```mermaid
-sequenceDiagram
-    actor User
-    participant Browser as Browser UI
-    participant Runtime as Sigvue runtime
-    participant Factory as create_workspace
-    participant Source as Source
-    participant Context as AnalysisContext<br/>(Delivery/Parameter/View context)
-    participant Delivery as Delivery
-    participant Analysis
-    participant Presentation
-
-    Runtime->>Factory: create_workspace(config)
-    Factory-->>Runtime: Workspace
-
-    User->>Browser: Open workspace
-    Browser->>Runtime: List discovered items
-    Runtime->>Source: discover()
-    Source-->>Runtime: Iterable of DataResource
-    Runtime-->>Browser: Catalog rows
-
-    User->>Browser: Open item or change state
-    Browser->>Runtime: item id + controls + timeline state
-    Runtime->>Source: discover() to resolve item id
-    Source-->>Runtime: DataResource
-    Runtime->>Source: open(resource)
-    Source-->>Runtime: SourceData
-    Runtime->>Context: create request-scoped context
-
-    opt delivery configured
-        Runtime->>Delivery: prepare(SourceData, Context)
-        Delivery->>Context: declare/select timeline state
-        Delivery-->>Runtime: DeliveredData
-    end
-
-    Runtime->>Analysis: configure(data, Context)
-    Analysis->>Context: declare/read processing controls
-    Analysis-->>Runtime: Settings or None
-    Runtime->>Analysis: process(data, Settings)
-    Analysis-->>Runtime: Products
-    Runtime->>Presentation: present(Products, Context)
-    Presentation->>Context: declare controls, tabs, views, and stats
-    Presentation-->>Runtime: None
-    Runtime->>Runtime: validate page definition
-    Runtime->>Context: run requested view callbacks
-    Context-->>Runtime: rendered view values
-    Runtime-->>Browser: page JSON and update policies
-```
+![Request lifecycle diagram](https://raw.githubusercontent.com/briday1/sigvue/main/docs/pypi-diagrams/04-request-lifecycle.svg)
 
 `source.open()` is called for the selected item on each page request. A domain
 reader may therefore be lightweight and read only the requested interval when
@@ -616,21 +446,7 @@ tags = ["laboratory", "reference"]
 data_root = "./data/campaign-b"
 ```
 
-```mermaid
-flowchart LR
-    EntryPoint["one package entry point<br/>my-analysis"]
-    Factory["one create_workspace(config) implementation"]
-    ConfigA["campaign-a config<br/>data/campaign-a"]
-    ConfigB["campaign-b config<br/>data/campaign-b"]
-    InstanceA["workspace instance<br/>Campaign A"]
-    InstanceB["workspace instance<br/>Campaign B"]
-
-    EntryPoint -->|loads| Factory
-    ConfigA -->|first invocation| Factory
-    ConfigB -->|second invocation| Factory
-    Factory -->|creates| InstanceA
-    Factory -->|creates| InstanceB
-```
+![browser.toml diagram](https://raw.githubusercontent.com/briday1/sigvue/main/docs/pypi-diagrams/05-browser-toml.svg)
 
 These are two registered workspace instances, not two plugin implementations.
 Their framework routes and catalog identities are isolated by their unique
@@ -870,44 +686,7 @@ shown. The framework supplies typed field/choice helpers, renders the controls, 
 exports on its background executor; the plugin decides how annotations are persisted and
 how its domain data is serialized.
 
-```mermaid
-sequenceDiagram
-    actor User
-    participant Browser as Browser UI
-    participant Runtime as Sigvue runtime
-    participant Executor as Export executor
-    participant Pipeline as Workspace pipeline
-    participant Annotator as Annotator
-    participant Exporter as Exporter
-
-    opt annotator configured
-        Browser->>Runtime: open item
-        Runtime->>Pipeline: open_item_with_values(controls)
-        Pipeline-->>Runtime: page + capability over SourceData/DeliveredData
-        Runtime->>Annotator: discover(SourceData)
-        Annotator-->>Runtime: annotations
-        Runtime-->>Browser: annotation fields and timeline markers
-        User->>Browser: submit annotation
-        Browser->>Runtime: values + current timeline/plot bounds
-        Runtime->>Annotator: annotate(SourceData, DeliveredData, AnnotationRequest)
-        Annotator-->>Runtime: persisted Annotation
-        Runtime-->>Browser: saved annotation
-    end
-
-    opt exporter configured
-        Runtime-->>Browser: scopes and formats
-        User->>Browser: request export
-        Browser->>Runtime: scope + format + control values
-        Runtime->>Executor: submit export job
-        Runtime-->>Browser: job id + pending status
-        Executor->>Pipeline: open_item_with_values(controls)
-        Pipeline-->>Executor: capability over SourceData/DeliveredData
-        Executor->>Exporter: export(SourceData, DeliveredData, ExportRequest, directory)
-        Exporter-->>Executor: output path
-        Browser->>Runtime: poll job status
-        Runtime-->>Browser: downloadable result
-    end
-```
+![Optional annotation and export capabilities diagram](https://raw.githubusercontent.com/briday1/sigvue/main/docs/pypi-diagrams/06-optional-annotation-and-export-capabilities.svg)
 
 Subclass `Annotator` to discover timeline annotations and add one from the current
 delivered value. Subclass `Exporter` to advertise scope and format choices and write

@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "sigvue"
 version = "2026.6"
 description = "Extensible signal viewer"
-readme = "README.md"
+readme = "README_PYPI.md"
 requires-python = ">=3.10"
 authors = [{ name = "Sigvue" }]
 dependencies = ["matplotlib>=3.7", "plotly>=6.1.1", "tomli>=2; python_version < '3.11'"]
