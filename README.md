@@ -840,7 +840,10 @@ the view from cached products. Tabs and view switchers do not become processing
 settings unless the plugin explicitly declares a processing control for that
 purpose.
 
-Plotly figures remain interactive. Matplotlib figures are rendered as responsive PNG images. Tabs can mix plots, tables, and text.
+Plotly figures remain interactive and the framework does not resample or approximate
+plugin data during transport. Matplotlib figures remain fully supported and are rendered server-side as responsive
+PNG images. They provide a predictable CPU-rendered alternative when interactive
+Plotly navigation is unnecessary. Tabs can mix Plotly, Matplotlib, tables, and text.
 For plots whose data bounds are also their valid navigation bounds, set
 `axis_navigation="bounded"` on `ui.plot` or `ui.view_switcher`. Sigvue derives
 the limits from the explicit Plotly axis ranges, owns pan clamping and

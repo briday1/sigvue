@@ -1347,11 +1347,16 @@ class Workspace:
         return self.open_item_with_values(item_id, {})
 
     def open_item_with_values(self, item_id: str, values: dict[str, object]) -> OpenedItem:
+        workspace_started = perf_counter()
+        discovery_started = perf_counter()
         resources = self._resources()
+        discovery_elapsed = perf_counter() - discovery_started
         if item_id not in resources:
             raise KeyError(item_id)
         resource = resources[item_id]
+        source_started = perf_counter()
         data = self.source.open(resource)
+        source_elapsed = perf_counter() - source_started
         cache: dict[tuple[tuple[str, str], ...], AnalysisContext] = {}
         with self._cache_lock:
             once_cache = self._once_caches.setdefault(item_id, {})
@@ -1431,6 +1436,8 @@ class Workspace:
             return cache[key]
 
         initial = render(values)
+        initial.statistics.setdefault("Discovery runtime", f"{discovery_elapsed * 1_000:.1f} ms")
+        initial.statistics.setdefault("Source open runtime", f"{source_elapsed * 1_000:.1f} ms")
         views = tuple(
             ViewSpec(
                 name,
@@ -1440,7 +1447,16 @@ class Workspace:
             )
             for name in initial.figures
         )
-        item = next(item for item in self.discover_items() if item.identifier == item_id)
+        item = ItemDescriptor(
+            identifier=resource.identifier,
+            title=resource.title,
+            subtitle=resource.subtitle,
+            source_reference=str(resource.source),
+            timestamp=resource.timestamp,
+            tags=resource.tags,
+            navigation_path=resource.navigation_path or (),
+            summary_fields=resource.summary,
+        )
 
         def annotate(requested_values: dict[str, object], request: AnnotationRequest) -> Annotation:
             if self.annotator is None:
@@ -1488,6 +1504,7 @@ class Workspace:
             ),
         )
         page.validate()
+        page.statistics.setdefault("Workspace total", f"{(perf_counter() - workspace_started) * 1_000:.1f} ms")
         return OpenedItem(item=item, page=page)
 
     def refresh_item(self, item_id: str) -> RefreshResult:

@@ -48,6 +48,10 @@ class WebAppTests(unittest.TestCase):
         self.assertNotIn("Analysis runtime", payload["page"]["statistics"])
         self.assertRegex(payload["page"]["runtime_statistics"]["Analysis runtime"], r"^\d+\.\d ms$")
         self.assertRegex(payload["page"]["runtime_statistics"]["View callbacks"], r"^\d+\.\d ms$")
+        self.assertRegex(payload["page"]["runtime_statistics"]["Discovery runtime"], r"^\d+\.\d ms$")
+        self.assertRegex(payload["page"]["runtime_statistics"]["Source open runtime"], r"^\d+\.\d ms$")
+        self.assertRegex(payload["page"]["runtime_statistics"]["Workspace total"], r"^\d+\.\d ms$")
+        self.assertRegex(payload["page"]["runtime_statistics"]["Server total"], r"^\d+\.\d ms$")
 
     def test_workspace_controls_change_rendered_playback(self):
         app = self.create_example_app()
@@ -234,6 +238,8 @@ class WebAppTests(unittest.TestCase):
         self.assertIn('<h2>Runtime</h2>', body)
         self.assertIn('id="runtime-stats"', body)
         self.assertIn('data-client-stat="plotly-runtime"', body)
+        self.assertIn('data-client-stat="browser-runtime"', body)
+        self.assertIn("setClientRuntime('browser-runtime'", body)
         self.assertIn("updateStatistics(p.statistics,p.runtime_statistics)", body)
         self.assertIn('class="layout-tab-pane', body)
         self.assertIn("data-view-selection-keys", body)
@@ -270,6 +276,7 @@ class WebAppTests(unittest.TestCase):
         self.assertIn('id="segmented-track"', body)
         self.assertIn('id="segment-previous"', body)
         self.assertIn('id="segment-next"', body)
+        self.assertIn("segmentedBar.prepend(segmentActions)", body)
         self.assertIn(
             '<div class="segment-actions"><button id="segment-previous" type="button">Previous</button>'
             '<button id="segment-next" type="button">Next</button></div>',
@@ -318,6 +325,9 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("--grid-rows:repeat(", body)
         self.assertNotIn("calc((100vh - 188px)/2)", body)
         self.assertIn("pane.classList.toggle('active'", body)
+        self.assertIn("body.hold-item-layout main", body)
+        self.assertIn("document.body.classList.add('hold-item-layout')", body)
+        self.assertIn("new MutationObserver", body)
         self.assertNotIn("All statuses", body)
         self.assertNotIn('class="status"', body)
 
