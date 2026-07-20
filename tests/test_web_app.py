@@ -1,4 +1,7 @@
 from io import BytesIO
+from argparse import Namespace
+from contextlib import redirect_stdout
+from io import StringIO
 import json
 import os
 import sys
@@ -7,12 +10,22 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock
 
-from sigvue.plugin import Analysis, DirectorySource, Presentation, Workspace
+from sigvue.plugin import (
+    Analysis,
+    Batch,
+    BatchRequest,
+    BatchResult,
+    CapabilityChoice,
+    DirectorySource,
+    Presentation,
+    Workspace,
+)
 from sigvue.web.application import (
     SigvueApp,
     WorkspaceModuleRegistration,
     _make_handler,
     _module_watch_snapshot,
+    _run_batch_command,
 )
 from tests.fixtures import IdentityAnalysis, create_test_app, identity_process
 
@@ -189,6 +202,10 @@ class WebAppTests(unittest.TestCase):
         self.assertIn('id="workspace-search"', body)
         self.assertIn('placeholder="Search workspaces…"', body)
         self.assertIn("No matching workspaces.", body)
+        self.assertIn("function batchMenuHtml", body)
+        self.assertIn("function bindBatchMenus", body)
+        self.assertIn("data-batch-action", body)
+        self.assertIn("Batch complete", body)
         self.assertIn("${w.name} ${w.description||''} ${w.category||''}", body)
         self.assertNotIn('id="reload-config"', body)
         self.assertNotIn("Reload browser.toml", body)
@@ -400,6 +417,65 @@ class WebAppTests(unittest.TestCase):
         path = app.export_file(job_id, status["files"][0]["name"])
         self.assertEqual("buffer", json.loads(path.read_text())["scope"])
 
+    def test_plugin_batch_runs_item_and_workspace_actions_in_background(self):
+        class ExampleBatch(Batch):
+            item_actions = (CapabilityChoice("summarize", "Summarize item"),)
+            workspace_actions = (CapabilityChoice("compile", "Compile workspace"),)
+
+            def run_item(self, resource, source_data, request: BatchRequest, directory):
+                target = directory / "item.txt"
+                target.write_text(f"{resource.identifier}:{sum(source_data)}", encoding="utf-8")
+                return BatchResult((target,), "Item summarized")
+
+            def run_workspace(self, resources, open_resource, request: BatchRequest, directory):
+                target = directory / "workspace.txt"
+                target.write_text(str(sum(sum(open_resource(resource)) for resource in resources)), encoding="utf-8")
+                return BatchResult((target,), "Workspace compiled")
+
+        base = self.create_example_app().registry.get("test-workspace")
+        workspace = Workspace(
+            identifier="batch-workspace",
+            name="Batch workspace",
+            description="Background jobs",
+            source=base.source,
+            delivery=base.delivery,
+            analysis=base.analysis,
+            presentation=base.presentation,
+            batch=ExampleBatch(),
+        )
+        app = SigvueApp()
+        app.register_workspace(workspace)
+
+        listing = app.browse_items("batch-workspace", {})
+        self.assertEqual("summarize", listing["items"][0]["batch"]["actions"][0]["value"])
+        self.assertEqual("compile", listing["batch"]["actions"][0]["value"])
+
+        item_job = app.start_batch("batch-workspace", "summarize", "recording")
+        app._batch_jobs[item_job].future.result(timeout=10)
+        item_status = app.batch_status(item_job)
+        self.assertEqual("ready", item_status["status"])
+        self.assertEqual("Item summarized", item_status["summary"])
+        self.assertEqual("recording:10.0", app.batch_file(item_job, "item.txt").read_text())
+
+        workspace_job = app.start_batch("batch-workspace", "compile")
+        app._batch_jobs[workspace_job].future.result(timeout=10)
+        self.assertEqual("Workspace compiled", app.batch_status(workspace_job)["summary"])
+
+        with TemporaryDirectory() as output:
+            stream = StringIO()
+            with redirect_stdout(stream):
+                result = _run_batch_command(app, Namespace(
+                    list_batch=False,
+                    workspace="batch-workspace",
+                    item="recording",
+                    action="summarize",
+                    output=Path(output),
+                    json=False,
+                ))
+            self.assertEqual(0, result)
+            self.assertEqual("recording:10.0", (Path(output) / "item.txt").read_text())
+            self.assertIn("saved:", stream.getvalue())
+
     def test_export_endpoint_routes_plugin_scope_and_format(self):
         app = Mock()
         app.start_export.return_value = "job-1"
@@ -420,6 +496,24 @@ class WebAppTests(unittest.TestCase):
         handler._write_json.assert_called_once_with(
             202,
             {"id": "job-1", "status": "pending", "status_url": "/exports/job-1"},
+        )
+
+    def test_item_batch_endpoint_dispatches_without_opening_the_item_view(self):
+        app = Mock()
+        app.start_batch.return_value = "batch-1"
+        handler_type = _make_handler(app)
+        handler = handler_type.__new__(handler_type)
+        payload = json.dumps({"action": "report"}).encode("utf-8")
+        handler.path = "/workspaces/test/items/capture.dat/batch"
+        handler.headers = {"Content-Length": str(len(payload))}
+        handler.rfile = BytesIO(payload)
+        handler._write_json = Mock()
+        handler.do_POST()
+
+        app.start_batch.assert_called_once_with("test", "report", "capture.dat")
+        handler._write_json.assert_called_once_with(
+            202,
+            {"id": "batch-1", "status": "pending", "status_url": "/batches/batch-1"},
         )
 
     def test_workspace_without_exporter_rejects_export(self):

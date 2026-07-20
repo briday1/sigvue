@@ -16,6 +16,9 @@ from .capabilities import (
     AnnotationCapability,
     AnnotationRequest,
     Annotator,
+    Batch,
+    BatchRequest,
+    BatchResult,
     Exporter,
     ExportCapability,
 )
@@ -1266,6 +1269,7 @@ class Workspace:
         delivery: Delivery[Any, Any] | None = None,
         annotator: Annotator[Any, Any] | None = None,
         exporter: Exporter[Any, Any] | None = None,
+        batch: Batch[Any] | None = None,
         version: str = "0.1.0",
         category: str | None = None,
         tags: tuple[str, ...] = (),
@@ -1294,6 +1298,18 @@ class Workspace:
                 values = [choice.value for choice in choices]
                 if len(values) != len(set(values)):
                     raise ValueError(f"Exporter {choice_kind} values must be unique")
+        if batch is not None and not isinstance(batch, Batch):
+            raise TypeError("batch must be a Batch object or omitted")
+        if batch is not None:
+            if not batch.item_actions and not batch.workspace_actions:
+                raise ValueError("Batch must provide at least one item or workspace action")
+            for choice_kind, choices in (
+                ("item", batch.item_actions),
+                ("workspace", batch.workspace_actions),
+            ):
+                values = [choice.value for choice in choices]
+                if len(values) != len(set(values)):
+                    raise ValueError(f"Batch {choice_kind} action values must be unique")
         if any(not isinstance(column, DiscoveryColumn) for column in discovery_columns):
             raise TypeError("discovery_columns must contain DiscoveryColumn values")
         column_keys = [column.key for column in discovery_columns]
@@ -1307,9 +1323,29 @@ class Workspace:
         self.presentation = presentation
         self.annotator = annotator
         self.exporter = exporter
+        self.batch = batch
         self._once_caches: dict[str, dict[tuple[object, ...], object]] = {}
         self._process_caches: dict[str, dict[tuple[object, ...], object]] = {}
         self._cache_lock = RLock()
+
+    def run_item_batch(self, item_id: str, action: str, directory: Path) -> BatchResult:
+        if self.batch is None:
+            raise ValueError("This workspace does not provide batch support")
+        if action not in {choice.value for choice in self.batch.item_actions}:
+            raise ValueError("Unsupported item batch action")
+        resources = self._resources()
+        if item_id not in resources:
+            raise KeyError(item_id)
+        resource = resources[item_id]
+        return self.batch.run_item(resource, self.source.open(resource), BatchRequest(action), directory)
+
+    def run_workspace_batch(self, action: str, directory: Path) -> BatchResult:
+        if self.batch is None:
+            raise ValueError("This workspace does not provide batch support")
+        if action not in {choice.value for choice in self.batch.workspace_actions}:
+            raise ValueError("Unsupported workspace batch action")
+        resources = tuple(self._resources().values())
+        return self.batch.run_workspace(resources, self.source.open, BatchRequest(action), directory)
 
     def _resources(self) -> dict[str, DataResource]:
         discovered = list(self.source.discover())

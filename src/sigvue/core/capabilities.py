@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from math import isfinite
 from pathlib import Path
 from types import MappingProxyType
-from typing import Callable, Generic, Iterable, Literal, Mapping, TypeVar
+from typing import Any, Callable, Generic, Iterable, Literal, Mapping, TypeVar
 
 
 SourceData_contra = TypeVar("SourceData_contra", contravariant=True)
@@ -195,6 +195,55 @@ class Exporter(ABC, Generic[SourceData_contra, DeliveredData_contra]):
         request: ExportRequest,
         directory: Path,
     ) -> Path: ...
+
+
+@dataclass(frozen=True)
+class BatchRequest:
+    """One plugin-defined action dispatched without opening an item view."""
+
+    action: str
+
+    def __post_init__(self) -> None:
+        if not self.action:
+            raise ValueError("Batch requests require an action")
+
+
+@dataclass(frozen=True)
+class BatchResult:
+    """Files and a concise completion message produced by a batch action."""
+
+    files: tuple[Path, ...] = ()
+    summary: str = "Completed"
+
+
+class Batch(ABC, Generic[SourceData_contra]):
+    """Plugin-owned item and workspace jobs run by the framework in background threads."""
+
+    @property
+    def item_actions(self) -> tuple[CapabilityChoice, ...]:
+        return ()
+
+    @property
+    def workspace_actions(self) -> tuple[CapabilityChoice, ...]:
+        return ()
+
+    def run_item(
+        self,
+        resource: Any,
+        source_data: SourceData_contra,
+        request: BatchRequest,
+        directory: Path,
+    ) -> BatchResult:
+        raise NotImplementedError("This batch does not provide item actions")
+
+    def run_workspace(
+        self,
+        resources: tuple[Any, ...],
+        open_resource: Callable[[Any], SourceData_contra],
+        request: BatchRequest,
+        directory: Path,
+    ) -> BatchResult:
+        raise NotImplementedError("This batch does not provide workspace actions")
 
 
 @dataclass(frozen=True)

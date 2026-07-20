@@ -38,7 +38,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from plotly.offline import get_plotlyjs
 
 from sigvue.catalog.browser import filter_items, paginate_items, search_items, sort_items
-from sigvue.core.capabilities import Annotation, AnnotationRequest, ExportRequest
+from sigvue.core.capabilities import Annotation, AnnotationRequest, BatchResult, ExportRequest
 from sigvue.core.models import WorkspaceMetadata
 from sigvue.profile import WorkspaceLaunchSpec, load_browser_profile
 from sigvue.registry.registry import WorkspaceRegistry
@@ -68,9 +68,10 @@ _INDEX_HTML = r"""<!doctype html>
     input[type=search] { flex:1 } button.primary { border:0; border-radius:7px; padding:10px 15px; color:white; background:var(--accent); font:600 14px inherit; cursor:pointer }
     .list { display:flex; flex-direction:column; gap:10px }
     .item-browser { overflow:hidden; border:1px solid var(--line); border-radius:8px; background:white } html[data-theme="dark"] .item-browser { background:#10252d } .item-browser table { width:100%; border-collapse:collapse; table-layout:fixed } .item-browser th { padding:8px 12px; color:var(--muted); background:var(--wash); border-bottom:1px solid var(--line); font-size:11px; text-align:left; text-transform:uppercase; letter-spacing:.04em } .item-browser th:first-child { width:28% } .item-browser th:last-child { width:18% } .item-browser th button { all:unset; display:flex; width:100%; gap:5px; align-items:center; cursor:pointer } .item-browser th button:hover { color:var(--accent) } .item-browser td { padding:11px 12px; border-bottom:1px solid var(--line); overflow-wrap:anywhere; vertical-align:middle } .item-browser tbody tr:last-child td { border-bottom:0 } .item-browser .item-row,.item-browser .folder-row { cursor:pointer } .item-browser .item-row:hover,.item-browser .folder-row:hover { background:color-mix(in srgb,var(--accent) 7%,transparent) } .item-name { display:flex; flex-direction:column; gap:2px } .item-name small { color:var(--muted) } .item-tags { display:flex; flex-wrap:wrap; gap:3px } .item-tags .tag { margin:0 } .discovery-null { color:var(--muted) }
-    .card { display:grid; grid-template-columns:minmax(180px,1fr) 2fr auto; align-items:center; gap:18px; border:1px solid var(--line); border-radius:8px; background:white; padding:16px 18px; box-shadow:0 2px 8px #17323c0b; cursor:pointer; transition:.15s }
-    .card:hover { border-color:#8eb9bf; box-shadow:0 4px 14px #17323c14 } .card h2 { font-size:17px; margin:4px 0 } .card p { margin:0 } .card-tags { text-align:right; min-width:130px }
+    .card { display:grid; grid-template-columns:auto minmax(180px,1fr) 2fr auto; align-items:center; gap:18px; border:1px solid var(--line); border-radius:8px; background:white; padding:16px 18px; box-shadow:0 2px 8px #17323c0b; cursor:pointer; transition:.15s }
+    .card:hover { border-color:#8eb9bf; box-shadow:0 4px 14px #17323c14 } .card:not(:has(.batch-menu)) { grid-template-columns:minmax(180px,1fr) 2fr auto } .card h2 { font-size:17px; margin:4px 0 } .card p { margin:0 } .card-tags { text-align:right; min-width:130px }
     .muted { color:var(--muted) } .tag { display:inline-block; border-radius:999px; padding:3px 9px; margin:2px 4px 2px 0; font-size:12px; background:#e8f3f3; color:#17626a }
+    .batch-menu { position:relative; z-index:5 } .batch-menu summary { display:grid; width:34px; height:34px; place-items:center; border:1px solid var(--line); border-radius:50%; color:var(--accent); background:var(--wash); cursor:pointer; list-style:none; font-size:18px } .batch-menu summary::-webkit-details-marker { display:none } .batch-menu[open] summary { border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 14%,transparent) } .batch-menu-popover { position:absolute; z-index:30; top:40px; left:0; width:280px; padding:8px; border:1px solid var(--line); border-radius:8px; background:#fbfcfc; box-shadow:0 12px 28px #102f3a30 } html[data-theme="dark"] .batch-menu-popover { background:#193741 } .batch-action-row+.batch-action-row { border-top:1px solid var(--line) } .batch-action { display:grid; width:100%; grid-template-columns:1fr auto; gap:8px; padding:9px; border:0; border-radius:6px; color:var(--ink); background:transparent; text-align:left; cursor:pointer } .batch-action:hover { background:var(--wash) } .batch-artifacts { padding:0 9px 8px; font-size:12px } .batch-artifacts a { color:var(--accent) } .batch-state { color:var(--muted); font-size:12px } .batch-state.running,.batch-state.pending { color:#b7791f } .batch-state.ready { color:#16803c } .batch-state.error { color:#b42318 } .batch-result { margin:12px 0; padding:11px 14px; border:1px solid color-mix(in srgb,#16803c 45%,var(--line)); border-radius:7px; background:color-mix(in srgb,#16803c 7%,var(--wash)) } .batch-result.error { border-color:color-mix(in srgb,#b42318 45%,var(--line)); background:color-mix(in srgb,#b42318 7%,var(--wash)) } .batch-result a { margin-left:10px; color:var(--accent) } .item-browser th.batch-cell,.item-browser td.batch-cell { width:52px; padding-right:2px!important }
     .data-toolbar { position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:10px; min-height:46px; margin:0 -12px 4px; padding:6px 16px; background:#fbfcfcf2; border-bottom:1px solid var(--line); backdrop-filter:blur(8px) } .data-toolbar-spacer { flex:1 }
     .playback-bar { display:flex; align-items:center; gap:10px; flex:1; min-width:240px } .playback-bar .primary { padding:6px 10px; min-width:72px } .playback-track { position:relative; display:flex; flex:1; align-items:center; min-width:80px } .playback-track input[type=range] { position:relative; z-index:2; width:100%; min-height:0; padding:0 } .annotation-markers { position:absolute; z-index:0; inset:0 8px; pointer-events:none } .annotation-marker { position:absolute; top:0; bottom:0; width:1px; margin:0; padding:0; border:0; border-radius:0; background:var(--annotation-marker-color,#ffffff); box-shadow:none; opacity:.35; pointer-events:none } .annotation-marker.clustered { width:1px; margin:0; border:0; opacity:.55 } .playback-bar #current-time { flex:none; width:98px; min-height:30px; padding:4px 7px; text-align:right; font:12px ui-monospace,monospace } .playback-bar #counter { width:82px; color:var(--muted); font:12px ui-monospace,monospace; white-space:nowrap }
     .windowed-bar { display:flex; align-items:center; gap:8px; width:100%; min-width:0 } .windowed-track-stack { flex:1; height:30px; min-width:120px } .windowed-label { position:absolute; z-index:4; top:2px; left:6px; max-width:calc(100% - 12px); overflow:hidden; color:var(--muted); font-size:9px; font-weight:600; line-height:10px; text-overflow:ellipsis; text-shadow:0 0 3px var(--wash),0 0 3px var(--wash); white-space:nowrap; pointer-events:none } .windowed-bar .windowed-time,.windowed-bar .windowed-width { flex:none; width:88px; height:30px; min-height:30px; padding:4px 7px; text-align:right; font:12px ui-monospace,monospace } .windowed-total { flex:none; width:82px; color:var(--muted); font:12px ui-monospace,monospace; white-space:nowrap } .windowed-width-label { display:flex; flex:none; min-width:0; align-items:center; gap:7px; color:var(--muted); font:12px ui-monospace,monospace; white-space:nowrap } .windowed-bar .windowed-width { width:118px } .windowed-track { position:relative; width:100%; height:30px; overflow:hidden; border:1px solid var(--line); border-radius:5px; background:var(--wash); touch-action:none } .windowed-overview { position:absolute; z-index:1; inset:2px; width:calc(100% - 4px); height:calc(100% - 4px); pointer-events:none } .windowed-selection { position:absolute; z-index:2; top:0; bottom:0; margin:0; padding:0; border:0; border-radius:0; background:color-mix(in srgb,var(--accent) 22%,transparent); cursor:grab } .windowed-selection:active { cursor:grabbing } .windowed-handle { position:absolute; z-index:3; top:0; bottom:0; width:9px; margin-left:-4px; padding:0; border:0; border-left:2px solid var(--accent); border-right:2px solid var(--accent); border-radius:1px; background:color-mix(in srgb,var(--accent) 45%,transparent); cursor:ew-resize } .windowed-selection:focus-visible,.windowed-handle:focus-visible { outline:2px solid var(--accent); outline-offset:-2px }
@@ -242,11 +243,16 @@ const clientRuntimeRows='<div><dt>Plotly render</dt><dd data-client-stat="plotly
 function sidebarHtml(workspaceName,page){const details=page.controls.filter(control=>control.placement!=='inline'),groups=details.reduce((result,control)=>{const label=control.group||'Analysis settings';(result[label]??=[]).push(control);return result},{}),settings=Object.entries(groups).map(([label,controls])=>`<section><h2>${esc(label)}</h2>${controlGroupHtml(controls,page.control_values)}</section>`).join('');return `<button class="sidebar-backdrop" data-sidebar-backdrop aria-label="Close details"></button><aside class="workspace-sidebar" data-workspace-sidebar aria-label="Workspace details"><div class="sidebar-head"><div class="sidebar-title"><div class="crumb"><button id="home">Workspaces</button> / <button id="back">${esc(workspaceName)}</button></div><h1>${esc(page.title)}</h1><span class="subtitle">${esc(page.subtitle||'')}</span></div><button class="sidebar-close" data-sidebar-close aria-label="Close details">Close</button></div><div class="analysis-panel">${settings}<section><h2>View details</h2><dl class="view-stats" id="view-stats">${statisticsRows(page.statistics)}</dl></section><section><h2>Runtime</h2><dl class="view-stats" id="runtime-stats">${statisticsRows(page.runtime_statistics)}${clientRuntimeRows}</dl></section></div></aside>`}
 function updateStatistics(statistics,runtimeStatistics){const viewTarget=document.querySelector('#view-stats'),runtimeTarget=document.querySelector('#runtime-stats');if(viewTarget)viewTarget.innerHTML=statisticsRows(statistics);if(runtimeTarget)runtimeTarget.innerHTML=`${statisticsRows(runtimeStatistics)}${clientRuntimeRows}`}
 function bindSidebar(){const sidebar=document.querySelector('[data-workspace-sidebar]'),backdrop=document.querySelector('[data-sidebar-backdrop]'),toggle=document.querySelector('[data-sidebar-toggle]');if(!sidebar||!backdrop||!toggle)return;const setOpen=open=>{sidebar.classList.toggle('open',open);backdrop.classList.toggle('open',open);toggle.setAttribute('aria-expanded',String(open))};toggle.onclick=()=>setOpen(!sidebar.classList.contains('open'));backdrop.onclick=()=>setOpen(false);sidebar.querySelector('[data-sidebar-close]').onclick=()=>setOpen(false)}
-async function catalog(navigate=true){stopPlayback();activeThemeRefresh=null;headerDetails.hidden=true;headerDownload.hidden=true;headerDownload.open=false;headerAnnotate.hidden=true;headerAnnotate.open=false;app.className='';if(navigate)pushRoute('/');try{const initial=await api('/workspaces'),workspaces=initial.workspaces;app.innerHTML=`<h1>Workspaces</h1><p class="lead">Choose a workspace to discover its available items.</p><div class="toolbar"><input id="workspace-search" type="search" placeholder="Search workspaces…" aria-label="Search workspaces"></div><div class="list" id="workspaces"></div>`;const draw=()=>{const q=document.querySelector('#workspace-search').value.toLowerCase().trim();const shown=workspaces.filter(w=>!q||`${w.name} ${w.description||''} ${w.category||''} ${(w.tags||[]).join(' ')} ${w.id}`.toLowerCase().includes(q));document.querySelector('#workspaces').innerHTML=shown.length?shown.map(w=>`<article class="card" data-id="${esc(w.id)}"><div><span class="tag">${esc(w.category||'workspace')}</span><h2>${esc(w.name)}</h2></div><p class="muted">${esc(w.description)}</p><div class="card-tags">${w.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div></article>`).join(''):'<div class="empty">No matching workspaces.</div>';document.querySelectorAll('[data-id]').forEach(x=>x.onclick=()=>items(x.dataset.id,workspaces.find(w=>w.id===x.dataset.id).name))};draw();document.querySelector('#workspace-search').oninput=draw}catch(e){fail(e)}}
+const batchState=action=>action?.status||'idle';
+const batchGlyph=action=>({running:'●',pending:'●',ready:'✓',error:'!'})[batchState(action)]||'↗';
+function batchMenuHtml(batch,url){if(!batch?.enabled)return '';const summary=batch.actions.find(action=>['running','pending'].includes(batchState(action)))||batch.actions.find(action=>batchState(action)==='ready')||batch.actions[0];return `<details class="batch-menu" data-batch-menu data-batch-url="${esc(url)}"><summary title="Run batch action" aria-label="Run batch action">${batchGlyph(summary)}</summary><div class="batch-menu-popover">${batch.actions.map(action=>`<div class="batch-action-row"><button class="batch-action" type="button" data-batch-action="${esc(action.value)}"><span>${esc(action.label)}</span><span class="batch-state ${esc(batchState(action))}">${batchGlyph(action)} ${esc(batchState(action))}</span></button>${action.files?.length?`<div class="batch-artifacts">${action.files.map(file=>`<a href="${esc(file.url)}" download>${esc(file.name)}</a>`).join(' · ')}</div>`:''}</div>`).join('')}</div></details>`}
+function showBatchResult(status){let panel=document.querySelector('[data-batch-result]');if(!panel){panel=document.createElement('div');panel.dataset.batchResult='';app.querySelector('.lead')?.after(panel)}panel.className=`batch-result ${status.status==='error'?'error':''}`;panel.innerHTML=`<strong>${status.status==='ready'?'Batch complete':'Batch failed'}</strong> ${esc(status.summary||status.detail||'')}${(status.files||[]).map(file=>`<a href="${esc(file.url)}" download>${esc(file.name)}</a>`).join('')}`}
+function bindBatchMenus(){document.querySelectorAll('[data-batch-menu]').forEach(menu=>{menu.onclick=event=>event.stopPropagation();menu.querySelectorAll('[data-batch-action]').forEach(button=>button.onclick=async event=>{event.preventDefault();event.stopPropagation();const state=button.querySelector('.batch-state');state.className='batch-state running';state.textContent='● running';menu.open=false;try{const started=await apiPost(menu.dataset.batchUrl,{action:button.dataset.batchAction});let status=started;while(['pending','running'].includes(status.status)){await new Promise(resolve=>setTimeout(resolve,500));status=await api(started.status_url)}state.className=`batch-state ${status.status}`;state.textContent=`${batchGlyph(status)} ${status.status}`;menu.querySelector('summary').textContent=batchGlyph(status);showBatchResult(status)}catch(error){state.className='batch-state error';state.textContent='! error';showBatchResult({status:'error',detail:error.message})}})})}
+async function catalog(navigate=true){stopPlayback();activeThemeRefresh=null;headerDetails.hidden=true;headerDownload.hidden=true;headerDownload.open=false;headerAnnotate.hidden=true;headerAnnotate.open=false;app.className='';if(navigate)pushRoute('/');try{const initial=await api('/workspaces'),workspaces=initial.workspaces;app.innerHTML=`<h1>Workspaces</h1><p class="lead">Choose a workspace, or run one of its batch actions in the background.</p><div class="toolbar"><input id="workspace-search" type="search" placeholder="Search workspaces…" aria-label="Search workspaces"></div><div class="list" id="workspaces"></div>`;const draw=()=>{const q=document.querySelector('#workspace-search').value.toLowerCase().trim();const shown=workspaces.filter(w=>!q||`${w.name} ${w.description||''} ${w.category||''} ${(w.tags||[]).join(' ')} ${w.id}`.toLowerCase().includes(q));document.querySelector('#workspaces').innerHTML=shown.length?shown.map(w=>`<article class="card" data-id="${esc(w.id)}">${batchMenuHtml(w.batch,`/workspaces/${encodeURIComponent(w.id)}/batch`)}<div><span class="tag">${esc(w.category||'workspace')}</span><h2>${esc(w.name)}</h2></div><p class="muted">${esc(w.description)}</p><div class="card-tags">${w.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div></article>`).join(''):'<div class="empty">No matching workspaces.</div>';document.querySelectorAll('[data-id]').forEach(x=>x.onclick=()=>items(x.dataset.id,workspaces.find(w=>w.id===x.dataset.id).name));bindBatchMenus()};draw();document.querySelector('#workspace-search').oninput=draw}catch(e){fail(e)}}
 function siDiscoveryValue(value,unit){const number=Number(value);if(!Number.isFinite(number))return String(value);const magnitude=Math.abs(number),prefixes=[[1e12,'T'],[1e9,'G'],[1e6,'M'],[1e3,'k'],[1,''],[1e-3,'m'],[1e-6,'µ'],[1e-9,'n']];const [scale,prefix]=prefixes.find(([scale])=>magnitude>=scale)||[1,''];return `${Number((number/scale).toPrecision(4))} ${prefix}${unit||''}`.trim()}
 function discoveryValue(value,column){if(value==null||value==='')return '<span class="discovery-null">—</span>';if(column.kind==='datetime'){const date=new Date(value);return esc(Number.isNaN(date.valueOf())?value:date.toLocaleString())}if(column.kind==='si')return esc(siDiscoveryValue(value,column.unit));return esc(value)}
 function discoverySortValue(item,key,kind){const value=key==='title'?item.title:item.summary_fields?.[key];if(value==null||value==='')return null;if(['number','si'].includes(kind))return Number(value);if(kind==='datetime')return new Date(value).valueOf();return String(value).toLocaleLowerCase()}
-async function items(id,name,navigate=true,directory=[]){stopPlayback();activeThemeRefresh=null;headerDetails.hidden=true;headerDownload.hidden=true;headerDownload.open=false;headerAnnotate.hidden=true;headerAnnotate.open=false;app.className='';const route=directory.length?`/workspace/${encodeURIComponent(id)}/browse/${directory.map(encodeURIComponent).join('/')}`:`/workspace/${encodeURIComponent(id)}`;if(navigate)history.pushState(null,'',route);try{const params=new URLSearchParams();directory.forEach(segment=>params.append('directory',segment));const listing=await api(`/workspaces/${encodeURIComponent(id)}/items?${params}`),list=listing.items,folders=listing.directories,columns=listing.columns||[],crumbs=directory.map((segment,index)=>` / <button data-directory-level="${index+1}">${esc(segment)}</button>`).join('');let sortKey='title',sortDescending=false;app.innerHTML=`<div class="crumb"><button id="home">Workspaces</button> / <button id="workspace-root">${esc(name)}</button>${crumbs}</div><h1>${esc(directory.at(-1)||name)}</h1><p class="lead">Browse and open discovered items.</p><div class="toolbar"><input id="search" type="search" placeholder="Search this folder…"></div><div id="items"></div>`;const draw=()=>{const q=document.querySelector('#search').value.toLowerCase().trim(),shownFolders=folders.filter(folder=>!q||folder.name.toLowerCase().includes(q)),matching=list.filter(item=>!q||`${item.title} ${item.subtitle||''} ${(item.tags||[]).join(' ')} ${item.source_reference||''} ${Object.values(item.summary_fields||{}).filter(value=>value!=null).join(' ')}`.toLowerCase().includes(q)),sortColumn=columns.find(column=>column.key===sortKey),kind=sortColumn?.kind||'text',shown=[...matching].sort((left,right)=>{const a=discoverySortValue(left,sortKey,kind),b=discoverySortValue(right,sortKey,kind);if(a==null)return b==null?0:1;if(b==null)return-1;const result=typeof a==='number'&&typeof b==='number'?a-b:String(a).localeCompare(String(b));return sortDescending?-result:result}),columnCount=columns.length+2,header=(key,label)=>`<th><button type="button" data-sort="${esc(key)}">${esc(label)}${sortKey===key?` <span aria-hidden="true">${sortDescending?'▼':'▲'}</span>`:''}</button></th>`,folderRows=shownFolders.map(folder=>`<tr class="folder-row" data-folder="${folders.indexOf(folder)}"><td colspan="${columnCount}"><span class="tag">folder</span> <strong>${esc(folder.name)}</strong></td></tr>`).join(''),itemRows=shown.map(item=>`<tr class="item-row" data-item="${esc(item.id)}"><td><div class="item-name"><strong>${esc(item.title)}</strong>${item.subtitle?`<small>${esc(item.subtitle)}</small>`:''}</div></td>${columns.map(column=>`<td>${discoveryValue(item.summary_fields?.[column.key],column)}</td>`).join('')}<td><div class="item-tags">${(item.tags||[]).map(tag=>`<span class="tag">${esc(tag)}</span>`).join('')}</div></td></tr>`).join('');document.querySelector('#items').innerHTML=folderRows||itemRows?`<div class="item-browser"><table><thead><tr>${header('title','Name')}${columns.map(column=>header(column.key,column.label)).join('')}<th>Tags</th></tr></thead><tbody>${folderRows}${itemRows}</tbody></table></div>`:'<div class="empty">No matching items.</div>';document.querySelectorAll('[data-sort]').forEach(button=>button.onclick=()=>{const key=button.dataset.sort;if(sortKey===key)sortDescending=!sortDescending;else{sortKey=key;sortDescending=false}draw()});document.querySelectorAll('[data-folder]').forEach(element=>element.onclick=()=>items(id,name,true,folders[Number(element.dataset.folder)].path));document.querySelectorAll('[data-item]').forEach(element=>element.onclick=()=>openItem(id,name,element.dataset.item))};draw();document.querySelector('#home').onclick=()=>catalog();document.querySelector('#workspace-root').onclick=()=>items(id,name,true,[]);document.querySelectorAll('[data-directory-level]').forEach(element=>element.onclick=()=>items(id,name,true,directory.slice(0,Number(element.dataset.directoryLevel))));document.querySelector('#search').oninput=draw}catch(e){fail(e)}}
+async function items(id,name,navigate=true,directory=[]){stopPlayback();activeThemeRefresh=null;headerDetails.hidden=true;headerDownload.hidden=true;headerDownload.open=false;headerAnnotate.hidden=true;headerAnnotate.open=false;app.className='';const route=directory.length?`/workspace/${encodeURIComponent(id)}/browse/${directory.map(encodeURIComponent).join('/')}`:`/workspace/${encodeURIComponent(id)}`;if(navigate)history.pushState(null,'',route);try{const params=new URLSearchParams();directory.forEach(segment=>params.append('directory',segment));const listing=await api(`/workspaces/${encodeURIComponent(id)}/items?${params}`),list=listing.items,folders=listing.directories,columns=listing.columns||[],crumbs=directory.map((segment,index)=>` / <button data-directory-level="${index+1}">${esc(segment)}</button>`).join('');let sortKey='title',sortDescending=false;app.innerHTML=`<div class="crumb"><button id="home">Workspaces</button> / <button id="workspace-root">${esc(name)}</button>${crumbs}</div><h1>${esc(directory.at(-1)||name)}</h1><p class="lead">Browse items or dispatch their batch actions without opening them.</p><div class="toolbar">${batchMenuHtml(listing.batch,`/workspaces/${encodeURIComponent(id)}/batch`)}<input id="search" type="search" placeholder="Search this folder…"></div><div id="items"></div>`;const draw=()=>{const q=document.querySelector('#search').value.toLowerCase().trim(),shownFolders=folders.filter(folder=>!q||folder.name.toLowerCase().includes(q)),matching=list.filter(item=>!q||`${item.title} ${item.subtitle||''} ${(item.tags||[]).join(' ')} ${item.source_reference||''} ${Object.values(item.summary_fields||{}).filter(value=>value!=null).join(' ')}`.toLowerCase().includes(q)),sortColumn=columns.find(column=>column.key===sortKey),kind=sortColumn?.kind||'text',shown=[...matching].sort((left,right)=>{const a=discoverySortValue(left,sortKey,kind),b=discoverySortValue(right,sortKey,kind);if(a==null)return b==null?0:1;if(b==null)return-1;const result=typeof a==='number'&&typeof b==='number'?a-b:String(a).localeCompare(String(b));return sortDescending?-result:result}),columnCount=columns.length+3,header=(key,label)=>`<th><button type="button" data-sort="${esc(key)}">${esc(label)}${sortKey===key?` <span aria-hidden="true">${sortDescending?'▼':'▲'}</span>`:''}</button></th>`,folderRows=shownFolders.map(folder=>`<tr class="folder-row" data-folder="${folders.indexOf(folder)}"><td colspan="${columnCount}"><span class="tag">folder</span> <strong>${esc(folder.name)}</strong></td></tr>`).join(''),itemRows=shown.map(item=>`<tr class="item-row" data-item="${esc(item.id)}"><td class="batch-cell">${batchMenuHtml(item.batch,`/workspaces/${encodeURIComponent(id)}/items/${encodeURIComponent(item.id)}/batch`)}</td><td><div class="item-name"><strong>${esc(item.title)}</strong>${item.subtitle?`<small>${esc(item.subtitle)}</small>`:''}</div></td>${columns.map(column=>`<td>${discoveryValue(item.summary_fields?.[column.key],column)}</td>`).join('')}<td><div class="item-tags">${(item.tags||[]).map(tag=>`<span class="tag">${esc(tag)}</span>`).join('')}</div></td></tr>`).join('');document.querySelector('#items').innerHTML=folderRows||itemRows?`<div class="item-browser"><table><thead><tr><th class="batch-cell">Run</th>${header('title','Name')}${columns.map(column=>header(column.key,column.label)).join('')}<th>Tags</th></tr></thead><tbody>${folderRows}${itemRows}</tbody></table></div>`:'<div class="empty">No matching items.</div>';document.querySelectorAll('[data-sort]').forEach(button=>button.onclick=()=>{const key=button.dataset.sort;if(sortKey===key)sortDescending=!sortDescending;else{sortKey=key;sortDescending=false}draw()});document.querySelectorAll('[data-folder]').forEach(element=>element.onclick=()=>items(id,name,true,folders[Number(element.dataset.folder)].path));document.querySelectorAll('[data-item]').forEach(element=>element.onclick=()=>openItem(id,name,element.dataset.item));bindBatchMenus()};draw();bindBatchMenus();document.querySelector('#home').onclick=()=>catalog();document.querySelector('#workspace-root').onclick=()=>items(id,name,true,[]);document.querySelectorAll('[data-directory-level]').forEach(element=>element.onclick=()=>items(id,name,true,directory.slice(0,Number(element.dataset.directoryLevel))));document.querySelector('#search').oninput=draw}catch(e){fail(e)}}
 async function openItem(wid,wname,iid,navigate=true,controlValues={},preservePlayback=false){
   stopPlayback();app.innerHTML='<div class="empty">Opening item…</div>';app.className='item-page';activeThemeRefresh=null;headerDetails.hidden=true;headerDownload.hidden=true;headerDownload.open=false;headerAnnotate.hidden=true;headerAnnotate.open=false;if(!preservePlayback){playbackPosition=0;playbackPaused=false;playbackFollowLive=false;windowStart=0;windowEnd=null;segmentId=null;Object.keys(viewSelections).forEach(key=>delete viewSelections[key])}if(navigate)history.pushState(null,'',`/workspace/${encodeURIComponent(wid)}/item/${encodeURIComponent(iid)}`);
   try{const request=async values=>api(`/workspaces/${encodeURIComponent(wid)}/items/${encodeURIComponent(iid)}?${new URLSearchParams(values)}`),windowValues=()=>windowEnd==null?{}:{__window_start_seconds:windowStart,__window_end_seconds:windowEnd},segmentValues=()=>segmentId==null?{}:{__segment_id:segmentId};let data=await request({...controlValues,...windowValues(),...segmentValues(),__theme:resolvedTheme(),__playback_time_seconds:playbackPosition});let p=data.page,requestGeneration=0;const isPlayback=['seek','live'].includes(p.playback.mode),isWindowed=p.playback.mode==='windowed',isSegmented=p.playback.mode==='segmented';annotations=p.annotation?.entries||[];
@@ -302,6 +308,15 @@ class ExportJob:
     future: Future[dict[str, object]]
 
 
+@dataclass
+class BatchJob:
+    workspace_id: str
+    item_id: str | None
+    action: str
+    directory: Path
+    future: Future[dict[str, object]]
+
+
 def _item_payload(item: Any) -> dict[str, Any]:
     return {
         "id": item.identifier,
@@ -330,6 +345,14 @@ class SigvueApp:
     _export_jobs: dict[str, ExportJob] = field(default_factory=dict, init=False, repr=False)
     _export_executor: ThreadPoolExecutor = field(
         default_factory=lambda: ThreadPoolExecutor(max_workers=2, thread_name_prefix="workspace-export"),
+        init=False,
+        repr=False,
+    )
+    _batch_lock: RLock = field(default_factory=RLock, init=False, repr=False)
+    _batch_jobs: dict[str, BatchJob] = field(default_factory=dict, init=False, repr=False)
+    _batch_latest: dict[tuple[str, str | None, str], str] = field(default_factory=dict, init=False, repr=False)
+    _batch_executor: ThreadPoolExecutor = field(
+        default_factory=lambda: ThreadPoolExecutor(max_workers=4, thread_name_prefix="workspace-batch"),
         init=False,
         repr=False,
     )
@@ -459,6 +482,7 @@ class SigvueApp:
                 "category": workspace.metadata.category,
                 "tags": list(workspace.metadata.tags),
                 "version": workspace.metadata.version,
+                "batch": self._batch_capability(workspace, workspace.metadata.identifier),
             }
             for workspace in self.registry.list()
         ]
@@ -511,8 +535,108 @@ class SigvueApp:
                 {"name": name, "path": [*directory, name]}
                 for name in child_names
             ],
-            "items": [_item_payload(item) for item in paged],
+            "batch": self._batch_capability(workspace, workspace_id),
+            "items": [
+                {**_item_payload(item), "batch": self._batch_capability(workspace, workspace_id, item.identifier)}
+                for item in paged
+            ],
         }
+
+    def _batch_capability(
+        self,
+        workspace: Any,
+        workspace_id: str,
+        item_id: str | None = None,
+    ) -> dict[str, object]:
+        capability = getattr(workspace, "batch", None)
+        choices = capability.item_actions if capability is not None and item_id is not None else (
+            capability.workspace_actions if capability is not None else ()
+        )
+        actions = []
+        with self._batch_lock:
+            for choice in choices:
+                job_id = self._batch_latest.get((workspace_id, item_id, choice.value))
+                status = self.batch_status(job_id) if job_id else {"status": "idle"}
+                actions.append({**choice.__dict__, **status})
+        return {"enabled": bool(actions), "actions": actions}
+
+    def start_batch(self, workspace_id: str, action: str, item_id: str | None = None) -> str:
+        """Dispatch one plugin-owned item or workspace batch job."""
+        workspace = self.registry.get(workspace_id)
+        capability = getattr(workspace, "batch", None)
+        choices = capability.item_actions if capability is not None and item_id is not None else (
+            capability.workspace_actions if capability is not None else ()
+        )
+        if action not in {choice.value for choice in choices}:
+            raise ValueError("Unsupported batch action")
+        key = (workspace_id, item_id, action)
+        with self._batch_lock:
+            previous_id = self._batch_latest.get(key)
+            previous = self._batch_jobs.get(previous_id) if previous_id else None
+            if previous is not None and not previous.future.done():
+                return previous_id
+        job_id = uuid4().hex
+        directory = Path(mkdtemp(prefix=f"sigvue-batch-{job_id[:8]}-"))
+
+        def build() -> dict[str, object]:
+            result = (
+                workspace.run_item_batch(item_id, action, directory)
+                if item_id is not None
+                else workspace.run_workspace_batch(action, directory)
+            )
+            if not isinstance(result, BatchResult):
+                raise TypeError("Batch actions must return BatchResult")
+            resolved_directory = directory.resolve()
+            files = []
+            for value in result.files:
+                target = Path(value).resolve()
+                if target.parent != resolved_directory or not target.is_file():
+                    raise ValueError("Batch results must contain files created in their destination directory")
+                files.append(target.name)
+            return {"files": files, "summary": result.summary}
+
+        future = self._batch_executor.submit(build)
+        job = BatchJob(workspace_id, item_id, action, directory, future)
+        with self._batch_lock:
+            if previous_id is not None:
+                stale = self._batch_jobs.pop(previous_id, None)
+                if stale is not None:
+                    shutil.rmtree(stale.directory, ignore_errors=True)
+            self._batch_jobs[job_id] = job
+            self._batch_latest[key] = job_id
+        return job_id
+
+    def batch_status(self, job_id: str) -> dict[str, object]:
+        with self._batch_lock:
+            job = self._batch_jobs.get(job_id)
+        if job is None:
+            raise KeyError(job_id)
+        base = {"id": job_id, "action": job.action}
+        if not job.future.done():
+            return {**base, "status": "running" if job.future.running() else "pending"}
+        try:
+            result = job.future.result()
+        except Exception as exc:
+            return {**base, "status": "error", "detail": str(exc)}
+        return {
+            **base,
+            "status": "ready",
+            "summary": result["summary"],
+            "files": [
+                {"name": name, "url": f"/batches/{job_id}/{name}"}
+                for name in result["files"]
+            ],
+        }
+
+    def batch_file(self, job_id: str, filename: str) -> Path:
+        with self._batch_lock:
+            job = self._batch_jobs.get(job_id)
+        if job is None or not job.future.done() or job.future.exception() is not None:
+            raise KeyError(job_id)
+        allowed = set(job.future.result()["files"])
+        if filename not in allowed:
+            raise KeyError(filename)
+        return job.directory / filename
 
     def open_item(self, workspace_id: str, item_id: str, control_values: dict[str, object] | None = None) -> dict[str, Any]:
         request_started = time.perf_counter()
@@ -913,6 +1037,12 @@ def _make_handler(app: SigvueApp) -> type[BaseHTTPRequestHandler]:
                 if len(parts) == 2 and parts[0] == "exports":
                     self._write_json(200, app.export_status(parts[1]))
                     return
+                if len(parts) == 2 and parts[0] == "batches":
+                    self._write_json(200, app.batch_status(parts[1]))
+                    return
+                if len(parts) == 3 and parts[0] == "batches":
+                    self._write_export_file(app.batch_file(parts[1], parts[2]))
+                    return
                 if len(parts) == 3 and parts[0] == "exports":
                     export_path = app.export_file(parts[1], parts[2])
                     try:
@@ -969,6 +1099,16 @@ def _make_handler(app: SigvueApp) -> type[BaseHTTPRequestHandler]:
                     )
                     self._write_json(202, {"id": job_id, "status": "pending", "status_url": f"/exports/{job_id}"})
                     return
+                if len(parts) == 3 and parts[0] == "workspaces" and parts[2] == "batch":
+                    payload = self._read_json()
+                    job_id = app.start_batch(parts[1], str(payload.get("action", "")))
+                    self._write_json(202, {"id": job_id, "status": "pending", "status_url": f"/batches/{job_id}"})
+                    return
+                if len(parts) == 5 and parts[0] == "workspaces" and parts[2] == "items" and parts[4] == "batch":
+                    payload = self._read_json()
+                    job_id = app.start_batch(parts[1], str(payload.get("action", "")), parts[3])
+                    self._write_json(202, {"id": job_id, "status": "pending", "status_url": f"/batches/{job_id}"})
+                    return
             except KeyError:
                 self._write_json(404, {"error": "workspace_not_found"})
                 return
@@ -986,11 +1126,83 @@ def _make_handler(app: SigvueApp) -> type[BaseHTTPRequestHandler]:
     return Handler
 
 
+def _print_batch_catalog(app: SigvueApp) -> None:
+    """Print script-friendly batch capabilities and discovered item identifiers."""
+    for workspace in app.list_workspaces():
+        registered = app.registry.get(workspace["id"])
+        if getattr(registered, "batch", None) is None:
+            continue
+        actions = workspace["batch"]["actions"]
+        print(f"{workspace['id']}\t{workspace['name']}")
+        for action in actions:
+            print(f"  workspace\t{action['value']}\t{action['label']}\t{action['status']}")
+        listing = app.browse_items(workspace["id"], {})
+        items = list(listing["items"])
+        directories = list(listing["directories"])
+        while directories:
+            directory = directories.pop(0)
+            query = {"directory": list(directory["path"])}
+            child = app.browse_items(workspace["id"], query)
+            items.extend(child["items"])
+            directories.extend(child["directories"])
+        for item in items:
+            for action in item["batch"]["actions"]:
+                print(f"  item\t{item['id']}\t{action['value']}\t{action['label']}\t{action['status']}")
+
+
+def _run_batch_command(app: SigvueApp, args: argparse.Namespace) -> int:
+    """Run one catalog batch action synchronously while reporting background status."""
+    if args.list_batch:
+        _print_batch_catalog(app)
+        return 0
+    if not args.workspace or not args.action:
+        raise ValueError("batch requires --workspace and --action; use --list to inspect choices")
+    job_id = app.start_batch(args.workspace, args.action, args.item)
+    previous_status = None
+    while True:
+        status = app.batch_status(job_id)
+        if not args.json and status["status"] != previous_status:
+            target = f"item {args.item}" if args.item else f"workspace {args.workspace}"
+            print(f"{status['status']}: {args.action} on {target}", flush=True)
+            previous_status = status["status"]
+        if status["status"] not in {"pending", "running"}:
+            break
+        time.sleep(0.1)
+    if status["status"] == "error":
+        if args.json:
+            print(json.dumps(status))
+        else:
+            print(f"error: {status.get('detail', 'Batch failed')}", file=sys.stderr)
+        return 1
+    output = Path(args.output).expanduser().resolve()
+    output.mkdir(parents=True, exist_ok=True)
+    saved = []
+    for artifact in status.get("files", []):
+        destination = output / artifact["name"]
+        shutil.copy2(app.batch_file(job_id, artifact["name"]), destination)
+        saved.append(str(destination))
+    result = {**status, "saved": saved}
+    if args.json:
+        print(json.dumps(result))
+    else:
+        print(status.get("summary", "Batch complete"))
+        for path in saved:
+            print(f"saved: {path}")
+    return 0
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the Sigvue server")
+    parser = argparse.ArgumentParser(description="Run Sigvue or dispatch workspace batch actions")
+    parser.add_argument("command", nargs="?", choices=("serve", "batch"), default="serve")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", default=8000, type=int)
     parser.add_argument("--config", type=Path, help="Load workspace selection and data settings from browser.toml")
+    parser.add_argument("--workspace", help="Workspace identifier for a batch action")
+    parser.add_argument("--item", help="Optional discovered item identifier for an item batch action")
+    parser.add_argument("--action", help="Plugin-defined batch action identifier")
+    parser.add_argument("--output", type=Path, default=Path.cwd(), help="Directory for completed batch artifacts")
+    parser.add_argument("--list", dest="list_batch", action="store_true", help="List batch-capable workspaces, items, and actions")
+    parser.add_argument("--json", action="store_true", help="Print the final batch result as JSON")
     parser.add_argument(
         "--reload",
         dest="reload_workspaces",
@@ -1007,6 +1219,12 @@ def main() -> None:
     args = parser.parse_args()
 
     app = create_app(reload_workspaces=args.reload_workspaces, config_path=args.config)
+    if args.command == "batch":
+        try:
+            result = _run_batch_command(app, args)
+        except (KeyError, ValueError) as exc:
+            parser.error(str(exc))
+        raise SystemExit(result)
     server = ThreadingHTTPServer((args.host, args.port), _make_handler(app))
     print(f"Serving {app.title} at http://{args.host}:{args.port}")
     try:
