@@ -1,7 +1,8 @@
 - [ ] Move prev/next to the left side of bar
+- [ ] The prev/next aren't really on "theme" with the rest of the ui elements for light or dark mode.
 - [ ] Why doesn't the box select show up on all waterfall workspaces?
 - [ ] Why so slow on Windows machine with actually pretty decent specs, but flies on Mac? Is it GPU-limited? I don't have a good GPU, but good memory/processor
-- [ ] Improve render speed
+- [ ] Improve render speed. Consider options for downsampling data when plotting. This seems to be a big bottleneck. 
 - [ ] Oh, there's a lot of runtime stuff not in the runtime section of the ui in details. I want them all there but then a total as well
 - [ ] Do we still support Matplotlib figures? I want to.
 - [ ] Make a matplotlib-based example, I guess like the waterfall one, but with matplotlib. I guess there will be differences? It should be formatted nice and stuff.
