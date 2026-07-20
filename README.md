@@ -1029,8 +1029,7 @@ Workspace packages, `browser.toml`, and data remain external to the executable.
 ## Development
 
 ```bash
-python -m pip install -e ".[build]"
-python -m pip install pytest
+python -m pip install -e ".[build,examples,test,release]"
 python -m pytest -q tests
 python -m pytest -q example_pipelines/tests
 ```

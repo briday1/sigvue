@@ -13,6 +13,9 @@ dependencies = ["matplotlib>=3.7", "plotly>=6.1.1", "tomli>=2; python_version < 
 
 [project.optional-dependencies]
 build = ["certifi>=2024.2.2", "pyinstaller>=6.0"]
+examples = ["numpy>=1.24"]
+test = ["numpy>=1.24", "pytest>=8.0"]
+release = ["build>=1.2", "twine>=5.0"]
 
 [project.scripts]
 sigvue = "sigvue.web.application:main"
