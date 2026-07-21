@@ -21,7 +21,7 @@ A workspace is an adapter between domain code and the Sigvue runtime. Plugin
 code owns data semantics; the framework owns application lifecycle and UI
 state.
 
-![Mental model diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.23/docs/pypi-diagrams/01-mental-model.svg)
+![Mental model diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.24/docs/pypi-diagrams/01-mental-model.svg)
 
 The same factory may appear multiple times in `browser.toml`. Each entry creates
 a separate workspace instance with its own identity, tags, and data
@@ -183,7 +183,7 @@ def create_workspace(config):
 
 ### Contract relationships
 
-![Contract relationships diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.23/docs/pypi-diagrams/02-contract-relationships.svg)
+![Contract relationships diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.24/docs/pypi-diagrams/02-contract-relationships.svg)
 
 ### Typed data path
 
@@ -191,7 +191,7 @@ def create_workspace(config):
 objects. Pipeline-specific subclasses implement their named lifecycle methods.
 Together their type parameters describe the complete data path:
 
-![Typed data path diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.23/docs/pypi-diagrams/03-typed-data-path.svg)
+![Typed data path diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.24/docs/pypi-diagrams/03-typed-data-path.svg)
 
 The objects make every boundary explicit at construction time: the workspace
 cannot accept a look-alike object that merely happens to have a method with the
@@ -262,7 +262,7 @@ The factory runs when the profile is loaded or reloaded. Source I/O, delivery,
 configuration, processing, and presentation run later, when the browser opens
 data or changes request state.
 
-![Request lifecycle diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.23/docs/pypi-diagrams/04-request-lifecycle.svg)
+![Request lifecycle diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.24/docs/pypi-diagrams/04-request-lifecycle.svg)
 
 `source.open()` is called for the selected item on each page request. A domain
 reader may therefore be lightweight and read only the requested interval when
@@ -445,7 +445,7 @@ tags = ["laboratory", "reference"]
 data_root = "./data/campaign-b"
 ```
 
-![browser.toml diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.23/docs/pypi-diagrams/05-browser-toml.svg)
+![browser.toml diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.24/docs/pypi-diagrams/05-browser-toml.svg)
 
 These are two registered workspace instances, not two plugin implementations.
 Their framework routes and catalog identities are isolated by their unique
@@ -696,11 +696,19 @@ pool, and retains pending, running, successful, or failed status while the appli
 is running. Successful jobs may expose one or more downloadable artifacts.
 
 ```python
-from sigvue.plugin import Batch, BatchRequest, BatchResult, CapabilityChoice
+from pathlib import Path
+from sigvue.plugin import Batch, BatchDestination, BatchRequest, BatchResult, CapabilityChoice
 
 class Reports(Batch[Recording]):
     item_actions = (CapabilityChoice("plot", "Build plot report"),)
     workspace_actions = (CapabilityChoice("all", "Compile workspace report"),)
+
+    def item_destination(self, resource, request):
+        name = f"{resource.identifier}.html"
+        return BatchDestination(Path("reports/items"), (name,), "Report already generated")
+
+    def workspace_destination(self, resources, request):
+        return BatchDestination(Path("reports"), ("workspace.zip",), "Workspace report already generated")
 
     def run_item(self, resource, recording, request, directory):
         report = directory / f"{resource.identifier}.html"
@@ -715,8 +723,11 @@ workspace = Workspace(..., batch=Reports())
 ```
 
 The plugin decides what “run” means, which actions exist at each scope, what data is
-opened, and which artifacts are produced. The framework owns scheduling, status,
-validation, polling, and downloads.
+opened, where durable artifacts are stored, and which artifacts are produced. When a
+destination declares expected filenames, Sigvue recognizes an already-completed action
+after a server restart by checking those files. Omitting the destination hooks retains
+the temporary-directory behavior; temporary results cannot be rediscovered after the
+server exits. The framework owns scheduling, status, validation, polling, and downloads.
 
 The same contract is available without starting the web server. First inspect the
 actions and exact item identifiers exposed by a profile:
@@ -741,7 +752,7 @@ sigvue batch --config browser.toml \
 
 Add `--json` for automation-friendly final status and artifact paths.
 
-![Optional annotation, export, and batch capabilities diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.23/docs/pypi-diagrams/06-optional-annotation-export-and-batch-capabilities.svg)
+![Optional annotation, export, and batch capabilities diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.24/docs/pypi-diagrams/06-optional-annotation-export-and-batch-capabilities.svg)
 
 Subclass `Annotator` to discover timeline annotations and add one from the current
 delivered value. Subclass `Exporter` to advertise scope and format choices and write
