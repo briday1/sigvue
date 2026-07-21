@@ -13,6 +13,7 @@ from unittest.mock import Mock
 from sigvue.plugin import (
     Analysis,
     Batch,
+    BatchDestination,
     BatchRequest,
     BatchResult,
     CapabilityChoice,
@@ -516,6 +517,53 @@ class WebAppTests(unittest.TestCase):
             self.assertEqual(0, result)
             self.assertEqual("recording:10.0", (Path(output) / "item.txt").read_text())
             self.assertIn("saved:", stream.getvalue())
+
+    def test_durable_batch_destination_is_ready_in_a_fresh_app(self):
+        with TemporaryDirectory() as output:
+            output_path = Path(output)
+
+            class DurableBatch(Batch):
+                item_actions = (CapabilityChoice("report", "Build report"),)
+
+                def item_destination(self, resource, request):
+                    return BatchDestination(
+                        output_path,
+                        (f"{resource.identifier}.html",),
+                        "Report already exists",
+                    )
+
+                def run_item(self, resource, source_data, request, directory):
+                    target = directory / f"{resource.identifier}.html"
+                    target.write_text("<h1>Report</h1>", encoding="utf-8")
+                    return BatchResult((target,), "Report generated")
+
+            base = self.create_example_app().registry.get("test-workspace")
+
+            def make_app():
+                workspace = Workspace(
+                    identifier="durable-workspace",
+                    name="Durable workspace",
+                    description="Persistent reports",
+                    source=base.source,
+                    delivery=base.delivery,
+                    analysis=base.analysis,
+                    presentation=base.presentation,
+                    batch=DurableBatch(),
+                )
+                result = SigvueApp()
+                result.register_workspace(workspace)
+                return result
+
+            first = make_app()
+            job_id = first.start_batch("durable-workspace", "report", "recording")
+            first._batch_jobs[job_id].future.result(timeout=10)
+            expected = output_path / "recording.html"
+            self.assertTrue(expected.is_file())
+
+            relaunched = make_app()
+            action = relaunched.browse_items("durable-workspace", {})["items"][0]["batch"]["actions"][0]
+            self.assertEqual("ready", action["status"])
+            self.assertEqual(str(expected.resolve()), action["files"][0]["path"])
 
     def test_export_endpoint_routes_plugin_scope_and_format(self):
         app = Mock()

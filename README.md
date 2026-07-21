@@ -880,11 +880,19 @@ pool, and retains pending, running, successful, or failed status while the appli
 is running. Successful jobs may expose one or more downloadable artifacts.
 
 ```python
-from sigvue.plugin import Batch, BatchRequest, BatchResult, CapabilityChoice
+from pathlib import Path
+from sigvue.plugin import Batch, BatchDestination, BatchRequest, BatchResult, CapabilityChoice
 
 class Reports(Batch[Recording]):
     item_actions = (CapabilityChoice("plot", "Build plot report"),)
     workspace_actions = (CapabilityChoice("all", "Compile workspace report"),)
+
+    def item_destination(self, resource, request):
+        name = f"{resource.identifier}.html"
+        return BatchDestination(Path("reports/items"), (name,), "Report already generated")
+
+    def workspace_destination(self, resources, request):
+        return BatchDestination(Path("reports"), ("workspace.zip",), "Workspace report already generated")
 
     def run_item(self, resource, recording, request, directory):
         report = directory / f"{resource.identifier}.html"
@@ -899,8 +907,11 @@ workspace = Workspace(..., batch=Reports())
 ```
 
 The plugin decides what “run” means, which actions exist at each scope, what data is
-opened, and which artifacts are produced. The framework owns scheduling, status,
-validation, polling, and downloads.
+opened, where durable artifacts are stored, and which artifacts are produced. When a
+destination declares expected filenames, Sigvue recognizes an already-completed action
+after a server restart by checking those files. Omitting the destination hooks retains
+the temporary-directory behavior; temporary results cannot be rediscovered after the
+server exits. The framework owns scheduling, status, validation, polling, and downloads.
 
 The same contract is available without starting the web server. First inspect the
 actions and exact item identifiers exposed by a profile:

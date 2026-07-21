@@ -17,6 +17,7 @@ from .capabilities import (
     AnnotationRequest,
     Annotator,
     Batch,
+    BatchDestination,
     BatchRequest,
     BatchResult,
     Exporter,
@@ -1339,6 +1340,16 @@ class Workspace:
         resource = resources[item_id]
         return self.batch.run_item(resource, self.source.open(resource), BatchRequest(action), directory)
 
+    def item_batch_destination(self, item_id: str, action: str) -> BatchDestination:
+        if self.batch is None:
+            raise ValueError("This workspace does not provide batch support")
+        if action not in {choice.value for choice in self.batch.item_actions}:
+            raise ValueError("Unsupported item batch action")
+        resources = self._resources()
+        if item_id not in resources:
+            raise KeyError(item_id)
+        return self.batch.item_destination(resources[item_id], BatchRequest(action))
+
     def run_workspace_batch(self, action: str, directory: Path) -> BatchResult:
         if self.batch is None:
             raise ValueError("This workspace does not provide batch support")
@@ -1346,6 +1357,13 @@ class Workspace:
             raise ValueError("Unsupported workspace batch action")
         resources = tuple(self._resources().values())
         return self.batch.run_workspace(resources, self.source.open, BatchRequest(action), directory)
+
+    def workspace_batch_destination(self, action: str) -> BatchDestination:
+        if self.batch is None:
+            raise ValueError("This workspace does not provide batch support")
+        if action not in {choice.value for choice in self.batch.workspace_actions}:
+            raise ValueError("Unsupported workspace batch action")
+        return self.batch.workspace_destination(tuple(self._resources().values()), BatchRequest(action))
 
     def _resources(self) -> dict[str, DataResource]:
         discovered = list(self.source.discover())

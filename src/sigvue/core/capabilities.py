@@ -216,6 +216,21 @@ class BatchResult:
     summary: str = "Completed"
 
 
+@dataclass(frozen=True)
+class BatchDestination:
+    """Pipeline-owned output location and optional completion contract."""
+
+    directory: Path | None = None
+    files: tuple[str, ...] = ()
+    summary: str = "Completed"
+
+    def __post_init__(self) -> None:
+        if self.directory is None and self.files:
+            raise ValueError("Temporary batch destinations cannot declare durable files")
+        if any(not name or Path(name).name != name for name in self.files):
+            raise ValueError("Batch destination files must be plain filenames")
+
+
 class Batch(ABC, Generic[SourceData_contra]):
     """Plugin-owned item and workspace jobs run by the framework in background threads."""
 
@@ -226,6 +241,18 @@ class Batch(ABC, Generic[SourceData_contra]):
     @property
     def workspace_actions(self) -> tuple[CapabilityChoice, ...]:
         return ()
+
+    def item_destination(self, resource: Any, request: BatchRequest) -> BatchDestination:
+        """Declare durable item outputs, or return the default temporary destination."""
+        return BatchDestination()
+
+    def workspace_destination(
+        self,
+        resources: tuple[Any, ...],
+        request: BatchRequest,
+    ) -> BatchDestination:
+        """Declare durable workspace outputs, or return the default temporary destination."""
+        return BatchDestination()
 
     def run_item(
         self,

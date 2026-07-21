@@ -38,7 +38,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from plotly.offline import get_plotlyjs
 
 from sigvue.catalog.browser import filter_items, paginate_items, search_items, sort_items
-from sigvue.core.capabilities import Annotation, AnnotationRequest, BatchResult, ExportRequest
+from sigvue.core.capabilities import Annotation, AnnotationRequest, BatchDestination, BatchResult, ExportRequest
 from sigvue.core.models import WorkspaceMetadata
 from sigvue.profile import WorkspaceLaunchSpec, load_browser_profile
 from sigvue.registry.registry import WorkspaceRegistry
@@ -333,6 +333,7 @@ class BatchJob:
     action: str
     directory: Path
     future: Future[dict[str, object]]
+    temporary: bool = True
 
 
 def _item_payload(item: Any) -> dict[str, Any]:
@@ -574,9 +575,53 @@ class SigvueApp:
         with self._batch_lock:
             for choice in choices:
                 job_id = self._batch_latest.get((workspace_id, item_id, choice.value))
-                status = self.batch_status(job_id) if job_id else {"status": "idle"}
+                status = self.batch_status(job_id) if job_id else self._declared_batch_status(
+                    workspace,
+                    choice.value,
+                    item_id,
+                )
                 actions.append({**choice.__dict__, **status})
         return {"enabled": bool(actions), "actions": actions}
+
+    @staticmethod
+    def _batch_destination(workspace: Any, action: str, item_id: str | None) -> BatchDestination:
+        destination = (
+            workspace.item_batch_destination(item_id, action)
+            if item_id is not None
+            else workspace.workspace_batch_destination(action)
+        )
+        if not isinstance(destination, BatchDestination):
+            raise TypeError("Batch destination hooks must return BatchDestination")
+        return destination
+
+    @staticmethod
+    def _batch_files(job_id: str | None, directory: Path, names: tuple[str, ...] | list[str]) -> list[dict[str, object]]:
+        return [
+            {
+                "name": name,
+                "path": str((directory / name).resolve()),
+                "url": f"/batches/{job_id}/{name}" if job_id else None,
+                "open_url": (
+                    f"/batches/{job_id}/{name}"
+                    if job_id and Path(name).suffix.lower() in {".html", ".htm"}
+                    else (Path(directory / name).resolve().as_uri() if Path(name).suffix.lower() in {".html", ".htm"} else None)
+                ),
+            }
+            for name in names
+        ]
+
+    def _declared_batch_status(self, workspace: Any, action: str, item_id: str | None) -> dict[str, object]:
+        destination = self._batch_destination(workspace, action, item_id)
+        if destination.directory is None or not destination.files:
+            return {"status": "idle"}
+        directory = destination.directory.expanduser().resolve()
+        if all((directory / name).is_file() for name in destination.files):
+            return {
+                "status": "ready",
+                "summary": destination.summary,
+                "files": self._batch_files(None, directory, destination.files),
+            }
+        return {"status": "idle"}
 
     def start_batch(self, workspace_id: str, action: str, item_id: str | None = None) -> str:
         """Dispatch one plugin-owned item or workspace batch job."""
@@ -593,8 +638,15 @@ class SigvueApp:
             previous = self._batch_jobs.get(previous_id) if previous_id else None
             if previous is not None and not previous.future.done():
                 return previous_id
+        destination = self._batch_destination(workspace, action, item_id)
         job_id = uuid4().hex
-        directory = Path(mkdtemp(prefix=f"sigvue-batch-{job_id[:8]}-"))
+        temporary = destination.directory is None
+        directory = (
+            Path(mkdtemp(prefix=f"sigvue-batch-{job_id[:8]}-"))
+            if temporary
+            else destination.directory.expanduser().resolve()
+        )
+        directory.mkdir(parents=True, exist_ok=True)
 
         def build() -> dict[str, object]:
             result = (
@@ -611,14 +663,17 @@ class SigvueApp:
                 if target.parent != resolved_directory or not target.is_file():
                     raise ValueError("Batch results must contain files created in their destination directory")
                 files.append(target.name)
+            missing_declared = [name for name in destination.files if name not in files]
+            if missing_declared:
+                raise ValueError(f"Batch result omitted declared files: {', '.join(missing_declared)}")
             return {"files": files, "summary": result.summary}
 
         future = self._batch_executor.submit(build)
-        job = BatchJob(workspace_id, item_id, action, directory, future)
+        job = BatchJob(workspace_id, item_id, action, directory, future, temporary)
         with self._batch_lock:
             if previous_id is not None:
                 stale = self._batch_jobs.pop(previous_id, None)
-                if stale is not None:
+                if stale is not None and stale.temporary:
                     shutil.rmtree(stale.directory, ignore_errors=True)
             self._batch_jobs[job_id] = job
             self._batch_latest[key] = job_id
@@ -647,15 +702,7 @@ class SigvueApp:
             **base,
             "status": "ready",
             "summary": result["summary"],
-            "files": [
-                {
-                    "name": name,
-                    "path": str((job.directory / name).resolve()),
-                    "url": f"/batches/{job_id}/{name}",
-                    "open_url": f"/batches/{job_id}/{name}" if Path(name).suffix.lower() in {".html", ".htm"} else None,
-                }
-                for name in result["files"]
-            ],
+            "files": self._batch_files(job_id, job.directory, result["files"]),
         }
 
     def batch_file(self, job_id: str, filename: str) -> Path:
