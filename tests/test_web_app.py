@@ -209,6 +209,8 @@ class WebAppTests(unittest.TestCase):
         self.assertIn('<span class="batch-play" aria-hidden="true">▶</span>', body)
         self.assertIn('<th class="tags-column">Tags</th><th class="batch-cell">Run</th>', body)
         self.assertIn('.toolbar>.batch-menu { order:2 }', body)
+        self.assertIn('.item-browser:has(.batch-menu) { overflow:visible }', body)
+        self.assertIn('.batch-menu.ready summary { color:#16803c;', body)
         self.assertIn("${w.name} ${w.description||''} ${w.category||''}", body)
         self.assertNotIn('id="reload-config"', body)
         self.assertNotIn("Reload browser.toml", body)
@@ -459,10 +461,21 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual("ready", item_status["status"])
         self.assertEqual("Item summarized", item_status["summary"])
         self.assertEqual("recording:10.0", app.batch_file(item_job, "item.txt").read_text())
+        refreshed = app.browse_items("batch-workspace", {})
+        item_action = refreshed["items"][0]["batch"]["actions"][0]
+        self.assertEqual("ready", item_action["status"])
+        self.assertEqual("item.txt", item_action["files"][0]["name"])
 
         workspace_job = app.start_batch("batch-workspace", "compile")
         app._batch_jobs[workspace_job].future.result(timeout=10)
         self.assertEqual("Workspace compiled", app.batch_status(workspace_job)["summary"])
+        workspace_action = app.list_workspaces()[0]["batch"]["actions"][0]
+        self.assertEqual("ready", workspace_action["status"])
+
+        app.batch_file(item_job, "item.txt").unlink()
+        missing_status = app.batch_status(item_job)
+        self.assertEqual("error", missing_status["status"])
+        self.assertIn("item.txt", missing_status["detail"])
 
         with TemporaryDirectory() as output:
             stream = StringIO()
