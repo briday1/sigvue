@@ -209,6 +209,9 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("data-batch-action", body)
         self.assertIn("Batch complete", body)
         self.assertIn('<span class="batch-play" aria-hidden="true">▶</span>', body)
+        self.assertNotIn('class="batch-indicator', body)
+        self.assertIn("Copy path", body)
+        self.assertIn('target="_blank"', body)
         self.assertIn('<th class="tags-column">Tags</th><th class="batch-cell">Run</th>', body)
         self.assertIn('.toolbar>.batch-menu { order:2 }', body)
         self.assertIn('.item-browser:has(.batch-menu) { overflow:visible }', body)
@@ -432,7 +435,9 @@ class WebAppTests(unittest.TestCase):
             def run_item(self, resource, source_data, request: BatchRequest, directory):
                 target = directory / "item.txt"
                 target.write_text(f"{resource.identifier}:{sum(source_data)}", encoding="utf-8")
-                return BatchResult((target,), "Item summarized")
+                report = directory / "report.html"
+                report.write_text("<h1>Item report</h1>", encoding="utf-8")
+                return BatchResult((target, report), "Item summarized")
 
             def run_workspace(self, resources, open_resource, request: BatchRequest, directory):
                 target = directory / "workspace.txt"
@@ -462,6 +467,9 @@ class WebAppTests(unittest.TestCase):
         item_status = app.batch_status(item_job)
         self.assertEqual("ready", item_status["status"])
         self.assertEqual("Item summarized", item_status["summary"])
+        self.assertTrue(Path(item_status["files"][0]["path"]).is_absolute())
+        self.assertIsNone(item_status["files"][0]["open_url"])
+        self.assertEqual(f"/batches/{item_job}/report.html", item_status["files"][1]["open_url"])
         self.assertEqual("recording:10.0", app.batch_file(item_job, "item.txt").read_text())
         refreshed = app.browse_items("batch-workspace", {})
         item_action = refreshed["items"][0]["batch"]["actions"][0]
@@ -533,6 +541,19 @@ class WebAppTests(unittest.TestCase):
             202,
             {"id": "batch-1", "status": "pending", "status_url": "/batches/batch-1"},
         )
+
+    def test_html_batch_result_opens_inline(self):
+        app = Mock()
+        app.batch_file.return_value = Path("/tmp/report.html")
+        handler_type = _make_handler(app)
+        handler = handler_type.__new__(handler_type)
+        handler.path = "/batches/batch-1/report.html"
+        handler._write_export_file = Mock()
+
+        handler.do_GET()
+
+        app.batch_file.assert_called_once_with("batch-1", "report.html")
+        handler._write_export_file.assert_called_once_with(Path("/tmp/report.html"), inline=True)
 
     def test_workspace_without_exporter_rejects_export(self):
         app = self.create_example_app()
