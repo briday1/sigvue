@@ -206,6 +206,8 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("No matching workspaces.", body)
         self.assertIn("function batchMenuHtml", body)
         self.assertIn("function bindBatchMenus", body)
+        self.assertIn("document.addEventListener('click',()=>closeBatchMenus())", body)
+        self.assertIn("closeBatchMenus(menu)", body)
         self.assertIn("data-batch-action", body)
         self.assertIn("Batch complete", body)
         self.assertIn('id="header-notifications"', body)
