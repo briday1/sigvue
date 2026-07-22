@@ -21,7 +21,7 @@ A workspace is an adapter between domain code and the Sigvue runtime. Plugin
 code owns data semantics; the framework owns application lifecycle and UI
 state.
 
-![Mental model diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.29/docs/pypi-diagrams/01-mental-model.svg)
+![Mental model diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.30/docs/pypi-diagrams/01-mental-model.svg)
 
 The same factory may appear multiple times in `browser.toml`. Each entry creates
 a separate workspace instance with its own identity, tags, and data
@@ -183,7 +183,7 @@ def create_workspace(config):
 
 ### Contract relationships
 
-![Contract relationships diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.29/docs/pypi-diagrams/02-contract-relationships.svg)
+![Contract relationships diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.30/docs/pypi-diagrams/02-contract-relationships.svg)
 
 ### Typed data path
 
@@ -191,7 +191,7 @@ def create_workspace(config):
 objects. Pipeline-specific subclasses implement their named lifecycle methods.
 Together their type parameters describe the complete data path:
 
-![Typed data path diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.29/docs/pypi-diagrams/03-typed-data-path.svg)
+![Typed data path diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.30/docs/pypi-diagrams/03-typed-data-path.svg)
 
 The objects make every boundary explicit at construction time: the workspace
 cannot accept a look-alike object that merely happens to have a method with the
@@ -262,7 +262,7 @@ The factory runs when the profile is loaded or reloaded. Source I/O, delivery,
 configuration, processing, and presentation run later, when the browser opens
 data or changes request state.
 
-![Request lifecycle diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.29/docs/pypi-diagrams/04-request-lifecycle.svg)
+![Request lifecycle diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.30/docs/pypi-diagrams/04-request-lifecycle.svg)
 
 `source.open()` is called for the selected item on each page request. A domain
 reader may therefore be lightweight and read only the requested interval when
@@ -445,7 +445,7 @@ tags = ["laboratory", "reference"]
 data_root = "./data/campaign-b"
 ```
 
-![browser.toml diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.29/docs/pypi-diagrams/05-browser-toml.svg)
+![browser.toml diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.30/docs/pypi-diagrams/05-browser-toml.svg)
 
 These are two registered workspace instances, not two plugin implementations.
 Their framework routes and catalog identities are isolated by their unique
@@ -640,6 +640,7 @@ stage.
 | `trace_style` | Add color, width, opacity, line-style, and marker controls; returns a Plotly-ready `TraceStyle`. |
 | `tab` | Add a tab with a column layout and static or dynamic update policy. |
 | `group` | Nest layout content in a row or column group. |
+| `details_group` | Put related presentation controls in one generic, collapsible Details box. |
 | `parameter_group` | Place controls declared in the current presentation region. |
 | `place_parameters` | Place processing controls previously declared by `Analysis.configure()`. |
 | `switcher` / `switcher_view` | Build arbitrary switched content incrementally. |
@@ -685,7 +686,19 @@ raster.add_to(figure, row=1, col=1)
 
 Declare the resolution and aggregation with presentation controls when users
 should tune them. Because they are presentation settings, changing them rerenders
-the heatmap without rerunning domain analysis.
+the heatmap without rerunning domain analysis. Rasterized heatmaps also rerender
+from their exact server-side source cells after a pan or zoom settles, so a
+smaller visible region progressively gains detail without sending the full matrix
+to the browser. The source matrix is never serialized as hidden client metadata.
+
+Use a generic details group to keep those related controls together:
+
+```python
+with ui.details_group("Raster rendering"):
+    width = ui.select("render_width", default=1024, options=(512, 1024, 2048))
+    height = ui.select("render_height", default=512, options=(256, 512, 1024))
+    method = ui.select("render_method", default="mean", options=("max", "mean", "median"))
+```
 
 For plots whose data bounds are also their valid navigation bounds, set
 `axis_navigation="bounded"` on `ui.plot` or `ui.view_switcher`. Sigvue derives
@@ -779,7 +792,7 @@ sigvue batch --config browser.toml \
 
 Add `--json` for automation-friendly final status and artifact paths.
 
-![Optional annotation, export, and batch capabilities diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.29/docs/pypi-diagrams/06-optional-annotation-export-and-batch-capabilities.svg)
+![Optional annotation, export, and batch capabilities diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.30/docs/pypi-diagrams/06-optional-annotation-export-and-batch-capabilities.svg)
 
 Subclass `Annotator` to discover timeline annotations and add one from the current
 delivered value. Subclass `Exporter` to advertise scope and format choices and write
