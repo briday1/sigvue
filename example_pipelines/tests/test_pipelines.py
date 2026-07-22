@@ -37,6 +37,7 @@ class ExamplePipelineTests(unittest.TestCase):
             self.assertEqual("select", controls["overlap_percent"].control_type)
             self.assertEqual("colormap", controls["colormap"].control_type)
             self.assertEqual("limits", controls["dbfs_limits"].control_type)
+            self.assertEqual("limits", controls["spectrum_dbfs_limits"].control_type)
             self.assertEqual("spectrum_style", controls["spectrum_style_color"].picker)
             self.assertEqual("toggle", controls["show_colorbar"].control_type)
             self.assertEqual("Raster rendering", controls["render_width"].group)
@@ -48,6 +49,8 @@ class ExamplePipelineTests(unittest.TestCase):
             self.assertEqual(0.35, figure.layout.xaxis2.gridwidth)
             limited = opened.page.views[0].callback({"dbfs_limits": "-80,-30"})
             self.assertEqual((-80.0, -30.0), (limited.data[1].zmin, limited.data[1].zmax))
+            spectrum_limited = opened.page.views[0].callback({"spectrum_dbfs_limits": "-70,-25"})
+            self.assertEqual((-70.0, -25.0), tuple(spectrum_limited.layout.yaxis.range))
 
     def test_synthetic_comms_generator_and_windowed_workspace(self):
         with TemporaryDirectory() as directory:

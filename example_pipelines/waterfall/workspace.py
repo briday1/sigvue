@@ -6,7 +6,7 @@ from sigvue.plugin import DiscoveryColumn, Workspace
 
 from .analysis import WaterfallAnalysis
 from .delivery import WindowedSamples
-from .plots import WaterfallPresentation
+from .presentation import WaterfallPresentation
 from .source import recording_source
 
 

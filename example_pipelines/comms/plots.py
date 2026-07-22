@@ -1,15 +1,13 @@
-"""Plotly constellation and eye-diagram views."""
+"""Pure Plotly figure builders for communications products."""
 
 import numpy as np
 import plotly.graph_objects as go
 
-from sigvue.plugin import Presentation, ViewContext
-
-from ..style import ORANGE, TEAL, style_figure
+from ..style import ORANGE, TEAL
 from .models import CommsProducts
 
 
-def present(products: CommsProducts, ui: ViewContext) -> None:
+def constellation_figure(products: CommsProducts) -> go.Figure:
     constellation = go.Figure(go.Scattergl(
         x=products.symbols.real,
         y=products.symbols.imag,
@@ -30,6 +28,11 @@ def present(products: CommsProducts, ui: ViewContext) -> None:
         autorange=False,
     )
 
+    return constellation
+
+
+def eye_figure(products: CommsProducts) -> go.Figure:
+    """Build the eye-diagram figure without interacting with the UI."""
     eye = go.Figure()
     if products.eye_segments.size:
         separators = np.full((products.eye_segments.shape[0], 1), np.nan)
@@ -57,27 +60,4 @@ def present(products: CommsProducts, ui: ViewContext) -> None:
         autorange=False,
     )
 
-    ui.stat("Modulation", products.modulation)
-    ui.stat("Samples per symbol", products.samples_per_symbol)
-    ui.stat("Recovered symbols", products.symbols.size)
-    ui.stat("Window start", f"{products.start_seconds * 1e3:.3f} ms")
-    ui.stat("Window width", f"{products.duration_seconds * 1e3:.3f} ms")
-    with ui.tab("Constellation"):
-        ui.plot(
-            style_figure(constellation, ui.theme, f"{products.modulation} constellation"),
-            key="constellation",
-            axis_navigation="bounded",
-        )
-    with ui.tab("Eye diagram"):
-        ui.plot(
-            style_figure(eye, ui.theme, f"{products.modulation} eye diagram"),
-            key="eye",
-            axis_navigation="bounded",
-        )
-
-
-class CommsPresentation(Presentation[CommsProducts]):
-    """Framework presentation object for constellation and eye views."""
-
-    def present(self, products: CommsProducts, ui: ViewContext) -> None:
-        present(products, ui)
+    return eye

@@ -1,66 +1,29 @@
-"""Plotly construction and view layout for analyzed waterfall products."""
+"""Pure Plotly figure builders for analyzed waterfall products."""
 
-import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from sigvue.plugin import Presentation, ViewContext, add_viewport_heatmap
+from sigvue.plugin import add_viewport_heatmap
 
-from ..style import TEAL, heatmap_grid_color, style_figure
 from .models import WaterfallProducts
 
 
-COLORMAPS = ("Plasma", "Viridis", "Cividis", "Inferno", "Magma", "Turbo")
-
-
-def present(products: WaterfallProducts, ui: ViewContext) -> None:
-    colormap = ui.colormap(
-        "colormap",
-        label="Waterfall colormap",
-        default="Plasma",
-        options=COLORMAPS,
-        group="Display",
-    )
-    finite = products.waterfall_dbfs[np.isfinite(products.waterfall_dbfs)]
-    automatic = (
-        float(np.floor(np.percentile(finite, 3))) if finite.size else -90.0,
-        float(np.ceil(np.percentile(finite, 99.5))) if finite.size else -20.0,
-    )
-    zmin, zmax = ui.limits(
-        "dbfs_limits",
-        label="dBFS limits",
-        default=automatic,
-        minimum=-140.0,
-        maximum=0.0,
-        step=1.0,
-        group="Display",
-    )
-    spectrum_style = ui.trace_style(
-        "spectrum_style",
-        label="Average spectrum",
-        color=TEAL,
-        width=1.4,
-        group="Display",
-    )
-    show_colorbar = ui.toggle(
-        "show_colorbar",
-        label="Show colorbar",
-        default=True,
-        group="Display",
-    )
-    with ui.details_group("Raster rendering"):
-        render_width = int(ui.select(
-            "render_width", label="Heatmap render width", default=1024,
-            options=(256, 512, 1024, 2048),
-        ))
-        render_height = int(ui.select(
-            "render_height", label="Heatmap render height", default=512,
-            options=(128, 256, 512, 1024),
-        ))
-        aggregation = str(ui.select(
-            "render_aggregation", label="Heatmap aggregation", default="mean",
-            options=("max", "mean", "median"),
-        ))
+def waterfall_figure(
+    products: WaterfallProducts,
+    *,
+    viewport: object,
+    colormap: str,
+    zmin: float,
+    zmax: float,
+    spectrum_ymin: float,
+    spectrum_ymax: float,
+    spectrum_style: object,
+    show_colorbar: bool,
+    render_width: int,
+    render_height: int,
+    aggregation: str,
+) -> go.Figure:
+    """Build the spectrum/waterfall figure from explicit display settings."""
     figure = make_subplots(
         rows=2,
         cols=1,
@@ -78,7 +41,7 @@ def present(products: WaterfallProducts, ui: ViewContext) -> None:
     ), row=1, col=1)
     add_viewport_heatmap(
         figure,
-        viewport=ui.plot_viewport("lte-waterfall"),
+        viewport=viewport,
         x=products.frequency_mhz,
         y=products.time_edges_ms,
         z=products.waterfall_dbfs,
@@ -93,7 +56,10 @@ def present(products: WaterfallProducts, ui: ViewContext) -> None:
         row=2,
         col=1,
     )
-    figure.update_yaxes(title_text="Power (dBFS)", range=[zmin, zmax], autorange=False, row=1, col=1)
+    figure.update_yaxes(
+        title_text="Power (dBFS)", range=[spectrum_ymin, spectrum_ymax],
+        autorange=False, row=1, col=1,
+    )
     figure.update_yaxes(
         title_text="Recording time (ms)",
         range=[float(products.time_edges_ms[0]), float(products.time_edges_ms[-1])],
@@ -116,18 +82,4 @@ def present(products: WaterfallProducts, ui: ViewContext) -> None:
         col=1,
     )
     figure.update_layout(uirevision=f"lte-waterfall:{products.recording.metadata_path}")
-    title = str(products.recording.metadata["global"].get("core:description", "Synthetic LTE"))
-    ui.stat("Sample rate", f"{products.recording.sample_rate / 1e6:g} MS/s")
-    ui.stat("Center frequency", f"{products.recording.center_frequency / 1e6:g} MHz")
-    with ui.tab("Spectrum + waterfall"):
-        styled = style_figure(figure, ui.theme, title)
-        styled.update_xaxes(gridcolor=heatmap_grid_color(ui.theme), gridwidth=0.35, row=2, col=1)
-        styled.update_yaxes(gridcolor=heatmap_grid_color(ui.theme), gridwidth=0.35, row=2, col=1)
-        ui.plot(styled, key="lte-waterfall", axis_navigation="bounded")
-
-
-class WaterfallPresentation(Presentation[WaterfallProducts]):
-    """Framework presentation object for the waterfall views."""
-
-    def present(self, products: WaterfallProducts, ui: ViewContext) -> None:
-        present(products, ui)
+    return figure
