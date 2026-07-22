@@ -824,6 +824,7 @@ stage.
 | `trace_style` | Add color, width, opacity, line-style, and marker controls; returns a Plotly-ready `TraceStyle`. |
 | `tab` | Add a tab with a column layout and static or dynamic update policy. |
 | `group` | Nest layout content in a row or column group. |
+| `details_group` | Put related presentation controls in one generic, collapsible Details box. |
 | `parameter_group` | Place controls declared in the current presentation region. |
 | `place_parameters` | Place processing controls previously declared by `Analysis.configure()`. |
 | `switcher` / `switcher_view` | Build arbitrary switched content incrementally. |
@@ -869,7 +870,19 @@ raster.add_to(figure, row=1, col=1)
 
 Declare the resolution and aggregation with presentation controls when users
 should tune them. Because they are presentation settings, changing them rerenders
-the heatmap without rerunning domain analysis.
+the heatmap without rerunning domain analysis. Rasterized heatmaps also rerender
+from their exact server-side source cells after a pan or zoom settles, so a
+smaller visible region progressively gains detail without sending the full matrix
+to the browser. The source matrix is never serialized as hidden client metadata.
+
+Use a generic details group to keep those related controls together:
+
+```python
+with ui.details_group("Raster rendering"):
+    width = ui.select("render_width", default=1024, options=(512, 1024, 2048))
+    height = ui.select("render_height", default=512, options=(256, 512, 1024))
+    method = ui.select("render_method", default="mean", options=("max", "mean", "median"))
+```
 
 For plots whose data bounds are also their valid navigation bounds, set
 `axis_navigation="bounded"` on `ui.plot` or `ui.view_switcher`. Sigvue derives

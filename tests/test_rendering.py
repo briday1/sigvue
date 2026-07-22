@@ -4,7 +4,7 @@ from matplotlib.figure import Figure
 import numpy as np
 import plotly.graph_objects as go
 
-from sigvue.plugin import RasterizedHeatmap, aggregate_heatmap
+from sigvue.plugin import RasterizedHeatmap, aggregate_heatmap, rerasterize_heatmaps
 from sigvue.rendering.dispatch import RenderKind, detect_render_kind
 from sigvue.rendering.matplotlib_renderer import render_matplotlib_figure
 
@@ -57,6 +57,26 @@ class RenderingTests(unittest.TestCase):
         image = figure.layout.images[0]
         self.assertEqual((-0.5, 1.5), (image.x, image.x + image.sizex))
         self.assertEqual((-0.5, 1.5), (image.y - image.sizey, image.y))
+
+    def test_rasterized_heatmap_progressively_rerenders_visible_source_cells(self):
+        figure = go.Figure()
+        RasterizedHeatmap.create(
+            x=np.arange(100),
+            y=np.arange(80),
+            z=np.arange(8_000, dtype=float).reshape(80, 100),
+            colorscale="Viridis",
+            render_width=10,
+            render_height=8,
+        ).add_to(figure)
+        initial = figure.layout.images[0].source
+
+        rerasterize_heatmaps(figure, {"xaxis": [40, 49], "yaxis": [20, 27]})
+
+        image = figure.layout.images[0]
+        self.assertNotEqual(initial, image.source)
+        self.assertLess(image.sizex, 12)
+        self.assertLess(image.sizey, 10)
+        self.assertEqual((2, 2), np.asarray(figure.data[0].z).shape)
 
     def test_detect_text_and_markdown(self):
         self.assertEqual(RenderKind.TEXT, detect_render_kind("plain"))

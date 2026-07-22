@@ -20,6 +20,7 @@ from sigvue.rendering.heatmap import (
     HeatmapAggregation,
     RasterizedHeatmap,
     aggregate_heatmap,
+    rerasterize_heatmaps,
 )
 from sigvue.core.capabilities import (
     Annotation,
@@ -69,4 +70,5 @@ __all__ = [
     "Workspace",
     "TimeUnit",
     "aggregate_heatmap",
+    "rerasterize_heatmaps",
 ]

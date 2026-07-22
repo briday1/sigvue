@@ -312,6 +312,8 @@ class ViewContext(ParameterContext, Protocol):
 
     def group(self, direction: str = "column", **props: object) -> ContextManager[None]: ...
 
+    def details_group(self, label: str) -> ContextManager[None]: ...
+
     def parameter_group(self, label: str | None = None, *, columns: int = 1) -> ContextManager[None]: ...
 
     def place_parameters(self, *names: str, label: str | None = None, columns: int = 1) -> None: ...
@@ -457,6 +459,7 @@ class AnalysisContext:
         self._active_tab: _Tab | None = None
         self._active_nodes: list[LayoutNode] | None = None
         self._active_parameter_nodes: list[LayoutNode] | None = None
+        self._active_details_group: str | None = None
         self._active_switcher: tuple[str, list[LayoutNode]] | None = None
         self._active_switcher_view: tuple[str, str] | None = None
         self._switcher_keys: set[str] = set()
@@ -754,6 +757,8 @@ class AnalysisContext:
     def _add_control(self, control: ControlSpec) -> None:
         if any(existing.name == control.name for existing in self.controls):
             raise ValueError(f"Duplicate control name: {control.name}")
+        if self._active_details_group is not None:
+            control = replace(control, group=self._active_details_group)
         if self._active_parameter_nodes is not None:
             control = ControlSpec(
                 name=control.name,
@@ -980,6 +985,20 @@ class AnalysisContext:
         else:
             self._active_nodes = parent
             parent.append(container(direction, children, **props))
+
+    @contextmanager
+    def details_group(self, label: str) -> Iterator[None]:
+        """Assign related detail controls to one generic sidebar settings box."""
+        normalized = label.strip()
+        if not normalized:
+            raise ValueError("ui.details_group() requires a non-empty label")
+        if self._active_details_group is not None:
+            raise RuntimeError("Details groups cannot be nested")
+        self._active_details_group = normalized
+        try:
+            yield
+        finally:
+            self._active_details_group = None
 
     @contextmanager
     def parameter_group(self, label: str | None = None, *, columns: int = 1) -> Iterator[None]:

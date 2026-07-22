@@ -6,6 +6,8 @@ import json
 import os
 import sys
 import unittest
+import numpy as np
+import plotly.graph_objects as go
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock
@@ -19,6 +21,7 @@ from sigvue.plugin import (
     CapabilityChoice,
     DirectorySource,
     Presentation,
+    RasterizedHeatmap,
     Workspace,
 )
 from sigvue.web.application import (
@@ -28,7 +31,7 @@ from sigvue.web.application import (
     _module_watch_snapshot,
     _run_batch_command,
 )
-from tests.fixtures import IdentityAnalysis, create_test_app, identity_process
+from tests.fixtures import IdentityAnalysis, MemorySource, create_test_app, identity_process
 
 
 class WebAppTests(unittest.TestCase):
@@ -78,6 +81,46 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(1, len(page["controls"]))
         playback = next(view for view in page["rendered_views"] if view["name"] == "signal")["value"]
         self.assertEqual([2.0, 4.0, 6.0, 8.0], playback["data"][0]["y"])
+
+    def test_open_item_rerasterizes_heatmap_for_requested_plot_viewport(self):
+        class RasterPresentation(Presentation):
+            def present(self, data, ui):
+                figure = go.Figure()
+                RasterizedHeatmap.create(
+                    x=np.arange(100),
+                    y=np.arange(80),
+                    z=np.arange(8_000, dtype=float).reshape(80, 100),
+                    colorscale="Viridis",
+                    render_width=10,
+                    render_height=8,
+                ).add_to(figure)
+                figure.update_xaxes(range=[-0.5, 99.5])
+                figure.update_yaxes(range=[-0.5, 79.5])
+                with ui.tab("Heatmap"):
+                    ui.plot(figure, key="heatmap", axis_navigation="bounded")
+
+        workspace = Workspace(
+            identifier="raster-workspace",
+            name="Raster workspace",
+            description="Raster callback fixture",
+            source=MemorySource(),
+            analysis=IdentityAnalysis(),
+            presentation=RasterPresentation(),
+        )
+        app = SigvueApp()
+        app.register_workspace(workspace)
+
+        payload = app.open_item(
+            "raster-workspace",
+            "recording",
+            {"__plot_viewports": json.dumps({"heatmap": {"xaxis": [40, 49], "yaxis": [20, 27]}})},
+        )
+
+        rendered = payload["page"]["rendered_views"][0]
+        image = rendered["value"]["layout"]["images"][0]
+        self.assertTrue(rendered["rasterized"])
+        self.assertEqual((39.5, 10.0), (image["x"], image["sizex"]))
+        self.assertEqual((27.5, 8.0), (image["y"], image["sizey"]))
 
     def test_recursive_directory_source_is_browsed_as_folders(self):
         with TemporaryDirectory() as directory:
@@ -253,6 +296,8 @@ class WebAppTests(unittest.TestCase):
         self.assertIn('type="color"', body)
         self.assertIn("'<strong>$1</strong>'", body)
         self.assertIn("control.group||'Analysis settings'", body)
+        self.assertIn('class="settings-group"', body)
+        self.assertIn('class="settings-group-body"', body)
         self.assertIn('class="style-picker"', body)
         self.assertIn('class="colormap-picker"', body)
         self.assertIn("function bindColormapPickers()", body)
@@ -358,6 +403,9 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("redrawWindowOverview?.()", body)
         self.assertIn("rememberPlotResetRanges", body)
         self.assertIn("plotly_relayouting", body)
+        self.assertIn("plotly_relayout", body)
+        self.assertIn("__plot_viewports:JSON.stringify(plotViewportPayload())", body)
+        self.assertIn("view.rasterized?onViewportChanged:null", body)
         self.assertIn("constrainPlotDuringPan", body)
         self.assertIn("view?.axis_navigation==='bounded'", body)
         self.assertIn("changedPlotResetRanges", body)
@@ -368,6 +416,7 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("return false", body)
         self.assertIn("modeBarButtonsToAdd:['select2d']", body)
         self.assertIn("modeBarButtonsToRemove:['lasso2d']", body)
+        self.assertIn("doubleClick:false", body)
         self.assertIn("const scheduleCommit=()", body)
         self.assertIn("render();scheduleCommit()", body)
         self.assertIn("track.onpointerup=event=>", body)

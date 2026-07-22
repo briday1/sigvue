@@ -695,6 +695,20 @@ class PluginAuthoringTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "default colormap"):
             AnalysisContext({}).colormap("invalid", default="Plasma", options=("Viridis",))
 
+    def test_details_group_assigns_a_generic_sidebar_group(self):
+        ui = AnalysisContext({})
+        with ui.details_group("Raster rendering"):
+            ui.select("width", default=1024, options=(512, 1024))
+            ui.select("method", default="mean", options=("max", "mean", "median"))
+        self.assertEqual(
+            ["Raster rendering", "Raster rendering"],
+            [control.group for control in ui.controls],
+        )
+        with self.assertRaisesRegex(RuntimeError, "cannot be nested"):
+            with ui.details_group("Outer"):
+                with ui.details_group("Inner"):
+                    pass
+
     def test_limits_picker_returns_bounded_ordered_pair(self):
         ui = AnalysisContext({"dbfs_limits": "-82,-14"})
         selected = ui.limits(

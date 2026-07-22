@@ -188,6 +188,26 @@ class RasterizedHeatmap:
             layer="below",
             visible=trace.visible is not False and trace.visible != "legendonly",
         )
+        rasters = getattr(figure, "_sigvue_rasterized_heatmaps", None)
+        if rasters is None:
+            rasters = []
+            figure._sigvue_rasterized_heatmaps = rasters
+        rasters.append(
+            _RasterSpec(
+                image_index=len(figure.layout.images) - 1,
+                xref=xref,
+                yref=yref,
+                x=np.asarray(trace.x, dtype=float) if trace.x is not None else None,
+                y=np.asarray(trace.y, dtype=float) if trace.y is not None else None,
+                z=original,
+                zmin=zmin,
+                zmax=zmax,
+                colorscale=trace.colorscale,
+                render_width=self.render_width,
+                render_height=self.render_height,
+                aggregation=self.aggregation,
+            )
+        )
         attached.x = [xmin, xmax]
         attached.y = [ymin, ymax]
         attached.z = [[zmin, zmax], [zmin, zmax]]
@@ -197,9 +217,94 @@ class RasterizedHeatmap:
         return trace_index
 
 
+@dataclass(frozen=True)
+class _RasterSpec:
+    image_index: int
+    xref: str
+    yref: str
+    x: np.ndarray | None
+    y: np.ndarray | None
+    z: np.ndarray
+    zmin: float
+    zmax: float
+    colorscale: Any
+    render_width: int
+    render_height: int
+    aggregation: HeatmapAggregation
+
+
+def _axis_name(reference: str) -> str:
+    return f"{reference[0]}axis{reference[1:]}"
+
+
+def _coordinate_edges(values: np.ndarray | None, cell_count: int) -> np.ndarray:
+    if values is None:
+        return np.arange(cell_count + 1, dtype=float) - 0.5
+    coordinates = np.asarray(values, dtype=float)
+    if coordinates.size == cell_count + 1:
+        return coordinates
+    if coordinates.size == 1:
+        return np.asarray([coordinates[0] - 0.5, coordinates[0] + 0.5])
+    edges = np.empty(cell_count + 1, dtype=float)
+    edges[1:-1] = (coordinates[:-1] + coordinates[1:]) / 2
+    edges[0] = coordinates[0] - (coordinates[1] - coordinates[0]) / 2
+    edges[-1] = coordinates[-1] + (coordinates[-1] - coordinates[-2]) / 2
+    return edges
+
+
+def _visible_slice(edges: np.ndarray, requested: Any) -> slice:
+    if not isinstance(requested, (list, tuple)) or len(requested) < 2:
+        return slice(0, edges.size - 1)
+    try:
+        low, high = sorted((float(requested[0]), float(requested[1])))
+    except (TypeError, ValueError):
+        return slice(0, edges.size - 1)
+    if not np.isfinite(low) or not np.isfinite(high):
+        return slice(0, edges.size - 1)
+    cell_low = np.minimum(edges[:-1], edges[1:])
+    cell_high = np.maximum(edges[:-1], edges[1:])
+    indexes = np.flatnonzero((cell_high >= low) & (cell_low <= high))
+    if not indexes.size:
+        return slice(0, edges.size - 1)
+    return slice(int(indexes[0]), int(indexes[-1]) + 1)
+
+
+def rerasterize_heatmaps(figure: Any, viewport: dict[str, Any] | None) -> Any:
+    """Rerender attached raster heatmaps for the visible Plotly axis ranges."""
+    if not isinstance(viewport, dict) or not viewport:
+        return figure
+    for spec in getattr(figure, "_sigvue_rasterized_heatmaps", ()):
+        x_edges = _coordinate_edges(spec.x, spec.z.shape[1])
+        y_edges = _coordinate_edges(spec.y, spec.z.shape[0])
+        x_slice = _visible_slice(x_edges, viewport.get(_axis_name(spec.xref)))
+        y_slice = _visible_slice(y_edges, viewport.get(_axis_name(spec.yref)))
+        visible = spec.z[y_slice, x_slice]
+        rendered = aggregate_heatmap(
+            visible,
+            width=spec.render_width,
+            height=spec.render_height,
+            method=spec.aggregation,
+        )
+        xmin, xmax = sorted((float(x_edges[x_slice.start]), float(x_edges[x_slice.stop])))
+        ymin, ymax = sorted((float(y_edges[y_slice.start]), float(y_edges[y_slice.stop])))
+        image = figure.layout.images[spec.image_index]
+        image.source = _png_uri(
+            rendered,
+            zmin=spec.zmin,
+            zmax=spec.zmax,
+            colorscale=spec.colorscale,
+        )
+        image.x = xmin
+        image.y = ymax
+        image.sizex = xmax - xmin
+        image.sizey = ymax - ymin
+    return figure
+
+
 __all__ = [
     "HEATMAP_AGGREGATIONS",
     "HeatmapAggregation",
     "RasterizedHeatmap",
     "aggregate_heatmap",
+    "rerasterize_heatmaps",
 ]
