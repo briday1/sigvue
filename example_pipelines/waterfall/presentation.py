@@ -3,6 +3,7 @@
 from sigvue.plugin import Presentation, ViewContext
 
 from ..style import TEAL, heatmap_grid_color, style_figure
+from ..memory import format_bytes
 from .models import WaterfallProducts
 from .plots import waterfall_figure
 from .scales import automatic_dbfs_ranges
@@ -64,6 +65,7 @@ def present(products: WaterfallProducts, ui: ViewContext) -> None:
     title = str(products.recording.metadata["global"].get("core:description", "Synthetic LTE"))
     ui.stat("Sample rate", f"{products.recording.sample_rate / 1e6:g} MS/s")
     ui.stat("Center frequency", f"{products.recording.center_frequency / 1e6:g} MHz")
+    ui.stat("Buffer memory", format_bytes(products.buffer_nbytes))
     with ui.tab("Spectrum + waterfall"):
         styled = style_figure(figure, ui.theme, title)
         styled.update_xaxes(gridcolor=heatmap_grid_color(ui.theme), gridwidth=0.35, row=2, col=1)

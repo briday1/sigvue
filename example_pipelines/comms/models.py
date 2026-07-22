@@ -33,3 +33,4 @@ class CommsProducts:
     eye_limit: float
     start_seconds: float
     duration_seconds: float
+    buffer_nbytes: int

@@ -28,3 +28,4 @@ class WaterfallProducts:
     waterfall_dbfs: np.ndarray
     frequency_mhz: np.ndarray
     time_edges_ms: np.ndarray
+    buffer_nbytes: int

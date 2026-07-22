@@ -51,6 +51,7 @@ def process(data: SignalWindow, settings: WaterfallSettings) -> WaterfallProduct
         waterfall,
         frequency,
         (data.start_sample + time_edges) / data.recording.sample_rate * 1e3,
+        data.samples.nbytes,
     )
 
 

@@ -31,6 +31,7 @@ class ExamplePipelineTests(unittest.TestCase):
             opened = workspace.open_item(items[0].identifier)
             self.assertEqual("windowed", opened.page.playback.mode)
             self.assertEqual("Mean received power (dBFS)", opened.page.playback.overview_label)
+            self.assertRegex(str(opened.page.statistics["Buffer memory"]), r"^[0-9.]+ [KMGT]?i?B$")
             self.assertEqual(1, len(opened.page.views))
             controls = {control.name: control for control in opened.page.controls}
             self.assertEqual("select", controls["fft_size"].control_type)
@@ -71,6 +72,7 @@ class ExamplePipelineTests(unittest.TestCase):
                 opened = workspace.open_item(item.identifier)
                 self.assertEqual("windowed", opened.page.playback.mode)
                 self.assertEqual("Mean received power (dBFS)", opened.page.playback.overview_label)
+                self.assertRegex(str(opened.page.statistics["Buffer memory"]), r"^[0-9.]+ [KMGT]?i?B$")
                 self.assertGreater(len(opened.page.playback.overview_values), 1)
                 self.assertLess(
                     opened.page.playback.window_end_seconds - opened.page.playback.window_start_seconds,
