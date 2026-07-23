@@ -21,7 +21,7 @@ A workspace is an adapter between domain code and the Sigvue runtime. Plugin
 code owns data semantics; the framework owns application lifecycle and UI
 state.
 
-![Mental model diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.36/docs/pypi-diagrams/01-mental-model.svg)
+![Mental model diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.37/docs/pypi-diagrams/01-mental-model.svg)
 
 The same factory may appear multiple times in `browser.toml`. Each entry creates
 a separate workspace instance with its own identity, tags, and data
@@ -98,6 +98,7 @@ values passed to its constructor:
 | `annotator: Annotator[...]` | No | Plugin | Discover and persist domain-native annotations. Enables **Annotate**. |
 | `exporter: Exporter[...]` | No | Plugin | Advertise formats/scopes and serialize domain data. Enables **Download**. |
 | `discovery_columns` | No | Plugin | Define sortable metadata columns populated by `DataResource.summary`. |
+| `lazy_views` | No | Plugin | `False` creates every declared view up front; `True` creates only the selected tab/switcher branch and fetches another branch when selected. |
 | `version`, `category`, `tags` | No | Plugin defaults; profile may override display metadata | Catalog presentation and search. |
 
 ### Start with only what is necessary
@@ -114,6 +115,28 @@ Workspace(
     presentation=ResultPresentation(),
 )
 ```
+
+### Choose when views are created
+
+`Workspace(..., lazy_views=False)` is the default. It runs every declared view
+callback during the initial item request, so tab and view-switcher changes are
+client-local afterward. Use this eager mode when opening and processing the data
+once is more important than the cost of creating every figure.
+
+Set `lazy_views=True` when a workspace has many expensive views and should create
+only what the user can currently see:
+
+```python
+Workspace(
+    ...,
+    lazy_views=True,
+)
+```
+
+Selecting another tab or switcher option then makes a normal item request and
+creates only that visible layout branch. This flag controls presentation view
+creation; source, delivery, analysis, and their caching still follow the normal
+workspace request lifecycle.
 
 Add another object only when the workflow needs the behavior it owns:
 
@@ -183,6 +206,7 @@ def create_workspace(config):
         annotator=MyAnnotator(),                   # optional capability
         exporter=MyExporter(),                     # optional capability
         discovery_columns=MY_COLUMNS,              # optional catalog schema
+        lazy_views=True,                            # optional active-view-only creation
         category="signal analysis",               # optional fallback metadata
         tags=("windowed", "domain-format"),        # optional fallback metadata
     )
@@ -190,7 +214,7 @@ def create_workspace(config):
 
 ### Contract relationships
 
-![Contract relationships diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.36/docs/pypi-diagrams/02-contract-relationships.svg)
+![Contract relationships diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.37/docs/pypi-diagrams/02-contract-relationships.svg)
 
 ### Typed data path
 
@@ -198,7 +222,7 @@ def create_workspace(config):
 objects. Pipeline-specific subclasses implement their named lifecycle methods.
 Together their type parameters describe the complete data path:
 
-![Typed data path diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.36/docs/pypi-diagrams/03-typed-data-path.svg)
+![Typed data path diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.37/docs/pypi-diagrams/03-typed-data-path.svg)
 
 The objects make every boundary explicit at construction time: the workspace
 cannot accept a look-alike object that merely happens to have a method with the
@@ -269,7 +293,7 @@ The factory runs when the profile is loaded or reloaded. Source I/O, delivery,
 configuration, processing, and presentation run later, when the browser opens
 data or changes request state.
 
-![Request lifecycle diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.36/docs/pypi-diagrams/04-request-lifecycle.svg)
+![Request lifecycle diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.37/docs/pypi-diagrams/04-request-lifecycle.svg)
 
 `source.open()` is called for the selected item on each page request. A domain
 reader may therefore be lightweight and read only the requested interval when
@@ -452,7 +476,7 @@ tags = ["laboratory", "reference"]
 data_root = "./data/campaign-b"
 ```
 
-![browser.toml diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.36/docs/pypi-diagrams/05-browser-toml.svg)
+![browser.toml diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.37/docs/pypi-diagrams/05-browser-toml.svg)
 
 These are two registered workspace instances, not two plugin implementations.
 Their framework routes and catalog identities are isolated by their unique
@@ -810,7 +834,7 @@ sigvue batch --config browser.toml \
 
 Add `--json` for automation-friendly final status and artifact paths.
 
-![Optional annotation, export, and batch capabilities diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.36/docs/pypi-diagrams/06-optional-annotation-export-and-batch-capabilities.svg)
+![Optional annotation, export, and batch capabilities diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.37/docs/pypi-diagrams/06-optional-annotation-export-and-batch-capabilities.svg)
 
 Subclass `Annotator` to discover timeline annotations and add one from the current
 delivered value. Subclass `Exporter` to advertise scope and format choices and write
