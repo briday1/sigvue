@@ -41,6 +41,5 @@ class LayoutTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "view switcher"):
             page.validate()
 
-
 if __name__ == "__main__":
     unittest.main()

@@ -641,6 +641,31 @@ class PluginAuthoringTests(unittest.TestCase):
         self.assertEqual(0.25, ui.number("duration", default=0.1, minimum=0.01, step=0.01))
         self.assertEqual(["integer", "float"], [control.control_type for control in ui.controls])
 
+    def test_render_points_declares_an_explicit_user_control(self):
+        ui = AnalysisContext({"frequency_points": "96"})
+
+        value = ui.render_points(
+            "frequency_points",
+            default=256,
+            minimum=16,
+            maximum=4096,
+            step=16,
+            label="Frequency points",
+        )
+
+        self.assertEqual(96, value)
+        control = ui.controls[0]
+        self.assertEqual("integer", control.control_type)
+        self.assertEqual("Rendering resolution", control.group)
+        self.assertEqual((16, 4096, 16), (control.minimum, control.maximum, control.step))
+
+    def test_render_points_rejects_invalid_bounds(self):
+        ui = AnalysisContext({})
+        with self.assertRaisesRegex(ValueError, "positive"):
+            ui.render_points("points", default=0)
+        with self.assertRaisesRegex(ValueError, "maximum"):
+            ui.render_points("points", default=64, minimum=64, maximum=32)
+
     def test_toggle_returns_boolean_and_declares_switch_control(self):
         ui = AnalysisContext({"annotations": "false"})
         self.assertFalse(ui.toggle("annotations", default=True, label="Show annotations"))

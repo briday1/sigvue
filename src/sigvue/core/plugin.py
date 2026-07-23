@@ -72,6 +72,27 @@ SettingsData = TypeVar("SettingsData")
 AnalysisProducts = TypeVar("AnalysisProducts")
 
 
+class _DeferredView:
+    """Resolve a callable view at most once, when the renderer requests it."""
+
+    def __init__(self, factory: Callable[[], object]) -> None:
+        self._factory = factory
+        self._lock = RLock()
+        self._resolved = False
+        self._value: object = None
+
+    def resolve(self) -> object:
+        with self._lock:
+            if not self._resolved:
+                self._value = self._factory()
+                self._resolved = True
+            return self._value
+
+
+def _resolve_deferred_view(value: object) -> object:
+    return value.resolve() if isinstance(value, _DeferredView) else value
+
+
 class Source(ABC, Generic[SourceData]):
     """Framework-defined source object: discover items, then open one source value."""
 
@@ -163,6 +184,18 @@ class ParameterContext(Protocol):
         picker: str | None = None,
         picker_label: str | None = None,
     ) -> int | float: ...
+
+    def render_points(
+        self,
+        name: str,
+        *,
+        default: int,
+        minimum: int = 16,
+        maximum: int | None = None,
+        step: int = 16,
+        label: str | None = None,
+        group: str = "Rendering resolution",
+    ) -> int: ...
 
 
 @dataclass(frozen=True)
@@ -453,6 +486,7 @@ class AnalysisContext:
         self.figures: dict[str, object] = {}
         self.figure_updates: dict[str, str] = {}
         self.figure_axis_navigation: dict[str, AxisNavigation] = {}
+        self.figure_dependencies: dict[str, tuple[str, ...]] = {}
         self.tabs: list[_Tab] = []
         self.playback_config = PlaybackConfiguration()
         self.refresh_config = RefreshConfiguration()
@@ -576,6 +610,34 @@ class AnalysisContext:
         if maximum is not None:
             value = min(value, maximum)
         return value
+
+    def render_points(
+        self,
+        name: str,
+        *,
+        default: int,
+        minimum: int = 16,
+        maximum: int | None = None,
+        step: int = 16,
+        label: str | None = None,
+        group: str = "Rendering resolution",
+    ) -> int:
+        """Declare a user-controlled point target for opt-in pipeline downsampling."""
+        if default < 1 or minimum < 1 or step < 1:
+            raise ValueError("Render-point defaults, minimums, and steps must be positive")
+        if maximum is not None and maximum < minimum:
+            raise ValueError("Render-point maximum must not be below its minimum")
+        return int(
+            self.number(
+                name,
+                default=default,
+                minimum=minimum,
+                maximum=maximum,
+                step=step,
+                label=label,
+                group=group,
+            )
+        )
 
     def color(
         self,
@@ -1140,6 +1202,7 @@ class AnalysisContext:
         self.figures[view_key] = self._resolve_figure(view_key, value, policy, depends_on)
         self.figure_updates[view_key] = policy
         self.figure_axis_navigation[view_key] = axis_navigation
+        self.figure_dependencies[view_key] = tuple(depends_on)
         self._active_nodes.append(view_slot(view_key))
 
     def plot(
@@ -1231,6 +1294,7 @@ class AnalysisContext:
             self.figures[view_key] = self._resolve_figure(view_key, figure, policy, depends_on)
             self.figure_updates[view_key] = policy
             self.figure_axis_navigation[view_key] = axis_navigation
+            self.figure_dependencies[view_key] = tuple(depends_on)
             slots.append(view_slot(view_key, label=" / ".join(view_label)))
         if self._active_nodes is None:
             raise RuntimeError("ui.view_switcher() must be used inside ui.tab()")
@@ -1268,15 +1332,21 @@ class AnalysisContext:
         update: str,
         depends_on: Iterable[str],
     ) -> object:
-        factory = figure if callable(figure) else lambda: figure
+        if not callable(figure):
+            return figure
+        factory = figure
         if update == "static":
             dependency_values = (("__theme", repr(self.values.get("__theme", "light"))),) + tuple((name, repr(self.values.get(name))) for name in depends_on)
             cache_key = ("view", key, dependency_values)
-            with self._cache_lock:
-                if cache_key not in self._once_cache:
-                    self._once_cache[cache_key] = factory()
-                return self._once_cache[cache_key]
-        return factory()
+
+            def resolve_static() -> object:
+                with self._cache_lock:
+                    if cache_key not in self._once_cache:
+                        self._once_cache[cache_key] = factory()
+                    return self._once_cache[cache_key]
+
+            return _DeferredView(resolve_static)
+        return _DeferredView(factory)
 
     def layout(self) -> LayoutNode:
         tab_nodes = [
@@ -1528,9 +1598,10 @@ class Workspace:
         views = tuple(
             ViewSpec(
                 name,
-                lambda values, key=name: render(values).figures[key],
+                lambda values, key=name: _resolve_deferred_view(render(values).figures[key]),
                 initial.figure_updates[name],
                 initial.figure_axis_navigation[name],
+                initial.figure_dependencies[name],
             )
             for name in initial.figures
         )

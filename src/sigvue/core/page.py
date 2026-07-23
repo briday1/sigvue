@@ -133,6 +133,7 @@ class ViewSpec:
     callback: Callable[[dict[str, object]], object]
     update_policy: str = "dynamic"
     axis_navigation: AxisNavigation = "free"
+    dependencies: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

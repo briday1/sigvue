@@ -162,6 +162,13 @@ testable outside Sigvue. Timeline UI belongs to `Delivery`, processing controls
 belong to `Analysis.configure()`, and display controls and layout belong to
 `Presentation.present()`.
 
+Pipelines that can reduce data before constructing figures may expose an
+explicit point target from `configure()` or delivery with
+`ui.render_points(...)`. It behaves like an integer parameter grouped under
+**Rendering resolution**. The framework does not decimate automatically: the
+pipeline consumes the returned value where its domain-specific averaging,
+subsampling, or aggregation is valid, and the user may change it at runtime.
+
 The factory does **not** construct `DeliveryContext`, `ParameterContext`,
 `ViewContext`, `PageDefinition`, `PlaybackConfiguration`, or `OpenedItem`. The framework creates those objects
 for each request. A source or its `DirectorySource.describe` callback creates
@@ -771,6 +778,13 @@ start, end = ui.windowed(
 # Use the same key later in presentation.
 ui.view_switcher("Channel", channel_figures, key="recording-channel", selector="dropdown")
 ```
+
+Tabs and view switchers mount only their selected branch in the browser. The
+framework keeps the other prepared view payloads in memory, so selecting a new
+branch replaces the mounted plot locally without another HTTP request or
+analysis pass. Analysis and delivery continue through their normal lifecycle
+during data refreshes, where the existing process cache avoids repeating
+unchanged processing where applicable.
 
 `overview_durations` is optional. For collections whose members have different
 lengths, it makes the framework display the selected member's actual start,
