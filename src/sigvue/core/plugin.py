@@ -833,7 +833,7 @@ class AnalysisContext:
     def _add_control(self, control: ControlSpec) -> None:
         if any(existing.name == control.name for existing in self.controls):
             raise ValueError(f"Duplicate control name: {control.name}")
-        if self._active_details_group is not None:
+        if self._active_details_group is not None and control.group is None:
             control = replace(control, group=self._active_details_group)
         if self._active_parameter_nodes is not None:
             control = ControlSpec(
