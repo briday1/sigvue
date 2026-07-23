@@ -82,6 +82,57 @@ class WebAppTests(unittest.TestCase):
         playback = next(view for view in page["rendered_views"] if view["name"] == "signal")["value"]
         self.assertEqual([2.0, 4.0, 6.0, 8.0], playback["data"][0]["y"])
 
+    def test_lazy_workspace_renders_only_the_selected_tab_and_switcher_view(self):
+        resolved = []
+
+        class LazyPresentation(Presentation):
+            def present(self, data, ui):
+                def figure(name):
+                    def build():
+                        resolved.append(name)
+                        return go.Figure(go.Scatter(y=[name]))
+                    return build
+
+                with ui.tab("Summary"):
+                    ui.plot(figure("summary"), key="summary")
+                with ui.tab("Details"):
+                    ui.view_switcher(
+                        "Channel",
+                        {"One": figure("one"), "Two": figure("two")},
+                        key="channel",
+                    )
+
+        workspace = Workspace(
+            identifier="lazy-workspace",
+            name="Lazy workspace",
+            description="Active views only",
+            source=MemorySource(),
+            analysis=IdentityAnalysis(),
+            presentation=LazyPresentation(),
+            lazy_views=True,
+        )
+        app = SigvueApp()
+        app.register_workspace(workspace)
+
+        initial = app.open_item("lazy-workspace", "recording")
+        selected = app.open_item(
+            "lazy-workspace",
+            "recording",
+            {"__view_selection___tabs": "1", "__view_selection_channel": "1"},
+        )
+
+        self.assertTrue(initial["page"]["lazy_views"])
+        self.assertEqual(["summary"], [view["name"] for view in initial["page"]["rendered_views"]])
+        self.assertEqual(["channel-1"], [view["name"] for view in selected["page"]["rendered_views"]])
+        self.assertEqual(["summary", "two"], resolved)
+
+    def test_eager_workspace_remains_the_default(self):
+        payload = self.create_example_app().open_item("test-workspace", "recording")
+        self.assertFalse(payload["page"]["lazy_views"])
+        self.assertEqual(set(payload["page"]["views"]), {
+            view["name"] for view in payload["page"]["rendered_views"]
+        })
+
     def test_open_item_renders_only_requested_plot_viewport(self):
         class RasterPresentation(Presentation):
             def present(self, data, ui):
@@ -313,7 +364,10 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("data-style-swatch", body)
         self.assertIn("control.picker", body)
         self.assertIn('/assets/plotly.min.js', body)
-        self.assertIn("updatePlotlyViews(p.rendered_views)", body)
+        self.assertIn("mountRenderedViews(p.rendered_views)", body)
+        self.assertIn("updatePlotlyViews(updates)", body)
+        self.assertIn("activeViewChanged=()=>p.lazy_views?refresh(true)", body)
+        self.assertIn("data-view-slot", body)
         self.assertIn("updateMatplotlibViews(p.rendered_views)", body)
         self.assertIn("updateGenericViews(p.rendered_views)", body)
         self.assertIn('data-matplotlib-view', body)
@@ -340,7 +394,7 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("data-view-selection-keys", body)
         self.assertIn("data-view-coordinates", body)
         self.assertIn("dimensionLabels.map", body)
-        self.assertIn("bindLayoutTabs()", body)
+        self.assertIn("bindLayoutTabs(()=>activeViewChanged?.())", body)
         self.assertIn("__include_static_views:includeStatic", body)
         self.assertIn('class="data-table"', body)
         self.assertIn("gridTemplate(node.props.columns)", body)

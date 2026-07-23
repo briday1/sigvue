@@ -1355,7 +1355,11 @@ class AnalysisContext:
         ]
         if not tab_nodes:
             raise ValueError("Analysis must add at least one view")
-        return tab_nodes[0] if len(tab_nodes) == 1 else container("tabs", tab_nodes)
+        return (
+            tab_nodes[0]
+            if len(tab_nodes) == 1
+            else container("tabs", tab_nodes, selection_key="__tabs")
+        )
 
 
 class Workspace:
@@ -1378,6 +1382,7 @@ class Workspace:
         category: str | None = None,
         tags: tuple[str, ...] = (),
         discovery_columns: tuple[DiscoveryColumn, ...] = (),
+        lazy_views: bool = False,
     ) -> None:
         if not isinstance(source, Source):
             raise TypeError("source must be a Source object")
@@ -1416,6 +1421,8 @@ class Workspace:
                     raise ValueError(f"Batch {choice_kind} action values must be unique")
         if any(not isinstance(column, DiscoveryColumn) for column in discovery_columns):
             raise TypeError("discovery_columns must contain DiscoveryColumn values")
+        if not isinstance(lazy_views, bool):
+            raise TypeError("lazy_views must be true or false")
         column_keys = [column.key for column in discovery_columns]
         if len(column_keys) != len(set(column_keys)):
             raise ValueError("Discovery column keys must be unique")
@@ -1428,6 +1435,7 @@ class Workspace:
         self.annotator = annotator
         self.exporter = exporter
         self.batch = batch
+        self.lazy_views = lazy_views
         self._once_caches: dict[str, dict[tuple[object, ...], object]] = {}
         self._process_caches: dict[str, dict[tuple[object, ...], object]] = {}
         self._cache_lock = RLock()

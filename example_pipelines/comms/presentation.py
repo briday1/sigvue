@@ -18,8 +18,9 @@ def present(products: CommsProducts, ui: ViewContext) -> None:
     ui.stat("Buffer memory", format_bytes(products.buffer_nbytes))
     with ui.tab("Constellation"):
         ui.plot(
-            style_figure(
-                constellation_figure(products), ui.theme,
+            lambda: style_figure(
+                constellation_figure(products),
+                ui.theme,
                 f"{products.modulation} constellation",
             ),
             key="constellation",
@@ -27,8 +28,9 @@ def present(products: CommsProducts, ui: ViewContext) -> None:
         )
     with ui.tab("Eye diagram"):
         ui.plot(
-            style_figure(
-                eye_figure(products), ui.theme,
+            lambda: style_figure(
+                eye_figure(products),
+                ui.theme,
                 f"{products.modulation} eye diagram",
             ),
             key="eye",

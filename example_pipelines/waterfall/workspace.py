@@ -28,6 +28,7 @@ def create_workspace(config=None) -> Workspace:
         delivery=WindowedSamples(),
         analysis=WaterfallAnalysis(),
         presentation=WaterfallPresentation(),
+        lazy_views=True,
         category="spectrum monitoring",
         tags=("windowed", "synthetic", "LTE", "SigMF", "waterfall"),
         discovery_columns=DISCOVERY_COLUMNS,

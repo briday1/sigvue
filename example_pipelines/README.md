@@ -69,6 +69,7 @@ return Workspace(
     delivery=WindowedSamples(),       # optional
     analysis=WaterfallAnalysis(),     # process selected data
     presentation=WaterfallPresentation(),  # display products
+    lazy_views=True,                  # create only the selected layout branch
     identifier="synthetic-lte-waterfall",
     name="Synthetic LTE Waterfall",
 )
@@ -77,6 +78,11 @@ return Workspace(
 The framework creates and passes `DeliveryContext`, `ParameterContext`, and
 `ViewContext`. Plugin authors use those contexts to declare behavior and UI;
 they do not construct or return framework page internals.
+
+Both reference workspaces opt into `lazy_views=True`, so changing tabs or a view
+switcher requests only the newly visible figures. Omit it (or set it to `False`)
+when all views should be created during the first request and later view changes
+must remain client-local.
 
 ## What the waterfall example demonstrates
 

@@ -28,6 +28,7 @@ def create_workspace(config=None) -> Workspace:
         delivery=WindowedCommsDelivery(),
         analysis=CommsAnalysis(),
         presentation=CommsPresentation(),
+        lazy_views=True,
         category="digital communications",
         tags=("windowed", "synthetic", "SigMF", "QPSK", "16-QAM", "64-QAM"),
         discovery_columns=DISCOVERY_COLUMNS,

@@ -1,14 +1,17 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 import numpy as np
+import plotly.graph_objects as go
 
 from example_pipelines.comms.workspace import create_workspace as create_comms_workspace
 from example_pipelines.scripts.generate_comms import generate as generate_comms
 from example_pipelines.scripts.generate_lte import generate as generate_lte
 from example_pipelines.style import ORANGE, TEAL, heatmap_grid_color
 from example_pipelines.waterfall.workspace import create_workspace as create_waterfall_workspace
+from sigvue.web.application import SigvueApp
 
 
 class ExamplePipelineTests(unittest.TestCase):
@@ -86,3 +89,41 @@ class ExamplePipelineTests(unittest.TestCase):
                 self.assertEqual("#10252d", dark_figures[0].layout.paper_bgcolor)
                 self.assertEqual(TEAL, dark_figures[0].data[0].marker.color)
                 self.assertEqual([TEAL, ORANGE], [trace.line.color for trace in dark_figures[1].data])
+
+    def test_lazy_comms_workspace_only_builds_the_selected_tab(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory) / "comms"
+            generate_comms(root)
+            workspace = create_comms_workspace({"data_root": root})
+            item_id = workspace.discover_items()[0].identifier
+            app = SigvueApp()
+            app.register_workspace(workspace)
+
+            with (
+                patch(
+                    "example_pipelines.comms.presentation.constellation_figure",
+                    return_value=go.Figure(),
+                ) as constellation,
+                patch(
+                    "example_pipelines.comms.presentation.eye_figure",
+                    return_value=go.Figure(),
+                ) as eye,
+            ):
+                initial = app.open_item(workspace.metadata.identifier, item_id)
+                switched = app.open_item(
+                    workspace.metadata.identifier,
+                    item_id,
+                    {"__view_selection___tabs": "1"},
+                )
+
+            self.assertTrue(workspace.lazy_views)
+            self.assertEqual(
+                ["constellation"],
+                [view["name"] for view in initial["page"]["rendered_views"]],
+            )
+            self.assertEqual(
+                ["eye"],
+                [view["name"] for view in switched["page"]["rendered_views"]],
+            )
+            constellation.assert_called_once()
+            eye.assert_called_once()

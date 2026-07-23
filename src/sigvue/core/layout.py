@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterable
+from typing import Iterable, Mapping
 
 from .errors import InvalidLayoutError
 
@@ -59,3 +59,55 @@ def validate_layout(layout: LayoutNode, known_views: set[str], known_controls: s
         raise InvalidLayoutError(f"Container '{layout.kind}' must have children")
     for child in layout.children:
         validate_layout(child, known_views, known_controls)
+
+
+def selected_view_names(
+    layout: LayoutNode,
+    values: Mapping[str, object] | None = None,
+) -> tuple[str, ...]:
+    """Return only the view slots visible for the requested tab/switcher state."""
+    selections = values or {}
+    selected: list[str] = []
+
+    def index_for(key: str, count: int) -> int:
+        try:
+            index = int(selections.get(f"__view_selection_{key}", 0))
+        except (TypeError, ValueError):
+            index = 0
+        return index if 0 <= index < count else 0
+
+    def walk(node: LayoutNode) -> None:
+        if node.kind == "view_slot":
+            if node.view is not None:
+                selected.append(node.view)
+            return
+        if node.kind == "tabs":
+            key = str(node.props.get("selection_key", "__tabs"))
+            walk(node.children[index_for(key, len(node.children))])
+            return
+        if node.kind == "view_switcher":
+            raw_keys = node.props.get("selection_keys")
+            keys = (
+                tuple(str(key) for key in raw_keys)
+                if isinstance(raw_keys, (tuple, list))
+                else (str(node.props.get("key", "view")),)
+            )
+            coordinates = node.props.get("coordinates")
+            if not isinstance(coordinates, (tuple, list)):
+                coordinates = tuple((index,) for index in range(len(node.children)))
+            requested = tuple(index_for(key, 1_000_000) for key in keys)
+            child_index = next(
+                (
+                    index
+                    for index, coordinate in enumerate(coordinates)
+                    if tuple(int(value) for value in coordinate) == requested
+                ),
+                0,
+            )
+            walk(node.children[child_index])
+            return
+        for child in node.children:
+            walk(child)
+
+    walk(layout)
+    return tuple(dict.fromkeys(selected))

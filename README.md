@@ -126,6 +126,7 @@ values passed to its constructor:
 | `annotator: Annotator[...]` | No | Plugin | Discover and persist domain-native annotations. Enables **Annotate**. |
 | `exporter: Exporter[...]` | No | Plugin | Advertise formats/scopes and serialize domain data. Enables **Download**. |
 | `discovery_columns` | No | Plugin | Define sortable metadata columns populated by `DataResource.summary`. |
+| `lazy_views` | No | Plugin | `False` creates every declared view up front; `True` creates only the selected tab/switcher branch and fetches another branch when selected. |
 | `version`, `category`, `tags` | No | Plugin defaults; profile may override display metadata | Catalog presentation and search. |
 
 ### Start with only what is necessary
@@ -142,6 +143,28 @@ Workspace(
     presentation=ResultPresentation(),
 )
 ```
+
+### Choose when views are created
+
+`Workspace(..., lazy_views=False)` is the default. It runs every declared view
+callback during the initial item request, so tab and view-switcher changes are
+client-local afterward. Use this eager mode when opening and processing the data
+once is more important than the cost of creating every figure.
+
+Set `lazy_views=True` when a workspace has many expensive views and should create
+only what the user can currently see:
+
+```python
+Workspace(
+    ...,
+    lazy_views=True,
+)
+```
+
+Selecting another tab or switcher option then makes a normal item request and
+creates only that visible layout branch. This flag controls presentation view
+creation; source, delivery, analysis, and their caching still follow the normal
+workspace request lifecycle.
 
 Add another object only when the workflow needs the behavior it owns:
 
@@ -211,6 +234,7 @@ def create_workspace(config):
         annotator=MyAnnotator(),                   # optional capability
         exporter=MyExporter(),                     # optional capability
         discovery_columns=MY_COLUMNS,              # optional catalog schema
+        lazy_views=True,                            # optional active-view-only creation
         category="signal analysis",               # optional fallback metadata
         tags=("windowed", "domain-format"),        # optional fallback metadata
     )
