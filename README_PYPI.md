@@ -21,7 +21,7 @@ A workspace is an adapter between domain code and the Sigvue runtime. Plugin
 code owns data semantics; the framework owns application lifecycle and UI
 state.
 
-![Mental model diagram](https://raw.githubusercontent.com/briday1/sigvue/main/docs/pypi-diagrams/01-mental-model.svg)
+![Mental model diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.38/docs/pypi-diagrams/01-mental-model.svg)
 
 The same factory may appear multiple times in `browser.toml`. Each entry creates
 a separate workspace instance with its own identity, tags, and data
@@ -235,7 +235,7 @@ def create_workspace(config):
 
 ### Contract relationships
 
-![Contract relationships diagram](https://raw.githubusercontent.com/briday1/sigvue/main/docs/pypi-diagrams/02-contract-relationships.svg)
+![Contract relationships diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.38/docs/pypi-diagrams/02-contract-relationships.svg)
 
 ### Typed data path
 
@@ -243,7 +243,7 @@ def create_workspace(config):
 objects. Pipeline-specific subclasses implement their named lifecycle methods.
 Together their type parameters describe the complete data path:
 
-![Typed data path diagram](https://raw.githubusercontent.com/briday1/sigvue/main/docs/pypi-diagrams/03-typed-data-path.svg)
+![Typed data path diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.38/docs/pypi-diagrams/03-typed-data-path.svg)
 
 The objects make every boundary explicit at construction time: the workspace
 cannot accept a look-alike object that merely happens to have a method with the
@@ -314,7 +314,7 @@ The factory runs when the profile is loaded or reloaded. Source I/O, delivery,
 configuration, processing, and presentation run later, when the browser opens
 data or changes request state.
 
-![Request lifecycle diagram](https://raw.githubusercontent.com/briday1/sigvue/main/docs/pypi-diagrams/04-request-lifecycle.svg)
+![Request lifecycle diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.38/docs/pypi-diagrams/04-request-lifecycle.svg)
 
 `source.open()` is called for the selected item on each page request. A domain
 reader may therefore be lightweight and read only the requested interval when
@@ -497,7 +497,7 @@ tags = ["laboratory", "reference"]
 data_root = "./data/campaign-b"
 ```
 
-![browser.toml diagram](https://raw.githubusercontent.com/briday1/sigvue/main/docs/pypi-diagrams/05-browser-toml.svg)
+![browser.toml diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.38/docs/pypi-diagrams/05-browser-toml.svg)
 
 These are two registered workspace instances, not two plugin implementations.
 Their framework routes and catalog identities are isolated by their unique
@@ -855,7 +855,7 @@ sigvue batch --config browser.toml \
 
 Add `--json` for automation-friendly final status and artifact paths.
 
-![Optional annotation, export, and batch capabilities diagram](https://raw.githubusercontent.com/briday1/sigvue/main/docs/pypi-diagrams/06-optional-annotation-export-and-batch-capabilities.svg)
+![Optional annotation, export, and batch capabilities diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.38/docs/pypi-diagrams/06-optional-annotation-export-and-batch-capabilities.svg)
 
 Subclass `Annotator` to discover timeline annotations and add one from the current
 delivered value. Subclass `Exporter` to advertise scope and format choices and write
