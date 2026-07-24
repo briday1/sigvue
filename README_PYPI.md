@@ -21,7 +21,7 @@ A workspace is an adapter between domain code and the Sigvue runtime. Plugin
 code owns data semantics; the framework owns application lifecycle and UI
 state.
 
-![Mental model diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.39/docs/pypi-diagrams/01-mental-model.svg)
+![Mental model diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.40/docs/pypi-diagrams/01-mental-model.svg)
 
 The same factory may appear multiple times in `browser.toml`. Each entry creates
 a separate workspace instance with its own identity, tags, and data
@@ -66,7 +66,7 @@ inherit the plugin contract:
   extraction;
 - byte formatting and resident-buffer accounting.
 
-Concrete readers, lifecycle adapters, annotators, exporters, and plotting
+Concrete readers, lifecycle objects, annotators, exporters, and plotting
 additions are plugins, so they live with the examples rather than in the
 framework package. The small bundled set keeps its copyable plugin kit under
 [`example_pipelines/plugins/`](example_pipelines/plugins/); the standalone
@@ -92,7 +92,7 @@ an explicit framework object:
 Workspace(
     source=RecordingSource(...),
     delivery=WindowDelivery(),          # optional
-    analysis=RecordingAnalysis(),
+    analysis=RecordingAnalysis(),       # optional
     presentation=RecordingPresentation(),
     annotator=RecordingAnnotator(),     # optional
     exporter=RecordingExporter(),       # optional
@@ -113,7 +113,7 @@ values passed to its constructor:
 | --- | --- | --- | --- |
 | `identifier`, `name`, `description` | Yes | Plugin defaults; profile may override | Standalone identity and fallback catalog metadata. |
 | `source: Source[SourceData]` | Yes | Plugin | Discover `DataResource` records and open one domain value. |
-| `analysis: Analysis[...]` | Yes | Plugin | A pipeline-specific object implementing `process()` and optionally overriding `configure()`. |
+| `analysis: Analysis[...]` | No | Plugin | Transform selected data before presentation; implements `process()` and may override `configure()`. |
 | `presentation: Presentation[...]` | Yes | Plugin | A pipeline-specific object implementing `present()` for display controls, views, statistics, and layout. |
 | `delivery: Delivery[SourceData, DeliveredData]` | No | Plugin | Select a buffer, choose a segment, follow live data, or transform the opened value. |
 | `annotator: Annotator[...]` | No | Plugin | Discover and persist domain-native annotations. Enables **Annotate**. |
@@ -124,7 +124,7 @@ values passed to its constructor:
 
 ### Start with only what is necessary
 
-The smallest useful workspace has three behavioral objects:
+The smallest useful workspace has two behavioral objects:
 
 ```python
 Workspace(
@@ -132,7 +132,6 @@ Workspace(
     name="Results",
     description="Inspect complete result files.",
     source=ResultSource(),
-    analysis=ResultAnalysis(),
     presentation=ResultPresentation(),
 )
 ```
@@ -199,7 +198,7 @@ Public object ownership is intentionally narrow:
 | `DirectorySource` | Plugin factory | Optional concrete replacement for writing a custom source. |
 | `DataResource` | Source | Returned by `discover()`; later passed back to `open()`. |
 | `Delivery` subclass | Plugin factory | Passed as optional `delivery=`. |
-| `Analysis` subclass | Plugin | Passed as required `analysis=`; implements `process()` and optionally `configure()`. |
+| `Analysis` subclass | Plugin | Passed as optional `analysis=` when selected data needs scientific transformation. |
 | `Presentation` subclass | Plugin | Passed as required `presentation=`; implements `present()`. |
 | `DiscoveryColumn` | Plugin factory | Passed in optional `discovery_columns=`. |
 | `Annotator` / `Exporter` | Plugin factory | Passed as optional capability objects. |
@@ -222,7 +221,7 @@ def create_workspace(config):
         description="Inspect domain recordings.", # required fallback metadata
         source=MySource(config["data_root"]),      # required Source
         delivery=MyDelivery(),                     # optional Delivery
-        analysis=MyAnalysis(),                     # required Analysis object
+        analysis=MyAnalysis(),                     # optional Analysis object
         presentation=MyPresentation(),             # required Presentation object
         annotator=MyAnnotator(),                   # optional capability
         exporter=MyExporter(),                     # optional capability
@@ -235,7 +234,7 @@ def create_workspace(config):
 
 ### Contract relationships
 
-![Contract relationships diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.39/docs/pypi-diagrams/02-contract-relationships.svg)
+![Contract relationships diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.40/docs/pypi-diagrams/02-contract-relationships.svg)
 
 ### Typed data path
 
@@ -243,7 +242,7 @@ def create_workspace(config):
 objects. Pipeline-specific subclasses implement their named lifecycle methods.
 Together their type parameters describe the complete data path:
 
-![Typed data path diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.39/docs/pypi-diagrams/03-typed-data-path.svg)
+![Typed data path diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.40/docs/pypi-diagrams/03-typed-data-path.svg)
 
 The objects make every boundary explicit at construction time: the workspace
 cannot accept a look-alike object that merely happens to have a method with the
@@ -314,7 +313,7 @@ The factory runs when the profile is loaded or reloaded. Source I/O, delivery,
 configuration, processing, and presentation run later, when the browser opens
 data or changes request state.
 
-![Request lifecycle diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.39/docs/pypi-diagrams/04-request-lifecycle.svg)
+![Request lifecycle diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.40/docs/pypi-diagrams/04-request-lifecycle.svg)
 
 `source.open()` is called for the selected item on each page request. A domain
 reader may therefore be lightweight and read only the requested interval when
@@ -331,12 +330,11 @@ process result across requests.
 import json
 from collections.abc import Mapping
 from pathlib import Path
-from dataclasses import dataclass
 from typing import TypedDict
 
 import plotly.graph_objects as go
 
-from sigvue.plugin import Analysis, DirectorySource, ParameterContext, Presentation, ViewContext, Workspace
+from sigvue.plugin import DirectorySource, Presentation, ViewContext, Workspace
 
 
 class ResultFile(TypedDict):
@@ -347,56 +345,37 @@ def load_result(path: Path) -> ResultFile:
     return json.loads(path.read_text())
 
 
-@dataclass(frozen=True)
-class Settings:
-    scale: float
-
-
-class ResultAnalysis(Analysis[ResultFile, Settings, list[float]]):
-    def configure(self, result: ResultFile, ui: ParameterContext) -> Settings:
-        return Settings(scale=float(ui.number("scale", label="Scale", default=1.0, step=0.1)))
-
-    def process(self, result: ResultFile, settings: Settings | None) -> list[float]:
-        if settings is None:
-            raise RuntimeError("Result analysis requires configured settings")
-        return [settings.scale * value for value in result["values"]]
-
-
-class ResultPresentation(Presentation[list[float]]):
-    def present(self, values: list[float], ui: ViewContext) -> None:
-        figure = go.Figure(go.Scatter(y=values, name="Value"))
+class ResultPresentation(Presentation[ResultFile]):
+    def present(self, result: ResultFile, ui: ViewContext) -> None:
+        figure = go.Figure(go.Scatter(y=result["values"], name="Value"))
         with ui.tab("Values"):
-            ui.place_parameters("scale", label="Processing")
             ui.plot(figure, key="values")
 
 
 def create_workspace(config: Mapping[str, object]) -> Workspace:
     source = DirectorySource[ResultFile](
         Path(str(config["data_root"])),
-        pattern="*.result.json",
-        loader=load_result,
+        "*.result.json",
+        read=load_result,
     )
     return Workspace(
         # Required fallback metadata; browser.toml may override it per instance.
         identifier="result-analysis",
         name="Result Analysis",
         description="Inspect result files.",
-        # Required contracts.
+        # The only required lifecycle contracts.
         source=source,
-        analysis=ResultAnalysis(),
         presentation=ResultPresentation(),
     )
 ```
 
-This example uses all three lifecycle stages because it has a processing
-parameter. The required contract is one source, one analysis, and one
-presentation. When an `Analysis` subclass does not override `configure`, its
-base implementation returns `None` to `process`. When overridden,
-`configure` owns processing inputs, `process` remains domain code with no
-presentation dependency, and `present` owns layout. `ui.place_parameters(...)` can put
-a configured control inside a particular tab or switched view; otherwise it
-remains in Details. Add delivery or capabilities only when the workflow needs
-them.
+This is the entire required contract: discover/open data and present it.
+Add `Delivery` only when the user should select a subset, and add `Analysis`
+only when the selected value needs scientific transformation. An `Analysis`
+may override `configure` to declare processing controls; otherwise its base
+implementation passes `None` to `process`. `ui.place_parameters(...)` can put
+configured controls inside a tab or switched view. Capabilities remain
+independent optional objects.
 
 Set `recursive=True` on `DirectorySource` to preserve nested directories in the
 browser. The framework derives folder breadcrumbs from each file's path relative
@@ -497,7 +476,7 @@ tags = ["laboratory", "reference"]
 data_root = "./data/campaign-b"
 ```
 
-![browser.toml diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.39/docs/pypi-diagrams/05-browser-toml.svg)
+![browser.toml diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.40/docs/pypi-diagrams/05-browser-toml.svg)
 
 These are two registered workspace instances, not two plugin implementations.
 Their framework routes and catalog identities are isolated by their unique
@@ -521,9 +500,10 @@ watching. A direct `module:factory` string is also accepted in `use`.
 
 ## Data delivery
 
-Without a delivery object, `process`—and `configure`, when supplied—receives
-exactly what the source opened. A delivery object can prepare a different value
-while leaving processing and presentation unchanged:
+Without delivery, the next configured stage receives exactly what the source
+opened. Delivery can prepare a different value without changing later stages.
+Without analysis, presentation receives that source or delivered value
+directly:
 
 ```python
 from dataclasses import dataclass
@@ -855,7 +835,7 @@ sigvue batch --config browser.toml \
 
 Add `--json` for automation-friendly final status and artifact paths.
 
-![Optional annotation, export, and batch capabilities diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.39/docs/pypi-diagrams/06-optional-annotation-export-and-batch-capabilities.svg)
+![Optional annotation, export, and batch capabilities diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.40/docs/pypi-diagrams/06-optional-annotation-export-and-batch-capabilities.svg)
 
 Subclass `Annotator` to discover timeline annotations and add one from the current
 delivered value. Subclass `Exporter` to advertise scope and format choices and write
