@@ -720,6 +720,19 @@ class PluginAuthoringTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "default colormap"):
             AnalysisContext({}).colormap("invalid", default="Plasma", options=("Viridis",))
 
+    def test_select_matches_mixed_numeric_options_posted_as_text(self):
+        options = (60, 120, 230, 459.54)
+        selected = AnalysisContext({"display_radius": "459.54"}).select(
+            "display_radius", default=120, options=options,
+        )
+        invalid = AnalysisContext({"display_radius": "not-an-option"}).select(
+            "display_radius", default=120, options=options,
+        )
+
+        self.assertEqual(459.54, selected)
+        self.assertIsInstance(selected, float)
+        self.assertEqual(120, invalid)
+
     def test_details_group_assigns_a_generic_sidebar_group(self):
         ui = AnalysisContext({})
         with ui.details_group("Raster rendering"):

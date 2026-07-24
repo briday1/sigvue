@@ -545,10 +545,14 @@ class AnalysisContext:
         value = self.values.setdefault(name, default)
         if isinstance(default, bool):
             return str(value).lower() in {"1", "true", "yes", "on"}
+        for choice in choices:
+            if value == choice or str(value) == str(choice):
+                return choice
         try:
-            return type(default)(value)
+            converted = type(default)(value)
         except (TypeError, ValueError):
             return default
+        return converted if converted in choices else default
 
     def toggle(
         self,

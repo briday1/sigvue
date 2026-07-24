@@ -366,6 +366,20 @@ class WebAppTests(unittest.TestCase):
         self.assertIn('/assets/plotly.min.js', body)
         self.assertIn("mountRenderedViews(p.rendered_views)", body)
         self.assertIn("updatePlotlyViews(updates)", body)
+        self.assertIn(
+            "layout=layoutWithPlotViewport(view,restored)",
+            body,
+        )
+        self.assertIn(
+            "Plotly.react(target,view.value.data||[],layout,plotlyConfig)"
+            ".finally(()=>{target._sigvueUpdating=false})",
+            body,
+        )
+        update_plotly = body.split(
+            "async function updatePlotlyViews", 1
+        )[1].split("async function updateMatplotlibViews", 1)[0]
+        self.assertNotIn("Plotly.relayout", update_plotly)
+        self.assertNotIn("Plotly.Plots.resize", update_plotly)
         self.assertIn("activeViewChanged=()=>p.lazy_views?refresh(true)", body)
         self.assertIn("data-view-slot", body)
         self.assertIn("updateMatplotlibViews(p.rendered_views)", body)
@@ -425,12 +439,35 @@ class WebAppTests(unittest.TestCase):
         self.assertIn('id="segmented-track"', body)
         self.assertIn('id="segment-previous"', body)
         self.assertIn('id="segment-next"', body)
+        self.assertIn('id="segment-toggle"', body)
+        self.assertIn('id="segment-rate"', body)
+        self.assertIn('id="segment-step"', body)
+        self.assertIn('aria-label="Segment refresh rate"', body)
+        self.assertIn('aria-label="Segments per refresh"', body)
         self.assertIn("segmentedBar.prepend(segmentActions)", body)
         self.assertIn(
             '<div class="segment-actions"><button id="segment-previous" type="button">Previous</button>'
             '<button id="segment-next" type="button">Next</button></div>',
             body,
         )
+        self.assertIn("function fixedSegmentTime(seconds,config)", body)
+        self.assertIn("value.toFixed(2)", body)
+        self.assertIn("time.textContent=formatSegmentRange", body)
+        self.assertIn("const bindHold=(button,direction)=>", body)
+        self.assertIn("setInterval(()=>void advance(direction),150)", body)
+        self.assertIn("button.onclick=()=>", body)
+        self.assertIn("const scheduleAuto=()=>", body)
+        self.assertIn("1000/rate", body)
+        self.assertIn(
+            "(selectedIndex()+direction*playbackStep()+segments.length)"
+            "%segments.length",
+            body,
+        )
+        self.assertIn(
+            "previous.disabled=next.disabled=toggle.disabled=disabled",
+            body,
+        )
+        self.assertIn("lifecycle!==segmentedPlaybackGeneration", body)
         self.assertIn("__segment_id:segmentId", body)
         self.assertIn('id="windowed-track"', body)
         self.assertIn('id="windowed-left"', body)
@@ -460,6 +497,7 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("rememberPlotResetRanges", body)
         self.assertIn("function managedPlotlyLayout(view)", body)
         self.assertIn("delete layout.uirevision", body)
+        self.assertIn("delete layout.width;delete layout.height;layout.autosize=true", body)
         self.assertIn("managedPlotlyLayout(view),plotlyConfig", body)
         self.assertIn("plotly_relayouting", body)
         self.assertIn("plotly_relayout", body)
@@ -473,16 +511,21 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("target._sigvueUpdating=false", body)
         self.assertIn("constrainPlotDuringPan", body)
         self.assertIn("view?.axis_navigation==='bounded'", body)
-        self.assertIn("changedPlotResetRanges", body)
+        self.assertIn("function plotResetState(view)", body)
         self.assertIn("currentPlotViewport(target)", body)
         self.assertIn("function capturePlotViewport(plot,event)", body)
         self.assertIn("plot._sigvueViewport=viewport", body)
         self.assertIn("target._sigvueViewport=Object.fromEntries", body)
-        self.assertIn("restoredPlotViewport(target,viewport,previous)", body)
+        self.assertIn(
+            "restoredPlotViewport("
+            "view,viewport,previous,state.reset,state.bounds"
+            ")",
+            body,
+        )
         self.assertIn("translatedAxisRange", body)
         self.assertIn("{range,base:plot._sigvueResetRanges", body)
-        self.assertIn("images=view.rasterized?{'images':view.value.layout?.images||[]}:{}", body)
-        self.assertIn("update={...changed,...restored,...images}", body)
+        self.assertIn("function layoutWithPlotViewport(view,viewport)", body)
+        self.assertNotIn("update={...changed,...restored,...images}", body)
         self.assertIn("requestsPlotReset(event)", body)
         self.assertIn("resetPlotAxes(plot,onViewportChanged)", body)
         self.assertIn("plot._sigvueResetting=true", body)
