@@ -130,6 +130,29 @@ class PluginAuthoringTests(unittest.TestCase):
         self.assertGreaterEqual(calls["configure"], 3)
         self.assertGreaterEqual(calls["present"], 3)
 
+    def test_delivery_and_analysis_are_optional_identity_stages(self):
+        seen = []
+
+        def present(data, ui):
+            seen.append(data)
+            with ui.tab("Signal"):
+                ui.plot(go.Figure(go.Scatter(y=data)), key="signal")
+
+        workspace = Workspace(
+            identifier="minimal",
+            name="Minimal",
+            description="Only discovery and presentation",
+            source=ExampleSource(),
+            presentation=presentation_object(present),
+        )
+        page = workspace.open_item("recording").page
+
+        self.assertEqual([1, 2, 3, 4], seen[-1])
+        self.assertEqual((1, 2, 3, 4), page.views[0].callback({}).data[0].y)
+        self.assertEqual("not configured", page.statistics["Delivery runtime"])
+        self.assertEqual("not configured", page.statistics["Configuration runtime"])
+        self.assertEqual("not configured", page.statistics["Process runtime"])
+
     def test_timeline_selection_is_part_of_the_process_cache_key(self):
         calls = {"process": 0}
 
@@ -251,7 +274,7 @@ class PluginAuthoringTests(unittest.TestCase):
         class LooksLikeAnalysis:
             process = staticmethod(identity_process)
 
-        with self.assertRaisesRegex(TypeError, "analysis must be an Analysis object"):
+        with self.assertRaisesRegex(TypeError, "analysis must be an Analysis object or omitted"):
             Workspace(
                 identifier="lookalike-analysis",
                 name="Lookalike",
@@ -336,7 +359,7 @@ class PluginAuthoringTests(unittest.TestCase):
                 present=lambda data, ui: None,
             )
 
-        with self.assertRaisesRegex(TypeError, r"delivery must be a Delivery object"):
+        with self.assertRaisesRegex(TypeError, r"delivery must be a Delivery object or omitted"):
             make_workspace(
                 identifier="invalid-delivery",
                 name="Invalid delivery",
@@ -413,7 +436,7 @@ class PluginAuthoringTests(unittest.TestCase):
                 identifier="files",
                 name="Files",
                 description="Directory files",
-                source=DirectorySource(root, pattern="*.dat", loader=lambda path: [int(value) for value in path.read_text().split(",")]),
+                source=DirectorySource(root, "*.dat", read=lambda path: [int(value) for value in path.read_text().split(",")]),
                 configure=no_parameters,
                 process=identity_process,
                 present=analyze,

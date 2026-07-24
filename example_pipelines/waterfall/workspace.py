@@ -5,7 +5,6 @@ from pathlib import Path
 from sigvue.helpers import configured_path
 from sigvue.plugin import Workspace
 
-from ..plugins import CallableAnalysis, CallablePresentation
 from ..plugins.sigmf import (
     SIGMF_DISCOVERY_COLUMNS,
     SigMFExporter,
@@ -13,8 +12,8 @@ from ..plugins.sigmf import (
     WindowedSigMFDelivery,
     sigmf_source,
 )
-from .analysis import configure, process
-from .presentation import present
+from .analysis import WaterfallAnalysis
+from .presentation import WaterfallPresentation
 
 
 def create_workspace(config=None) -> Workspace:
@@ -41,8 +40,8 @@ def create_workspace(config=None) -> Workspace:
             time_unit="ms",
             cache_key="lte-power",
         ),
-        analysis=CallableAnalysis(process, configure),
-        presentation=CallablePresentation(present),
+        analysis=WaterfallAnalysis(),
+        presentation=WaterfallPresentation(),
         lazy_views=True,
         category="spectrum monitoring",
         tags=("windowed", "synthetic", "LTE", "SigMF", "waterfall"),

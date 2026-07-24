@@ -5,8 +5,8 @@ pipeline-specific processing and presentation code plus a copyable plugin
 toolkit. Plugin-aware building blocks live in `example_pipelines.plugins`;
 framework-level utilities such as path configuration and byte formatting remain
 in `sigvue.helpers`. A new pipeline can therefore compose a source, windowing,
-annotation, export, lifecycle, and SigMF-writing stack without rebuilding
-one-method classes or file-format plumbing.
+annotation, export, and SigMF-writing stack without rebuilding file-format
+plumbing.
 
 This is the small, source-copyable version of the helper layer. The standalone
 examples distribution exposes the same public surface under
@@ -17,7 +17,6 @@ part of the `sigvue` framework package.
 example_pipelines/
 ├── plugins/           copyable concrete plugin helpers
 │   ├── discovery.py    common signal catalog columns
-│   ├── lifecycle.py    function-to-plugin lifecycle adapters
 │   ├── plotly.py       exact annotation-region overlays
 │   └── sigmf/          source, reader, delivery, annotation, export, writer
 ├── style/             shared teal/orange Plotly appearance
@@ -54,9 +53,10 @@ needed. Both delegate the file-format details to `write_sigmf_recording()`.
 ## The current plugin contract
 
 `create_workspace()` assembles framework-defined objects; it does not perform
-the analysis itself. `Source`, `Analysis`, and `Presentation` are required.
-`Delivery` is optional: omit it for a complete-file analysis, or provide it when
-the framework should expose seek, live, windowed, or segmented data selection.
+the analysis itself. `Source` and `Presentation` are required. `Delivery` and
+`Analysis` are independent optional stages: add delivery for seek, live,
+windowed, or segmented selection, and add analysis only when scientific
+transformation is needed before presentation.
 
 ```mermaid
 flowchart LR
@@ -64,7 +64,7 @@ flowchart LR
     Factory --> Workspace
     Workspace --> Source["Source · discover and open"]
     Workspace -. optional .-> Delivery["Delivery · choose requested data"]
-    Workspace --> Analysis["Analysis · configure and process"]
+    Workspace -. optional .-> Analysis["Analysis · configure and process"]
     Workspace --> Presentation["Presentation · controls, views, and layout"]
     Workspace -. optional .-> Annotator["Annotator · discover and persist review regions"]
     Workspace -. optional .-> Exporter["Exporter · serialize selected data"]
@@ -74,22 +74,24 @@ flowchart LR
     Delivery --> Selected["selected window"]
     Opened -. no Delivery .-> Input["analysis input"]
     Selected --> Input
-    Input --> Analysis
+    Input -. analysis configured .-> Analysis
     Analysis --> Products["typed analysis products"]
     Products --> Presentation
+    Input -. no Analysis .-> Presentation
     Presentation --> Page["Sigvue page"]
 ```
 
 Each pipeline therefore reads like a small processing program:
 
 ```python
-from example_pipelines.plugins import CallableAnalysis, CallablePresentation
 from example_pipelines.plugins.sigmf import (
     SigMFExporter,
     WaterfallSigMFAnnotator,
     WindowedSigMFDelivery,
     sigmf_source,
 )
+from .analysis import WaterfallAnalysis
+from .presentation import WaterfallPresentation
 
 return Workspace(
     source=sigmf_source(root, tags=("sigmf", "synthetic")),
@@ -104,8 +106,8 @@ return Workspace(
         step=0.002,
         time_unit="ms",
     ),
-    analysis=CallableAnalysis(process, configure),
-    presentation=CallablePresentation(present),
+    analysis=WaterfallAnalysis(),
+    presentation=WaterfallPresentation(),
     lazy_views=True,
     identifier="synthetic-lte-waterfall",
     name="Synthetic LTE Waterfall",
@@ -135,7 +137,6 @@ instead of rebuilding it in each pipeline:
 | `SigMFAnnotator` and `WaterfallSigMFAnnotator` | Persist time or time-frequency review regions as standard SigMF annotations. | `example_pipelines.plugins.sigmf` |
 | `add_time_frequency_annotation_regions()` | Draw exact, hoverable vector regions independently of heatmap rasterization. | `example_pipelines.plugins` |
 | `SigMFExporter` | Export the current buffer or full recording as JSON or MAT. | `example_pipelines.plugins.sigmf` |
-| `CallableAnalysis` and `CallablePresentation` | Adapt ordinary functions to lifecycle contracts without one-method wrapper classes. | `example_pipelines.plugins` |
 | `format_bytes()` | Format resident buffer sizes consistently. | `sigvue.helpers` |
 | `write_sigmf_recording()` | Write sample data and standards-shaped metadata from generators and fixtures. | `example_pipelines.plugins.sigmf` |
 

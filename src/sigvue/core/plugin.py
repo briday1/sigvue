@@ -155,7 +155,7 @@ class ParameterContext(Protocol):
         name: str,
         *,
         default: object,
-        options: Iterable[object],
+        options: Iterable[object] | Mapping[object, str],
         label: str | None = None,
         group: str | None = None,
         picker: str | None = None,
@@ -420,15 +420,21 @@ class DirectorySource(Source[LoadedData], Generic[LoadedData]):
     def __init__(
         self,
         directory: str | Path,
-        *,
         pattern: str | tuple[str, ...],
-        loader: Callable[[Path], LoadedData],
+        read: Callable[[Path], LoadedData] | None = None,
+        *,
+        loader: Callable[[Path], LoadedData] | None = None,
         describe: Callable[[Path], DataResource] | None = None,
         recursive: bool = False,
     ) -> None:
+        if read is not None and loader is not None:
+            raise TypeError("Provide read or loader, not both")
+        reader = read or loader
+        if not callable(reader):
+            raise TypeError("DirectorySource requires a read callable")
         self.directory = Path(directory).expanduser().resolve()
         self.patterns = (pattern,) if isinstance(pattern, str) else pattern
-        self.loader = loader
+        self.loader = reader
         self.describe = describe
         self.recursive = recursive
 
@@ -523,12 +529,13 @@ class AnalysisContext:
         name: str,
         *,
         default: object,
-        options: Iterable[object],
+        options: Iterable[object] | Mapping[object, str],
         label: str | None = None,
         group: str | None = None,
         picker: str | None = None,
         picker_label: str | None = None,
     ) -> object:
+        labels = tuple(str(label) for label in options.values()) if isinstance(options, Mapping) else ()
         choices = tuple(options)
         self._add_control(
             ControlSpec(
@@ -540,6 +547,7 @@ class AnalysisContext:
                 group=group,
                 picker=picker,
                 picker_label=picker_label,
+                option_labels=labels,
             )
         )
         value = self.values.setdefault(name, default)
@@ -855,6 +863,7 @@ class AnalysisContext:
                 picker=control.picker,
                 picker_label=control.picker_label,
                 option_previews=control.option_previews,
+                option_labels=control.option_labels,
             )
             self._active_parameter_nodes.append(control_slot(control.name))
         self.controls.append(control)
@@ -1367,7 +1376,7 @@ class AnalysisContext:
 
 
 class Workspace:
-    """Run one explicit Source -> Delivery -> Analysis -> Presentation pipeline."""
+    """Discover data and present it through optional delivery and analysis stages."""
 
     def __init__(
         self,
@@ -1376,9 +1385,9 @@ class Workspace:
         name: str,
         description: str,
         source: Source[Any],
-        analysis: Analysis[Any, Any, Any],
         presentation: Presentation[Any],
         delivery: Delivery[Any, Any] | None = None,
+        analysis: Analysis[Any, Any, Any] | None = None,
         annotator: Annotator[Any, Any] | None = None,
         exporter: Exporter[Any, Any] | None = None,
         batch: Batch[Any] | None = None,
@@ -1392,8 +1401,8 @@ class Workspace:
             raise TypeError("source must be a Source object")
         if delivery is not None and not isinstance(delivery, Delivery):
             raise TypeError("delivery must be a Delivery object or omitted")
-        if not isinstance(analysis, Analysis):
-            raise TypeError("analysis must be an Analysis object")
+        if analysis is not None and not isinstance(analysis, Analysis):
+            raise TypeError("analysis must be an Analysis object or omitted")
         if not isinstance(presentation, Presentation):
             raise TypeError("presentation must be a Presentation object")
         if annotator is not None and not isinstance(annotator, Annotator):
@@ -1549,38 +1558,46 @@ class Workspace:
                 context._delivered_data = prepared
                 delivery_elapsed = perf_counter() - delivery_started
 
-                configure_started = perf_counter()
-                settings = self.analysis.configure(prepared, context)
-                configure_elapsed = perf_counter() - configure_started
-                compute_controls = tuple(control.name for control in context.controls)
-                lifecycle_names = (
-                    "__playback_time_seconds",
-                    "__playback_follow_live",
-                    "__window_start_seconds",
-                    "__window_end_seconds",
-                    "__segment_id",
-                )
-                process_key = (
-                    "process",
-                    source_revision,
-                    tuple((name, repr(context.values.get(name))) for name in lifecycle_names),
-                    tuple((name, repr(context.values.get(name))) for name in compute_controls),
-                    repr(settings),
-                )
-                missing = object()
-                with self._cache_lock:
-                    products = process_cache.get(process_key, missing)
-                process_started = perf_counter()
-                process_cached = products is not missing
-                if not process_cached:
-                    products = self.analysis.process(prepared, settings)
-                process_elapsed = perf_counter() - process_started
+                configure_elapsed = 0.0
+                process_elapsed = 0.0
+                process_cached = False
+                process_key: tuple[object, ...] | None = None
+                if self.analysis is None:
+                    products = prepared
+                else:
+                    configure_started = perf_counter()
+                    settings = self.analysis.configure(prepared, context)
+                    configure_elapsed = perf_counter() - configure_started
+                    compute_controls = tuple(control.name for control in context.controls)
+                    lifecycle_names = (
+                        "__playback_time_seconds",
+                        "__playback_follow_live",
+                        "__window_start_seconds",
+                        "__window_end_seconds",
+                        "__segment_id",
+                    )
+                    process_key = (
+                        "process",
+                        source_revision,
+                        tuple((name, repr(context.values.get(name))) for name in lifecycle_names),
+                        tuple((name, repr(context.values.get(name))) for name in compute_controls),
+                        repr(settings),
+                    )
+                    missing = object()
+                    with self._cache_lock:
+                        products = process_cache.get(process_key, missing)
+                    process_started = perf_counter()
+                    process_cached = products is not missing
+                    if not process_cached:
+                        products = self.analysis.process(prepared, settings)
+                    process_elapsed = perf_counter() - process_started
 
                 presentation_started = perf_counter()
                 self.presentation.present(products, context)
                 presentation_elapsed = perf_counter() - presentation_started
                 if (
-                    not process_cached
+                    self.analysis is not None
+                    and not process_cached
                     and context.playback_config.mode != "live"
                     and not context.refresh_config.enabled
                 ):
@@ -1589,14 +1606,21 @@ class Workspace:
                             process_cache.pop(next(iter(process_cache)))
                         process_cache[process_key] = products
 
-                context.statistics.setdefault("Delivery runtime", f"{delivery_elapsed * 1_000:.1f} ms")
+                context.statistics.setdefault(
+                    "Delivery runtime",
+                    f"{delivery_elapsed * 1_000:.1f} ms" if self.delivery is not None else "not configured",
+                )
                 context.statistics.setdefault(
                     "Configuration runtime",
-                    f"{configure_elapsed * 1_000:.1f} ms" if self.analysis.has_configuration else "not configured",
+                    f"{configure_elapsed * 1_000:.1f} ms"
+                    if self.analysis is not None and self.analysis.has_configuration
+                    else "not configured",
                 )
                 context.statistics.setdefault(
                     "Process runtime",
-                    "cached" if process_cached else f"{process_elapsed * 1_000:.1f} ms",
+                    "not configured"
+                    if self.analysis is None
+                    else ("cached" if process_cached else f"{process_elapsed * 1_000:.1f} ms"),
                 )
                 context.statistics.setdefault("Presentation runtime", f"{presentation_elapsed * 1_000:.1f} ms")
                 context.statistics.setdefault("Analysis runtime", f"{(perf_counter() - started) * 1_000:.1f} ms")

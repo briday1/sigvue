@@ -5,7 +5,6 @@ from pathlib import Path
 from sigvue.helpers import configured_path
 from sigvue.plugin import Workspace
 
-from ..plugins import CallableAnalysis, CallablePresentation
 from ..plugins.sigmf import (
     SIGMF_DISCOVERY_COLUMNS,
     SigMFAnnotator,
@@ -13,8 +12,8 @@ from ..plugins.sigmf import (
     WindowedSigMFDelivery,
     sigmf_source,
 )
-from .analysis import process
-from .presentation import present
+from .analysis import CommsAnalysis
+from .presentation import CommsPresentation
 
 
 def create_workspace(config=None) -> Workspace:
@@ -38,8 +37,8 @@ def create_workspace(config=None) -> Workspace:
             time_unit="ms",
             cache_key="comms-power-overview",
         ),
-        analysis=CallableAnalysis(process),
-        presentation=CallablePresentation(present),
+        analysis=CommsAnalysis(),
+        presentation=CommsPresentation(),
         lazy_views=True,
         category="digital communications",
         tags=("windowed", "synthetic", "SigMF", "QPSK", "16-QAM", "64-QAM"),

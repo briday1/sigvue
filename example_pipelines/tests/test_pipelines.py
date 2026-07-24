@@ -8,7 +8,8 @@ import numpy as np
 import plotly.graph_objects as go
 
 from example_pipelines.comms.workspace import create_workspace as create_comms_workspace
-from example_pipelines.plugins import CallableAnalysis, CallablePresentation
+from example_pipelines.comms.analysis import CommsAnalysis
+from example_pipelines.comms.presentation import CommsPresentation
 from example_pipelines.plugins.sigmf import (
     SIGMF_DISCOVERY_COLUMNS,
     SigMFAnnotator,
@@ -21,6 +22,8 @@ from example_pipelines.plugins.sigmf import (
 from example_pipelines.scripts.generate_comms import generate as generate_comms
 from example_pipelines.scripts.generate_lte import generate as generate_lte
 from example_pipelines.style import ORANGE, TEAL, heatmap_grid_color
+from example_pipelines.waterfall.analysis import WaterfallAnalysis
+from example_pipelines.waterfall.presentation import WaterfallPresentation
 from example_pipelines.waterfall.workspace import create_workspace as create_waterfall_workspace
 from sigvue.web.application import SigvueApp
 
@@ -41,8 +44,8 @@ class ExamplePipelineTests(unittest.TestCase):
 
             workspace = create_waterfall_workspace({"data_root": root})
             self.assertIsInstance(workspace.delivery, WindowedSigMFDelivery)
-            self.assertIsInstance(workspace.analysis, CallableAnalysis)
-            self.assertIsInstance(workspace.presentation, CallablePresentation)
+            self.assertIsInstance(workspace.analysis, WaterfallAnalysis)
+            self.assertIsInstance(workspace.presentation, WaterfallPresentation)
             self.assertIsInstance(workspace.annotator, WaterfallSigMFAnnotator)
             self.assertIsInstance(workspace.exporter, SigMFExporter)
             self.assertEqual(SIGMF_DISCOVERY_COLUMNS, workspace.discovery_columns)
@@ -175,8 +178,8 @@ class ExamplePipelineTests(unittest.TestCase):
 
             workspace = create_comms_workspace({"data_root": root})
             self.assertIsInstance(workspace.delivery, WindowedSigMFDelivery)
-            self.assertIsInstance(workspace.analysis, CallableAnalysis)
-            self.assertIsInstance(workspace.presentation, CallablePresentation)
+            self.assertIsInstance(workspace.analysis, CommsAnalysis)
+            self.assertIsInstance(workspace.presentation, CommsPresentation)
             self.assertIsInstance(workspace.annotator, SigMFAnnotator)
             self.assertIsInstance(workspace.exporter, SigMFExporter)
             self.assertEqual(SIGMF_DISCOVERY_COLUMNS, workspace.discovery_columns)

@@ -8,12 +8,7 @@ import unittest
 import numpy as np
 import plotly.graph_objects as go
 
-from example_pipelines.plugins import (
-    CallableAnalysis,
-    CallableDelivery,
-    CallablePresentation,
-    add_time_frequency_annotation_regions,
-)
+from example_pipelines.plugins import add_time_frequency_annotation_regions
 from example_pipelines.plugins.sigmf import (
     SigMFAnnotator,
     SigMFExporter,
@@ -50,29 +45,6 @@ class PluginHelperTests(unittest.TestCase):
             ],
             dtype=np.complex64,
         )
-
-    def test_callable_adapters_keep_framework_lifecycle_semantics(self):
-        delivery = CallableDelivery(lambda value, ui: value + 1)
-        analysis = CallableAnalysis(
-            lambda value, settings: value * settings,
-            lambda value, ui: 3,
-        )
-        presented = []
-        presentation = CallablePresentation(
-            lambda products, ui: presented.append(products)
-        )
-
-        self.assertEqual(3, delivery.prepare(2, object()))
-        self.assertTrue(analysis.has_configuration)
-        self.assertEqual(3, analysis.configure(2, object()))
-        self.assertEqual(6, analysis.process(2, 3))
-        presentation.present(6, object())
-        self.assertEqual([6], presented)
-        self.assertFalse(
-            CallableAnalysis(lambda value, settings: value).has_configuration
-        )
-        with self.assertRaisesRegex(TypeError, "callable"):
-            CallablePresentation(None)
 
     def test_generator_module_entry_point_imports_the_local_plugins(self):
         completed = subprocess.run(

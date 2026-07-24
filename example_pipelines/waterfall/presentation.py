@@ -3,7 +3,7 @@
 import numpy as np
 
 from sigvue.helpers import format_bytes
-from sigvue.plugin import ViewContext
+from sigvue.plugin import Presentation, ViewContext
 
 from ..plugins.sigmf import read_sigmf_annotations
 from ..style import TEAL, heatmap_grid_color, style_figure
@@ -54,110 +54,157 @@ def _rounded_range(lower: float, upper: float) -> tuple[float, float]:
     return float(lower), float(upper)
 
 
-def present(products: WaterfallProducts, ui: ViewContext) -> None:
-    """Collect display controls and lay out the waterfall view."""
-    colormap = ui.colormap(
-        "colormap", label="Waterfall colormap", default="Plasma",
-        options=COLORMAPS, group="Display",
-    )
-    automatic_waterfall, automatic_spectrum = automatic_dbfs_ranges(products)
-    zmin, zmax = ui.limits(
-        "dbfs_limits", label="Waterfall dBFS limits", default=automatic_waterfall,
-        minimum=-140.0, maximum=0.0, step=1.0, group="Display",
-    )
-    spectrum_ymin, spectrum_ymax = ui.limits(
-        "spectrum_dbfs_limits", label="Average power limits (dBFS)",
-        default=automatic_spectrum, minimum=-140.0, maximum=0.0,
-        step=1.0, group="Display",
-    )
-    spectrum_style = ui.trace_style(
-        "spectrum_style", label="Average spectrum", color=TEAL,
-        width=1.4, group="Display",
-    )
-    show_colorbar = ui.toggle(
-        "show_colorbar", label="Show colorbar", default=True, group="Display",
-    )
-    show_annotations = ui.toggle(
-        "show_annotations",
-        label="Show annotations",
-        default=True,
-        group="Annotations",
-    )
-    annotation_color = ui.color(
-        "annotation_region_color",
-        label="Annotation color",
-        default="#ffffff",
-        group="Annotations",
-    )
-    annotation_width = float(ui.number(
-        "annotation_region_width",
-        label="Line weight",
-        default=1.5,
-        minimum=0.5,
-        maximum=8.0,
-        step=0.5,
-        group="Annotations",
-    ))
-    annotation_opacity = float(ui.number(
-        "annotation_region_opacity",
-        label="Opacity",
-        default=0.8,
-        minimum=0.05,
-        maximum=1.0,
-        step=0.05,
-        group="Annotations",
-    ))
-    with ui.details_group("Raster rendering"):
-        render_width = int(ui.select(
-            "render_width", label="Heatmap render width", default=1024,
-            options=(256, 512, 1024, 2048),
-        ))
-        render_height = int(ui.select(
-            "render_height", label="Heatmap render height", default=512,
-            options=(128, 256, 512, 1024),
-        ))
-        aggregation = str(ui.select(
-            "render_aggregation", label="Heatmap aggregation", default="mean",
-            options=("max", "mean", "median"),
-        ))
-    title = str(products.recording.metadata["global"].get("core:description", "Synthetic LTE"))
+class WaterfallPresentation(Presentation[WaterfallProducts]):
+    """Present a progressive waterfall and its average spectrum."""
 
-    def figure():
-        rendered = waterfall_figure(
-            products,
-            viewport=ui.plot_viewport("lte-waterfall"),
-            colormap=colormap,
-            zmin=zmin,
-            zmax=zmax,
-            spectrum_ymin=spectrum_ymin,
-            spectrum_ymax=spectrum_ymax,
-            spectrum_style=spectrum_style,
-            show_colorbar=show_colorbar,
-            render_width=render_width,
-            render_height=render_height,
-            aggregation=aggregation,
-            annotations=(
-                read_sigmf_annotations(products.recording)
-                if show_annotations else ()
+    def present(self, products: WaterfallProducts, ui: ViewContext) -> None:
+        colormap = ui.colormap(
+            "colormap",
+            label="Waterfall colormap",
+            default="Plasma",
+            options=COLORMAPS,
+            group="Display",
+        )
+        waterfall_range, spectrum_range = automatic_dbfs_ranges(products)
+        zmin, zmax = ui.limits(
+            "dbfs_limits",
+            label="Waterfall dBFS limits",
+            default=waterfall_range,
+            minimum=-140.0,
+            maximum=0.0,
+            step=1.0,
+            group="Display",
+        )
+        spectrum_ymin, spectrum_ymax = ui.limits(
+            "spectrum_dbfs_limits",
+            label="Average power limits (dBFS)",
+            default=spectrum_range,
+            minimum=-140.0,
+            maximum=0.0,
+            step=1.0,
+            group="Display",
+        )
+        spectrum_style = ui.trace_style(
+            "spectrum_style",
+            label="Average spectrum",
+            color=TEAL,
+            width=1.4,
+            group="Display",
+        )
+        show_colorbar = ui.toggle(
+            "show_colorbar",
+            label="Show colorbar",
+            default=True,
+            group="Display",
+        )
+        show_annotations = ui.toggle(
+            "show_annotations",
+            label="Show annotations",
+            default=True,
+            group="Annotations",
+        )
+        annotation_color = ui.color(
+            "annotation_region_color",
+            label="Annotation color",
+            default="#ffffff",
+            group="Annotations",
+        )
+        annotation_width = float(ui.number(
+            "annotation_region_width",
+            label="Line weight",
+            default=1.5,
+            minimum=0.5,
+            maximum=8.0,
+            step=0.5,
+            group="Annotations",
+        ))
+        annotation_opacity = float(ui.number(
+            "annotation_region_opacity",
+            label="Opacity",
+            default=0.8,
+            minimum=0.05,
+            maximum=1.0,
+            step=0.05,
+            group="Annotations",
+        ))
+        with ui.details_group("Raster rendering"):
+            render_width = int(ui.select(
+                "render_width",
+                label="Heatmap render width",
+                default=1024,
+                options=(256, 512, 1024, 2048),
+            ))
+            render_height = int(ui.select(
+                "render_height",
+                label="Heatmap render height",
+                default=512,
+                options=(128, 256, 512, 1024),
+            ))
+            aggregation = str(ui.select(
+                "render_aggregation",
+                label="Heatmap aggregation",
+                default="mean",
+                options=("max", "mean", "median"),
+            ))
+        title = str(products.recording.metadata["global"].get(
+            "core:description",
+            "Synthetic LTE",
+        ))
+
+        def figure():
+            rendered = waterfall_figure(
+                products,
+                viewport=ui.plot_viewport("lte-waterfall"),
+                colormap=colormap,
+                zmin=zmin,
+                zmax=zmax,
+                spectrum_ymin=spectrum_ymin,
+                spectrum_ymax=spectrum_ymax,
+                spectrum_style=spectrum_style,
+                show_colorbar=show_colorbar,
+                render_width=render_width,
+                render_height=render_height,
+                aggregation=aggregation,
+                annotations=(
+                    read_sigmf_annotations(products.recording)
+                    if show_annotations else ()
+                ),
+                annotation_color=annotation_color,
+                annotation_width=annotation_width,
+                annotation_opacity=annotation_opacity,
+            )
+            styled = style_figure(rendered, ui.theme, title)
+            styled.update_xaxes(
+                gridcolor=heatmap_grid_color(ui.theme),
+                gridwidth=0.35,
+                row=2,
+                col=1,
+            )
+            styled.update_yaxes(
+                gridcolor=heatmap_grid_color(ui.theme),
+                gridwidth=0.35,
+                row=2,
+                col=1,
+            )
+            return styled
+
+        ui.stat(
+            "Sample rate",
+            f"{products.recording.sample_rate / 1e6:g} MS/s",
+        )
+        ui.stat(
+            "Center frequency",
+            (
+                f"{products.recording.center_frequency_at(products.start_sample) / 1e6:g} MHz"
             ),
-            annotation_color=annotation_color,
-            annotation_width=annotation_width,
-            annotation_opacity=annotation_opacity,
         )
-        styled = style_figure(rendered, ui.theme, title)
-        styled.update_xaxes(
-            gridcolor=heatmap_grid_color(ui.theme), gridwidth=0.35, row=2, col=1,
-        )
-        styled.update_yaxes(
-            gridcolor=heatmap_grid_color(ui.theme), gridwidth=0.35, row=2, col=1,
-        )
-        return styled
+        ui.stat("Buffer memory", format_bytes(products.buffer_nbytes))
+        with ui.tab("Spectrum + waterfall"):
+            ui.plot(
+                figure,
+                key="lte-waterfall",
+                axis_navigation="bounded",
+            )
 
-    ui.stat("Sample rate", f"{products.recording.sample_rate / 1e6:g} MS/s")
-    ui.stat(
-        "Center frequency",
-        f"{products.recording.center_frequency_at(products.start_sample) / 1e6:g} MHz",
-    )
-    ui.stat("Buffer memory", format_bytes(products.buffer_nbytes))
-    with ui.tab("Spectrum + waterfall"):
-        ui.plot(figure, key="lte-waterfall", axis_navigation="bounded")
+
+__all__ = ["WaterfallPresentation"]
