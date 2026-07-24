@@ -1,3 +1,4 @@
+import json
 import unittest
 
 from matplotlib.figure import Figure
@@ -11,6 +12,13 @@ from sigvue.rendering.matplotlib_renderer import render_matplotlib_figure
 
 
 class RenderingTests(unittest.TestCase):
+    def test_render_kind_preserves_string_enum_behavior(self):
+        self.assertIsInstance(RenderKind.PLOTLY, str)
+        self.assertEqual("plotly", RenderKind.PLOTLY)
+        self.assertEqual("plotly", str(RenderKind.PLOTLY))
+        self.assertIs(RenderKind.PLOTLY, RenderKind("plotly"))
+        self.assertEqual('{"kind": "plotly"}', json.dumps({"kind": RenderKind.PLOTLY}))
+
     def test_heatmap_aggregation_preserves_exact_block_statistics(self):
         values = np.arange(24, dtype=float).reshape(4, 6)
         self.assertEqual([[7, 9, 11], [19, 21, 23]], aggregate_heatmap(values, width=3, height=2, method="max").tolist())

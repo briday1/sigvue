@@ -1,9 +1,9 @@
 """UI presentation for communications analysis products."""
 
-from sigvue.plugin import Presentation, ViewContext
+from sigvue.helpers import format_bytes
+from sigvue.plugin import ViewContext
 
 from ..style import style_figure
-from ..memory import format_bytes
 from .models import CommsProducts
 from .plots import constellation_figure, eye_figure
 
@@ -36,10 +36,3 @@ def present(products: CommsProducts, ui: ViewContext) -> None:
             key="eye",
             axis_navigation="bounded",
         )
-
-
-class CommsPresentation(Presentation[CommsProducts]):
-    """Framework presentation object for constellation and eye views."""
-
-    def present(self, products: CommsProducts, ui: ViewContext) -> None:
-        present(products, ui)

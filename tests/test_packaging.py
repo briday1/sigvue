@@ -1,6 +1,7 @@
 import unittest
 from importlib.resources import files
 from pathlib import Path
+import re
 
 try:
     import tomllib
@@ -9,20 +10,65 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10 fallback
 
 
 class PackagingTests(unittest.TestCase):
+    @staticmethod
+    def dependency_names(requirements):
+        return {
+            re.split(r"[\s;<>=!~\[]", requirement, maxsplit=1)[0].lower()
+            for requirement in requirements
+        }
+
     def test_runtime_and_workflow_dependencies_are_declared(self):
         project = tomllib.loads(
             (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8")
         )["project"]
         runtime = tuple(project["dependencies"])
-        self.assertTrue(any(value.startswith("matplotlib") for value in runtime))
-        self.assertTrue(any(value.startswith("numpy") for value in runtime))
-        self.assertTrue(any(value.startswith("pillow") for value in runtime))
-        self.assertTrue(any(value.startswith("plotly") for value in runtime))
+        self.assertEqual(
+            {
+                "certifi",
+                "matplotlib",
+                "numpy",
+                "pillow",
+                "plotly",
+                "tomli",
+            },
+            self.dependency_names(runtime),
+        )
         extras = project["optional-dependencies"]
-        self.assertTrue(any(value.startswith("numpy") for value in extras["examples"]))
-        self.assertTrue(any(value.startswith("pytest") for value in extras["test"]))
-        self.assertTrue(any(value.startswith("build") for value in extras["release"]))
-        self.assertTrue(any(value.startswith("twine") for value in extras["release"]))
+        self.assertEqual(
+            {"certifi", "pyinstaller"},
+            self.dependency_names(extras["build"]),
+        )
+        self.assertEqual(
+            {"numpy", "scipy"},
+            self.dependency_names(extras["examples"]),
+        )
+        self.assertEqual(
+            {"numpy", "pytest"},
+            self.dependency_names(extras["test"]),
+        )
+        self.assertEqual(
+            {"build", "twine"},
+            self.dependency_names(extras["release"]),
+        )
+
+    def test_core_helpers_remain_plugin_neutral(self):
+        helper_root = Path(__file__).resolve().parents[1] / "src/sigvue/helpers"
+        modules = {
+            path.relative_to(helper_root).as_posix()
+            for path in helper_root.rglob("*.py")
+        }
+        self.assertEqual(
+            {
+                "__init__.py",
+                "config.py",
+                "downloads.py",
+                "formatting.py",
+            },
+            modules,
+        )
+        for module in modules:
+            contents = (helper_root / module).read_text(encoding="utf-8")
+            self.assertNotIn("sigvue.plugin", contents)
 
     def test_public_typing_marker_is_installed_as_package_data(self):
         self.assertTrue(files("sigvue").joinpath("py.typed").is_file())

@@ -1,9 +1,13 @@
 from __future__ import annotations
 
-from enum import StrEnum
+from enum import Enum
 
 
-class RenderKind(StrEnum):
+class RenderKind(str, Enum):
+    """Render categories with ``StrEnum`` behavior on every supported Python."""
+
+    __str__ = str.__str__
+
     PLOTLY = "plotly"
     MATPLOTLIB = "matplotlib"
     DATAFRAME = "dataframe"

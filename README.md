@@ -69,17 +69,38 @@ Open `http://127.0.0.1:8000`. The package contains no built-in workspaces; `brow
 
 This repository includes external-style reference implementations under
 [`example_pipelines/`](example_pipelines/README.md). They are intentionally outside
-`src/sigvue` and separate shared SigMF I/O, styling, delivery, analysis,
-Plotly presentation, and workspace assembly. Generate all of the small synthetic
+`src/sigvue`; they share reusable concrete plugin components through
+`example_pipelines.plugins` while keeping domain analysis, Plotly presentation,
+and workspace assembly local.
+Generate all of the small synthetic
 LTE-like and digital-modulation recordings, then launch them with:
 
 ```bash
-python example_pipelines/scripts/generate_all.py
+python -m pip install -e ".[examples]"
+python -m example_pipelines.scripts.generate_all
 sigvue --config example_pipelines/browser.toml
 ```
 
 The generated SigMF data is ignored by Git. The example exists to show a complete,
 copyable plugin repository shape; it is not built into the Sigvue package.
+
+## Framework-neutral authoring utilities
+
+`sigvue.helpers` is deliberately limited to utilities that do not implement or
+inherit the plugin contract:
+
+- typed, profile-relative workspace configuration;
+- atomic downloads with optional size/checksum verification and defensive tar
+  extraction;
+- byte formatting and resident-buffer accounting.
+
+Concrete readers, lifecycle adapters, annotators, exporters, and plotting
+additions are plugins, so they live with the examples rather than in the
+framework package. The small bundled set keeps its copyable plugin kit under
+[`example_pipelines/plugins/`](example_pipelines/plugins/); the standalone
+examples package provides the same seam for the richer radar, communications,
+and waterfall workspaces. This keeps core policy-neutral while still giving
+workspace authors drop-in implementations they can copy or package.
 
 ## The workspace-author contract
 

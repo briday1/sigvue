@@ -5,10 +5,11 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
-import json
 from pathlib import Path
 
 import numpy as np
+
+from example_pipelines.plugins.sigmf import write_sigmf_recording
 
 
 SAMPLE_RATE = 1_920_000.0
@@ -44,32 +45,27 @@ def ofdm_signal(*, seed: int, duration: float, uplink: bool) -> np.ndarray:
 
 
 def write_recording(root: Path, direction: str, center_frequency: float, seed: int) -> tuple[Path, Path]:
-    root.mkdir(parents=True, exist_ok=True)
     stem = f"synthetic-lte-{direction}"
-    metadata_path = root / f"{stem}.sigmf-meta"
-    data_path = root / f"{stem}.sigmf-data"
     samples = ofdm_signal(seed=seed, duration=0.12, uplink=direction == "uplink")
-    iq = np.column_stack((samples.real, samples.imag))
-    np.round(np.clip(iq, -0.999, 0.999) * 32767).astype("<i2").tofile(data_path)
-    metadata = {
-        "global": {
-            "core:datatype": "ci16_le",
-            "core:num_channels": 1,
-            "core:sample_rate": SAMPLE_RATE,
-            "core:version": "1.2.0",
-            "core:description": f"Synthetic LTE-like {direction}",
+    return write_sigmf_recording(
+        root,
+        stem,
+        samples,
+        SAMPLE_RATE,
+        datatype="ci16_le",
+        description=f"Synthetic LTE-like {direction}",
+        global_metadata={
             "core:author": "Sigvue example generator",
             "example:direction": direction,
         },
-        "captures": [{
+        captures=({
             "core:sample_start": 0,
             "core:frequency": center_frequency,
-            "core:datetime": datetime.now(timezone.utc).isoformat(),
-        }],
-        "annotations": [],
-    }
-    metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
-    return metadata_path, data_path
+            "core:datetime": datetime.now(timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z"),
+        },),
+    )
 
 
 def generate(root: Path) -> tuple[tuple[Path, Path], ...]:

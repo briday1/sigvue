@@ -9,11 +9,18 @@ description = "Extensible signal viewer"
 readme = "README_PYPI.md"
 requires-python = ">=3.10"
 authors = [{ name = "Sigvue" }]
-dependencies = ["matplotlib>=3.7", "numpy>=1.24", "pillow>=9.4", "plotly>=6.1.1", "tomli>=2; python_version < '3.11'"]
+dependencies = [
+    "certifi>=2024.2.2",
+    "matplotlib>=3.7",
+    "numpy>=1.24",
+    "pillow>=9.4",
+    "plotly>=6.1.1",
+    "tomli>=2; python_version < '3.11'",
+]
 
 [project.optional-dependencies]
 build = ["certifi>=2024.2.2", "pyinstaller>=6.0"]
-examples = ["numpy>=1.24"]
+examples = ["numpy>=1.24", "scipy>=1.10"]
 test = ["numpy>=1.24", "pytest>=8.0"]
 release = ["build>=1.2", "twine>=5.0"]
 

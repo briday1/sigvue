@@ -2,13 +2,13 @@
 
 import numpy as np
 
-from sigvue.plugin import Analysis
+from ..plugins.sigmf import SigMFWindow
 
-from .models import CommsProducts, CommsWindow
+from .models import CommsProducts
 
 
-def process(window: CommsWindow, settings: None) -> CommsProducts:
-    samples = window.samples
+def process(window: SigMFWindow, settings: None) -> CommsProducts:
+    samples = window.channel()
     metadata = window.recording.metadata["global"]
     modulation = str(metadata.get("example:modulation", "Unknown"))
     samples_per_symbol = int(metadata.get("example:samples_per_symbol", 8))
@@ -35,12 +35,5 @@ def process(window: CommsWindow, settings: None) -> CommsProducts:
         eye_extent,
         window.start_seconds,
         window.duration_seconds,
-        window.samples.nbytes,
+        window.buffer_nbytes,
     )
-
-
-class CommsAnalysis(Analysis[CommsWindow, None, CommsProducts]):
-    """Framework analysis object for a selected communications window."""
-
-    def process(self, window: CommsWindow, settings: None) -> CommsProducts:
-        return process(window, settings)

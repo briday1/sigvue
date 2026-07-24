@@ -6,8 +6,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from generate_comms import generate as generate_comms
-from generate_lte import generate as generate_lte
+from example_pipelines.scripts.generate_comms import generate as generate_comms
+from example_pipelines.scripts.generate_lte import generate as generate_lte
 
 
 def main() -> None:

@@ -4,14 +4,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ..io.sigmf import SigMFRecording
-
-
-@dataclass(frozen=True)
-class SignalWindow:
-    recording: SigMFRecording
-    start_sample: int
-    samples: np.ndarray
+from ..plugins.sigmf import SigMFRecording
 
 
 @dataclass(frozen=True)

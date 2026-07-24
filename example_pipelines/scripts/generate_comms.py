@@ -5,10 +5,11 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
-import json
 from pathlib import Path
 
 import numpy as np
+
+from example_pipelines.plugins.sigmf import write_sigmf_recording
 
 
 SAMPLE_RATE = 800_000.0
@@ -42,34 +43,29 @@ def shaped_signal(order: int, seed: int) -> np.ndarray:
 
 
 def write_recording(root: Path, modulation: str, order: int, seed: int) -> tuple[Path, Path]:
-    root.mkdir(parents=True, exist_ok=True)
     stem = modulation.lower().replace("-", "")
-    metadata_path = root / f"synthetic-{stem}.sigmf-meta"
-    data_path = root / f"synthetic-{stem}.sigmf-data"
     samples = shaped_signal(order, seed)
-    iq = np.column_stack((samples.real, samples.imag))
-    np.round(np.clip(iq, -0.999, 0.999) * 32767).astype("<i2").tofile(data_path)
-    metadata = {
-        "global": {
-            "core:datatype": "ci16_le",
-            "core:num_channels": 1,
-            "core:sample_rate": SAMPLE_RATE,
-            "core:version": "1.2.0",
-            "core:description": f"Synthetic {modulation}",
+    return write_sigmf_recording(
+        root,
+        f"synthetic-{stem}",
+        samples,
+        SAMPLE_RATE,
+        datatype="ci16_le",
+        description=f"Synthetic {modulation}",
+        global_metadata={
             "core:author": "Sigvue example generator",
             "example:modulation": modulation,
             "example:samples_per_symbol": SAMPLES_PER_SYMBOL,
             "example:sample_offset": SAMPLES_PER_SYMBOL // 2,
         },
-        "captures": [{
+        captures=({
             "core:sample_start": 0,
             "core:frequency": 0.0,
-            "core:datetime": datetime.now(timezone.utc).isoformat(),
-        }],
-        "annotations": [],
-    }
-    metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
-    return metadata_path, data_path
+            "core:datetime": datetime.now(timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z"),
+        },),
+    )
 
 
 def generate(root: Path) -> tuple[tuple[Path, Path], ...]:

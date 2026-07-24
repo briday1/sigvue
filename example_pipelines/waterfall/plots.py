@@ -5,6 +5,7 @@ from plotly.subplots import make_subplots
 
 from sigvue.plugin import add_viewport_heatmap
 
+from ..plugins import add_time_frequency_annotation_regions
 from .models import WaterfallProducts
 
 
@@ -22,6 +23,10 @@ def waterfall_figure(
     render_width: int,
     render_height: int,
     aggregation: str,
+    annotations: tuple[object, ...] = (),
+    annotation_color: str = "#ffffff",
+    annotation_width: float = 1.5,
+    annotation_opacity: float = 0.8,
 ) -> go.Figure:
     """Build the spectrum/waterfall figure from explicit display settings."""
     figure = make_subplots(
@@ -56,6 +61,32 @@ def waterfall_figure(
         row=2,
         col=1,
     )
+    frequency_step = (
+        float(abs(products.frequency_mhz[1] - products.frequency_mhz[0]))
+        if products.frequency_mhz.size > 1 else 1.0
+    )
+    frequency_range = (
+        float(products.frequency_mhz[0] - frequency_step / 2),
+        float(products.frequency_mhz[-1] + frequency_step / 2),
+    )
+    add_time_frequency_annotation_regions(
+        figure,
+        annotations,
+        time_range=(
+            float(products.time_edges_ms[0]),
+            float(products.time_edges_ms[-1]),
+        ),
+        frequency_range=frequency_range,
+        seconds_to_axis=1e3,
+        hertz_to_axis=1e-6,
+        time_unit="ms",
+        frequency_unit="MHz",
+        color=annotation_color,
+        width=annotation_width,
+        opacity=annotation_opacity,
+        row=2,
+        col=1,
+    )
     figure.update_yaxes(
         title_text="Power (dBFS)", range=[spectrum_ymin, spectrum_ymax],
         autorange=False, row=1, col=1,
@@ -67,16 +98,9 @@ def waterfall_figure(
         row=2,
         col=1,
     )
-    frequency_step = (
-        float(abs(products.frequency_mhz[1] - products.frequency_mhz[0]))
-        if products.frequency_mhz.size > 1 else 1.0
-    )
     figure.update_xaxes(
         title_text="RF frequency (MHz)",
-        range=[
-            float(products.frequency_mhz[0] - frequency_step / 2),
-            float(products.frequency_mhz[-1] + frequency_step / 2),
-        ],
+        range=list(frequency_range),
         autorange=False,
         row=2,
         col=1,

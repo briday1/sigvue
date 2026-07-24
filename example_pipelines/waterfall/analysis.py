@@ -2,12 +2,13 @@
 
 import numpy as np
 
-from sigvue.plugin import Analysis, ParameterContext
+from sigvue.plugin import ParameterContext
 
-from .models import SignalWindow, WaterfallProducts, WaterfallSettings
+from ..plugins.sigmf import SigMFWindow
+from .models import WaterfallProducts, WaterfallSettings
 
 
-def configure(data: SignalWindow, ui: ParameterContext) -> WaterfallSettings:
+def configure(data: SigMFWindow, ui: ParameterContext) -> WaterfallSettings:
     return WaterfallSettings(
         fft_size=int(ui.select(
             "fft_size",
@@ -26,11 +27,17 @@ def configure(data: SignalWindow, ui: ParameterContext) -> WaterfallSettings:
     )
 
 
-def process(data: SignalWindow, settings: WaterfallSettings) -> WaterfallProducts:
-    fft_size = min(settings.fft_size, data.samples.size)
+def process(
+    data: SigMFWindow,
+    settings: WaterfallSettings | None,
+) -> WaterfallProducts:
+    if settings is None:
+        raise RuntimeError("Waterfall analysis requires configured settings")
+    samples = data.channel()
+    fft_size = min(settings.fft_size, samples.size)
     hop = max(1, round(fft_size * (1 - settings.overlap_percent / 100)))
-    starts = np.arange(0, max(1, data.samples.size - fft_size + 1), hop, dtype=np.int64)
-    blocks = np.asarray([data.samples[start : start + fft_size] for start in starts])
+    starts = np.arange(0, max(1, samples.size - fft_size + 1), hop, dtype=np.int64)
+    blocks = np.asarray([samples[start : start + fft_size] for start in starts])
     if blocks.shape[1] < fft_size:
         blocks = np.pad(blocks, ((0, 0), (0, fft_size - blocks.shape[1])))
     taper = np.hanning(fft_size)
@@ -39,11 +46,11 @@ def process(data: SignalWindow, settings: WaterfallSettings) -> WaterfallProduct
     waterfall = 10 * np.log10(np.maximum(power, 1e-12))
     average = 10 * np.log10(np.maximum(np.mean(power, axis=0), 1e-12))
     frequency = (
-        data.recording.center_frequency
+        data.recording.center_frequency_at(data.start_sample)
         + np.fft.fftshift(np.fft.fftfreq(fft_size, 1 / data.recording.sample_rate))
     ) / 1e6
     centers = starts + fft_size / 2
-    time_edges = cell_edges(centers, 0.0, float(data.samples.size))
+    time_edges = cell_edges(centers, 0.0, float(data.sample_count))
     return WaterfallProducts(
         data.recording,
         data.start_sample,
@@ -51,7 +58,7 @@ def process(data: SignalWindow, settings: WaterfallSettings) -> WaterfallProduct
         waterfall,
         frequency,
         (data.start_sample + time_edges) / data.recording.sample_rate * 1e3,
-        data.samples.nbytes,
+        data.buffer_nbytes,
     )
 
 
@@ -59,19 +66,3 @@ def cell_edges(centers: np.ndarray, lower: float, upper: float) -> np.ndarray:
     if centers.size == 1:
         return np.asarray([lower, upper])
     return np.concatenate(([lower], (centers[:-1] + centers[1:]) / 2, [upper]))
-
-
-class WaterfallAnalysis(Analysis[SignalWindow, WaterfallSettings, WaterfallProducts]):
-    """Framework analysis object for the synthetic LTE waterfall."""
-
-    def configure(self, data: SignalWindow, ui: ParameterContext) -> WaterfallSettings:
-        return configure(data, ui)
-
-    def process(
-        self,
-        data: SignalWindow,
-        settings: WaterfallSettings | None,
-    ) -> WaterfallProducts:
-        if settings is None:
-            raise RuntimeError("Waterfall analysis requires configured settings")
-        return process(data, settings)

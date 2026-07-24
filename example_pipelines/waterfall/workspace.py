@@ -1,35 +1,50 @@
-"""The only module that assembles framework objects for this pipeline."""
+"""Framework assembly for the windowed waterfall pipeline."""
 
 from pathlib import Path
 
-from sigvue.plugin import DiscoveryColumn, Workspace
+from sigvue.helpers import configured_path
+from sigvue.plugin import Workspace
 
-from .analysis import WaterfallAnalysis
-from .delivery import WindowedSamples
-from .presentation import WaterfallPresentation
-from .source import recording_source
-
-
-DISCOVERY_COLUMNS = (
-    DiscoveryColumn("date", "Date", "datetime"),
-    DiscoveryColumn("sample_rate", "Sampling rate", "si", unit="sample/s"),
-    DiscoveryColumn("rf_frequency", "RF frequency", "si", unit="Hz"),
+from ..plugins import CallableAnalysis, CallablePresentation
+from ..plugins.sigmf import (
+    SIGMF_DISCOVERY_COLUMNS,
+    SigMFExporter,
+    WaterfallSigMFAnnotator,
+    WindowedSigMFDelivery,
+    sigmf_source,
 )
+from .analysis import configure, process
+from .presentation import present
 
 
 def create_workspace(config=None) -> Workspace:
-    values = config or {}
-    root = Path(values.get("data_root", Path.cwd() / "example_pipelines/data/lte"))
+    root = configured_path(
+        config,
+        Path.cwd() / "example_pipelines/data/lte",
+    )
     return Workspace(
         identifier="synthetic-lte-waterfall",
         name="Synthetic LTE Waterfall",
         description="Windowed spectrum and waterfall analysis of generated LTE-like uplink and downlink SigMF recordings.",
-        source=recording_source(root),
-        delivery=WindowedSamples(),
-        analysis=WaterfallAnalysis(),
-        presentation=WaterfallPresentation(),
+        source=sigmf_source(root, tags=("sigmf", "synthetic")),
+        annotator=WaterfallSigMFAnnotator(
+            "lte-waterfall",
+            "annotation_region_color",
+        ),
+        exporter=SigMFExporter(),
+        delivery=WindowedSigMFDelivery(
+            default_window=0.012,
+            minimum_window=0.004,
+            step=0.002,
+            overview_bins=300,
+            overview_channel=0,
+            time_unit="ms",
+            cache_key="lte-power",
+        ),
+        analysis=CallableAnalysis(process, configure),
+        presentation=CallablePresentation(present),
         lazy_views=True,
         category="spectrum monitoring",
         tags=("windowed", "synthetic", "LTE", "SigMF", "waterfall"),
-        discovery_columns=DISCOVERY_COLUMNS,
+        discovery_columns=SIGMF_DISCOVERY_COLUMNS,
     )

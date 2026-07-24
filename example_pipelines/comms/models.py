@@ -4,23 +4,6 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ..io.sigmf import SigMFRecording
-
-
-@dataclass(frozen=True)
-class CommsWindow:
-    recording: SigMFRecording
-    start_sample: int
-    samples: np.ndarray
-
-    @property
-    def start_seconds(self) -> float:
-        return self.start_sample / self.recording.sample_rate
-
-    @property
-    def duration_seconds(self) -> float:
-        return self.samples.size / self.recording.sample_rate
-
 
 @dataclass(frozen=True)
 class CommsProducts:
