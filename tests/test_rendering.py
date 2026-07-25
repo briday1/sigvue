@@ -29,9 +29,18 @@ class RenderingTests(unittest.TestCase):
         add_viewport_heatmap(
             figure, x=np.arange(100), y=np.arange(80), z=np.arange(8_000).reshape(80, 100),
             colorscale="Viridis", render_width=10, render_height=8,
+            hovertemplate="X: %{x}<br>Y: %{y}<br>Z: %{z}<extra></extra>",
         )
         self.assertEqual(1, len(figure.layout.images))
-        self.assertEqual((2, 2), np.asarray(figure.data[0].z).shape)
+        self.assertEqual((8, 10), np.asarray(figure.data[0].z).shape)
+        self.assertEqual(11, len(figure.data[0].x))
+        self.assertEqual(9, len(figure.data[0].y))
+        self.assertEqual(
+            "X: %{x}<br>Y: %{y}<br>Z: %{z}<extra></extra>",
+            figure.data[0].hovertemplate,
+        )
+        self.assertIsNone(figure.data[0].hoverinfo)
+        self.assertEqual(0.0, figure.data[0].opacity)
         self.assertTrue(figure._sigvue_viewport_heatmap)
 
     def test_unequal_edge_blocks_keep_exact_heatmap_coordinates(self):

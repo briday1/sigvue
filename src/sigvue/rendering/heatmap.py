@@ -341,12 +341,13 @@ def add_viewport_heatmap(
         sizing="stretch", opacity=1.0, layer="below",
         visible=trace.visible is not False and trace.visible != "legendonly",
     )
-    attached.x = [xmin + (xmax - xmin) / 4, xmax - (xmax - xmin) / 4]
-    attached.y = [ymin + (ymax - ymin) / 4, ymax - (ymax - ymin) / 4]
-    attached.z = [[zmin, zmax], [zmin, zmax]]
+    # Keep the bounded values behind the raster so Plotly can still report
+    # meaningful x/y/z hover data.  The trace is transparent, while the layout
+    # image remains the only visible rendering.
+    attached.x = rendered_x_edges
+    attached.y = rendered_y_edges
+    attached.z = rendered
     attached.opacity = 0.0
-    attached.hoverinfo = "skip"
-    attached.hovertemplate = None
     return trace_index
 
 
