@@ -45,6 +45,8 @@ def test_files_support_an_exact_headless_window_flow(tmp_path: Path):
             recording[:3],
             tuple(reversed(recording[:3])),
         ),
+        overview_colormap_control="colormap",
+        overview_limits_control="dbfs_limits",
         overview_label="Power",
         minimum=1.0,
         step=1.0,
@@ -58,6 +60,8 @@ def test_files_support_an_exact_headless_window_flow(tmp_path: Path):
         (0.0, 1.0, 2.0),
         (2.0, 1.0, 0.0),
     )
+    assert reader.overview_colormap_control == "colormap"
+    assert reader.overview_limits_control == "dbfs_limits"
 
 
 def test_reader_keeps_native_references_outside_the_browser_model():

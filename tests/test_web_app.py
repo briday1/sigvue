@@ -556,7 +556,10 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("playbackConfig.mode==='live'", body)
         self.assertIn("__playback_follow_live:playbackFollowLive", body)
         self.assertIn("Object.assign(playbackConfig,result.page.playback)", body)
-        self.assertIn("function startFrameworkWindowed(config,refresh)", body)
+        self.assertIn(
+            "function startFrameworkWindowed(config,refresh,controls=[])",
+            body,
+        )
         self.assertIn("function startFrameworkSegmented(config,refresh)", body)
         self.assertIn("isSegmented=p.playback.mode==='segmented'", body)
         self.assertIn('id="segmented-track"', body)
@@ -631,6 +634,14 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("__window_end_seconds:windowEnd", body)
         self.assertIn("config.overview_values", body)
         self.assertIn("config.overview_heatmap", body)
+        self.assertIn("config.overview_colormap_control", body)
+        self.assertIn("config.overview_limits_control", body)
+        self.assertIn("selectedHeatStops", body)
+        self.assertIn("selectedHeatLimits", body)
+        self.assertIn(
+            "startFrameworkWindowed(p.playback,refresh,p.controls)",
+            body,
+        )
         self.assertIn("const prepareHeatmap=()=>", body)
         self.assertIn(
             "(rowCount-1-rowIndex)*columnCount+columnIndex",

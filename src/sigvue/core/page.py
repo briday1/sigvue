@@ -47,6 +47,8 @@ class PlaybackConfiguration:
     overview_values: tuple[float, ...] = ()
     # Rows are bottom-to-top display coordinates; columns are recording time.
     overview_heatmap: tuple[tuple[float, ...], ...] = ()
+    overview_colormap_control: str | None = None
+    overview_limits_control: str | None = None
     overview_series: tuple[tuple[float, ...], ...] = ()
     overview_durations_seconds: tuple[float, ...] = ()
     overview_switcher_key: str | None = None
@@ -95,6 +97,22 @@ class PlaybackConfiguration:
                 isfinite(value) for row in self.overview_heatmap for value in row
             ):
                 raise ValueError("Windowed overview heatmap values must be finite")
+            style_controls = (
+                self.overview_colormap_control,
+                self.overview_limits_control,
+            )
+            if any(
+                control is not None
+                and (not isinstance(control, str) or not control.strip())
+                for control in style_controls
+            ):
+                raise ValueError(
+                    "Windowed overview style controls must be non-empty names"
+                )
+            if any(style_controls) and not self.overview_heatmap:
+                raise ValueError(
+                    "Windowed overview style controls require an overview heatmap"
+                )
             if not all(
                 isfinite(value) for series in self.overview_series for value in series
             ):
@@ -216,9 +234,32 @@ class PageDefinition:
                 f"Unknown axis-navigation policies: {', '.join(sorted(invalid_axis_navigation))}"
             )
         view_names = {view.name for view in self.views}
-        validate_layout(
-            self.layout, view_names, {control.name for control in self.controls}
+        controls_by_name = {control.name: control for control in self.controls}
+        validate_layout(self.layout, view_names, set(controls_by_name))
+        overview_bindings = (
+            (
+                self.playback.overview_colormap_control,
+                "colormap",
+                "colormap",
+            ),
+            (
+                self.playback.overview_limits_control,
+                "limits",
+                "limits",
+            ),
         )
+        for name, expected, label in overview_bindings:
+            if not name:
+                continue
+            control = controls_by_name.get(name)
+            if control is None:
+                raise ValueError(
+                    f"Windowed overview {label} control is not defined: {name}"
+                )
+            if control.control_type != expected:
+                raise ValueError(
+                    f"Windowed overview {label} control must be a {expected} control"
+                )
         if self.playback.overview_switcher_key:
             switcher_keys = {
                 str(node.props["key"])

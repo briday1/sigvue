@@ -125,6 +125,8 @@ reader = Files(root, "*.bin", open_recording).windowed(
     step=0.010,
     overview=power_overview,
     overview_heatmap=low_resolution_waterfall,
+    overview_colormap_control="colormap",
+    overview_limits_control="dbfs_limits",
     overview_label="Median power",
 )
 ```
@@ -143,7 +145,9 @@ behind it without changing the bar's geometry. Heatmap columns run
 left-to-right in recording-time order and rows run bottom-to-top, so a
 conventional frequency-x/time-y waterfall should be transposed before it is
 supplied. The bar's expand icon selects the complete recording extent on
-demand.
+demand. The optional control bindings make the compact heatmap follow an
+existing `ui.colormap()` picker and `ui.limits()` dBFS range; changing either
+redraws the bar and the main plot together.
 
 ### Segmented data
 

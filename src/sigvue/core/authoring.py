@@ -211,6 +211,8 @@ class Reader(Generic[Reference, Opened]):
             | Callable[[Opened], Iterable[Iterable[float]]]
             | None
         ) = None,
+        overview_colormap_control: str | None = None,
+        overview_limits_control: str | None = None,
         overview_label: str | None = None,
         minimum: float | None = None,
         step: float | None = None,
@@ -224,6 +226,8 @@ class Reader(Generic[Reference, Opened]):
             default=default,
             overview=overview,
             overview_heatmap=overview_heatmap,
+            overview_colormap_control=overview_colormap_control,
+            overview_limits_control=overview_limits_control,
             overview_label=overview_label,
             minimum=minimum,
             step=step,
@@ -580,6 +584,8 @@ class WindowedReader(Generic[Reference, Opened, Selected]):
             | Callable[[Opened], Iterable[Iterable[float]]]
             | None
         ),
+        overview_colormap_control: str | None,
+        overview_limits_control: str | None,
         overview_label: str | None,
         minimum: float | None,
         step: float | None,
@@ -616,6 +622,8 @@ class WindowedReader(Generic[Reference, Opened, Selected]):
         self.time_unit = _validate_time_unit(time_unit)
         self._overview = overview
         self._overview_heatmap = overview_heatmap
+        self.overview_colormap_control = overview_colormap_control
+        self.overview_limits_control = overview_limits_control
         self.overview_label = overview_label
         self._overview_cache: list[tuple[Opened, object, tuple[float, ...]]] = []
         self._heatmap_cache: list[
@@ -760,6 +768,8 @@ class WindowedReader(Generic[Reference, Opened, Selected]):
             default_window=min(self.default, total),
             overview=self.overview(opened) or None,
             overview_heatmap=self.overview_heatmap(opened) or None,
+            overview_colormap_control=self.overview_colormap_control,
+            overview_limits_control=self.overview_limits_control,
             overview_label=self.overview_label,
             minimum_window=self.minimum,
             step=self.step,

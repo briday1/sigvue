@@ -571,11 +571,24 @@ class WorkspaceContractTests(unittest.TestCase):
                     step=0.25,
                     overview=(0.1, 0.8, 0.2, 1.0),
                     overview_heatmap=((0.0, 1.0, 2.0, 3.0), (4.0, 5.0, 6.0, 7.0)),
+                    overview_colormap_control="waterfall_colormap",
+                    overview_limits_control="waterfall_limits",
                     overview_label="Power and spectrum",
                 )
                 return source_data[round(start) : round(end)]
 
         def analyze(window, ui):
+            ui.colormap(
+                "waterfall_colormap",
+                default="Viridis",
+                options=("Viridis", "Turbo"),
+            )
+            ui.limits(
+                "waterfall_limits",
+                default=(-80.0, -20.0),
+                minimum=-200.0,
+                maximum=20.0,
+            )
             with ui.tab("Window"):
                 ui.plot(go.Figure(go.Scatter(y=window)), key="window")
 
@@ -602,6 +615,14 @@ class WorkspaceContractTests(unittest.TestCase):
             ((0.0, 1.0, 2.0, 3.0), (4.0, 5.0, 6.0, 7.0)),
             page.playback.overview_heatmap,
         )
+        self.assertEqual(
+            "waterfall_colormap",
+            page.playback.overview_colormap_control,
+        )
+        self.assertEqual(
+            "waterfall_limits",
+            page.playback.overview_limits_control,
+        )
         self.assertEqual((2, 3), page.views[0].callback(values).data[0].y)
         self.assertIsNone(page.export)
 
@@ -623,6 +644,12 @@ class WorkspaceContractTests(unittest.TestCase):
                 duration=1.0,
                 default_window=0.1,
                 overview_heatmap=((0.0, 1.0), (2.0,)),
+            )
+        with self.assertRaisesRegex(ValueError, "require an overview heatmap"):
+            ui.windowed(
+                duration=1.0,
+                default_window=0.1,
+                overview_colormap_control="colormap",
             )
 
     def test_windowed_overview_is_optional_and_independent_of_sample_count(self):
