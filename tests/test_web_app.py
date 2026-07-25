@@ -24,6 +24,7 @@ from sigvue import (
     BatchRequest,
     BatchResult,
     CapabilityChoice,
+    Files,
     add_viewport_heatmap,
 )
 from sigvue.web.application import (
@@ -214,6 +215,37 @@ class WebAppTests(unittest.TestCase):
             self.assertEqual(["campaign-a::capture.dat"], [item["id"] for item in campaign["items"]])
             opened = app.open_item("nested-files", "campaign-a::capture.dat")
             self.assertEqual(["campaign-a"], opened["item"]["navigation_path"])
+
+            flattened = Workspace(
+                identifier="flat-files",
+                name="Flat files",
+                description="Flattened recursive fixture",
+                reader=Files(
+                    root,
+                    "*.dat",
+                    lambda path: path.read_text(),
+                    recursive=True,
+                ),
+                view=analyze,
+                flatten_discovery=True,
+            )
+            flat_app = SigvueApp()
+            flat_app.register_workspace(flattened)
+            flat_listing = flat_app.browse_items("flat-files", {})
+            self.assertEqual([], flat_listing["directories"])
+            self.assertEqual(
+                [
+                    "campaign-a::capture.dat",
+                    "campaign-a::day-2::capture.dat",
+                    "root.dat",
+                ],
+                [item["id"] for item in flat_listing["items"]],
+            )
+            flat_opened = flat_app.open_item(
+                "flat-files",
+                "campaign-a::day-2::capture.dat",
+            )
+            self.assertEqual([], flat_opened["item"]["navigation_path"])
 
     def test_workspace_annotation_is_created_and_rediscovered(self):
         app = self.create_example_app()

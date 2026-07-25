@@ -70,6 +70,30 @@ def test_reader_keeps_native_references_outside_the_browser_model():
     assert not hasattr(reader, "source")
 
 
+def test_workspace_flatten_discovery_requires_a_boolean():
+    reader = Reader(
+        lambda: ("recording",),
+        lambda reference: reference,
+    )
+
+    def view(data, ui):
+        with ui.tab("Data"):
+            ui.text(data, key="data")
+
+    with pytest.raises(
+        TypeError,
+        match="flatten_discovery must be true or false",
+    ):
+        Workspace(
+            identifier="invalid-flat",
+            name="Invalid flat",
+            description="Invalid discovery policy",
+            reader=reader,
+            view=view,
+            flatten_discovery="yes",
+        )
+
+
 def test_window_cache_avoids_reopening_and_rereading_for_tab_changes(
     tmp_path: Path,
 ):

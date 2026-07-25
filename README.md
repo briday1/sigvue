@@ -323,6 +323,9 @@ reader = Reader(
 ```
 
 Optional `DiscoveryColumn` values on `Workspace` define typed catalog columns.
+Recursive readers preserve their relative directories as browser folders by
+default. Set `flatten_discovery=True` on `Workspace` to show every discovered
+item at the workspace root without changing its identifier, source, or reader.
 
 ## Optional capabilities
 

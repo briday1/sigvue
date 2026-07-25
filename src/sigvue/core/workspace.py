@@ -1587,6 +1587,7 @@ class Workspace:
         tags: tuple[str, ...] = (),
         discovery_columns: tuple[DiscoveryColumn, ...] | None = None,
         lazy_views: bool = True,
+        flatten_discovery: bool = False,
     ) -> None:
         from .authoring import (
             BufferedReader,
@@ -1623,6 +1624,7 @@ class Workspace:
             tags=tags,
             discovery_columns=discovery_columns,
             lazy_views=lazy_views,
+            flatten_discovery=flatten_discovery,
         )
         self.reader = reader
         self.view = view
@@ -1647,6 +1649,7 @@ class Workspace:
         tags: tuple[str, ...] = (),
         discovery_columns: tuple[DiscoveryColumn, ...] | None = None,
         lazy_views: bool = False,
+        flatten_discovery: bool = False,
     ) -> Workspace:
         """Construct from private runtime stages for internal compatibility tests."""
         if not isinstance(source, Source):
@@ -1675,6 +1678,7 @@ class Workspace:
             tags=tags,
             discovery_columns=discovery_columns,
             lazy_views=lazy_views,
+            flatten_discovery=flatten_discovery,
         )
         workspace.reader = None
         workspace.view = None
@@ -1700,6 +1704,7 @@ class Workspace:
         tags: tuple[str, ...],
         discovery_columns: tuple[DiscoveryColumn, ...] | None,
         lazy_views: bool,
+        flatten_discovery: bool,
     ) -> None:
         normalized_columns = () if discovery_columns is None else discovery_columns
         if annotator is not None and not isinstance(annotator, Annotator):
@@ -1736,6 +1741,8 @@ class Workspace:
             raise TypeError("discovery_columns must contain DiscoveryColumn values")
         if not isinstance(lazy_views, bool):
             raise TypeError("lazy_views must be true or false")
+        if not isinstance(flatten_discovery, bool):
+            raise TypeError("flatten_discovery must be true or false")
         column_keys = [column.key for column in normalized_columns]
         if len(column_keys) != len(set(column_keys)):
             raise ValueError("Discovery column keys must be unique")
@@ -1745,6 +1752,7 @@ class Workspace:
         self.exporter = exporter
         self.batch = batch
         self.lazy_views = lazy_views
+        self.flatten_discovery = flatten_discovery
         self._once_caches: dict[str, dict[tuple[object, ...], object]] = {}
         self._legacy_process_caches: dict[
             str,
@@ -1851,7 +1859,11 @@ class Workspace:
                 source_reference=str(resource.source),
                 timestamp=resource.timestamp,
                 tags=resource.tags,
-                navigation_path=resource.navigation_path or (),
+                navigation_path=(
+                    ()
+                    if self.flatten_discovery
+                    else resource.navigation_path or ()
+                ),
                 summary_fields=resource.summary,
             )
             for resource in self._resources().values()
@@ -2027,7 +2039,11 @@ class Workspace:
             source_reference=str(resource.source),
             timestamp=resource.timestamp,
             tags=resource.tags,
-            navigation_path=resource.navigation_path or (),
+            navigation_path=(
+                ()
+                if self.flatten_discovery
+                else resource.navigation_path or ()
+            ),
             summary_fields=resource.summary,
         )
 
