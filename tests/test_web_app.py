@@ -516,6 +516,7 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("time.textContent=formatSegmentRange", body)
         self.assertIn("const bindHold=(button,direction)=>", body)
         self.assertIn('class="segment-marker-layer"', body)
+        self.assertIn("reduce((bounds,value)=>[Math.min(", body)
         self.assertIn("const nearestSegment=clientX=>", body)
         self.assertIn("track.onpointerdown=event=>", body)
         self.assertIn("track.onpointermove=event=>", body)
