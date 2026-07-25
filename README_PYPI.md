@@ -29,7 +29,7 @@ Open <http://127.0.0.1:8000>.
 
 ## The API
 
-![The API diagram](https://raw.githubusercontent.com/briday1/sigvue/main/docs/pypi-diagrams/01-the-api.svg)
+![The API diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.42/docs/pypi-diagrams/01-the-api.svg)
 
 There is one application object:
 
@@ -275,7 +275,7 @@ Tabs, weighted grids, nested groups, multidimensional switchers, display
 controls, inline processing controls, tables, text, and deferred plots all stay
 in the one nested `ui` API.
 
-![Exact complex layouts diagram](https://raw.githubusercontent.com/briday1/sigvue/main/docs/pypi-diagrams/02-exact-complex-layouts.svg)
+![Exact complex layouts diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.42/docs/pypi-diagrams/02-exact-complex-layouts.svg)
 
 ## Custom discovery metadata
 
@@ -319,7 +319,7 @@ Workspace(
 These contracts are imported directly from `sigvue`. Format-specific readers
 and capabilities belong with the application or examples, not in Sigvue core.
 
-![Optional capabilities diagram](https://raw.githubusercontent.com/briday1/sigvue/main/docs/pypi-diagrams/03-optional-capabilities.svg)
+![Optional capabilities diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.42/docs/pypi-diagrams/03-optional-capabilities.svg)
 
 ## Configuration
 
