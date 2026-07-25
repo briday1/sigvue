@@ -461,6 +461,33 @@ class WorkspaceContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, r"duplicate identifiers: same"):
             duplicate.discover_items()
 
+    def test_workspace_catalog_is_discovered_once_for_folder_navigation(self):
+        calls = 0
+
+        class CountingSource(Source[object]):
+            def discover(self):
+                nonlocal calls
+                calls += 1
+                return [DataResource("one", "One", source=1)]
+
+            def open(self, resource):
+                return resource.source
+
+        workspace = make_workspace(
+            identifier="cached-discovery",
+            name="Cached discovery",
+            description="Folder navigation reuses one workspace catalog",
+            source=CountingSource(),
+            configure=no_parameters,
+            process=identity_process,
+            present=lambda data, ui: None,
+        )
+
+        workspace.discover_items()
+        workspace.discover_items()
+
+        self.assertEqual(1, calls)
+
     def test_directory_source_creates_listing_rows_and_opens_selected_file(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

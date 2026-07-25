@@ -532,6 +532,12 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("bindLayoutTabs(()=>activeViewChanged?.())", body)
         self.assertIn("__include_static_views:includeStatic", body)
         self.assertIn('class="data-table"', body)
+        self.assertIn(
+            ".table-wrap { width:100%; height:100%; min-height:0; "
+            "max-height:100%; overflow:auto;",
+            body,
+        )
+        self.assertIn(".data-table th { position:sticky; top:0; z-index:1;", body)
         self.assertIn("gridTemplate(node.props.columns)", body)
         self.assertIn("function sizeDataStage()", body)
         self.assertIn('id="current-time"', body)

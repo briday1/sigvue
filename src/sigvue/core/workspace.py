@@ -1915,6 +1915,7 @@ class Workspace:
             str,
             dict[tuple[object, ...], object],
         ] = {}
+        self._resource_cache: dict[str, DataResource] | None = None
         self._cache_lock = RLock()
 
     def run_item_batch(self, item_id: str, action: str, directory: Path) -> BatchResult:
@@ -1966,28 +1967,34 @@ class Workspace:
         )
 
     def _resources(self) -> dict[str, DataResource]:
-        discovered = list(
-            self.reader.resources()
-            if self.reader is not None
-            else self._legacy_runtime.source.discover()
-        )
-        for index, resource in enumerate(discovered):
-            if not isinstance(resource, DataResource):
-                raise TypeError(
-                    f"reader discovery item {index} must be DataResource, got {type(resource).__name__}"
+        with self._cache_lock:
+            if self._resource_cache is not None:
+                return self._resource_cache
+            discovered = list(
+                self.reader.resources()
+                if self.reader is not None
+                else self._legacy_runtime.source.discover()
+            )
+            for index, resource in enumerate(discovered):
+                if not isinstance(resource, DataResource):
+                    raise TypeError(
+                        f"reader discovery item {index} must be DataResource, "
+                        f"got {type(resource).__name__}"
+                    )
+            resources = {resource.identifier: resource for resource in discovered}
+            if len(resources) != len(discovered):
+                duplicates = sorted(
+                    identifier
+                    for identifier in {resource.identifier for resource in discovered}
+                    if sum(resource.identifier == identifier for resource in discovered)
+                    > 1
                 )
-        resources = {resource.identifier: resource for resource in discovered}
-        if len(resources) != len(discovered):
-            duplicates = sorted(
-                identifier
-                for identifier in {resource.identifier for resource in discovered}
-                if sum(resource.identifier == identifier for resource in discovered) > 1
-            )
-            raise ValueError(
-                "reader discovery returned duplicate identifiers: "
-                + ", ".join(duplicates)
-            )
-        return resources
+                raise ValueError(
+                    "reader discovery returned duplicate identifiers: "
+                    + ", ".join(duplicates)
+                )
+            self._resource_cache = resources
+            return resources
 
     def _open_resource(self, resource: DataResource) -> object:
         if self.reader is not None:
