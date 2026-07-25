@@ -18,6 +18,22 @@ The author returns one `Workspace`. A reusable `Reader` handles discovery and
 exact buffering; one unrestricted `view(data, ui)` callback does everything
 after that.
 
+Sigvue is intended to make signal viewing and repeatable batch processing
+simple to start and straightforward to extend. The same domain reader,
+processing functions, and plots work headlessly; the workspace adds discovery,
+buffer controls, lazy views, and optional durable batch actions without
+forcing the scientific pipeline into framework-specific stages.
+
+Two standalone applications show the same core serving very different signal
+workflows:
+
+- [NOAA NEXRAD Viewer](https://github.com/briday1/nexrad-viewer) discovers
+  Level III radar sequences, provides segmented scan playback, and renders
+  full-resolution GIFs as durable batch results.
+- [SigMF Viewer](https://github.com/briday1/sigmf-waterfall-viewer) discovers
+  recordings and collections, reads exact moving windows, presents progressive
+  waterfalls, and renders high-resolution per-channel PNGs in batch mode.
+
 ## Install and run
 
 ```bash
@@ -27,9 +43,16 @@ sigvue --config browser.toml
 
 Open <http://127.0.0.1:8000>.
 
+Application packages that provide a native pywebview window can install the
+shared desktop toolchain from a source checkout:
+
+```bash
+python -m pip install -e ".[desktop]"
+```
+
 ## The API
 
-![The API diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.48/docs/pypi-diagrams/01-the-api.svg)
+![The API diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.49/docs/pypi-diagrams/01-the-api.svg)
 
 There is one application object:
 
@@ -286,7 +309,7 @@ Tabs, weighted grids, nested groups, multidimensional switchers, display
 controls, inline processing controls, tables, text, and deferred plots all stay
 in the one nested `ui` API.
 
-![Exact complex layouts diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.48/docs/pypi-diagrams/02-exact-complex-layouts.svg)
+![Exact complex layouts diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.49/docs/pypi-diagrams/02-exact-complex-layouts.svg)
 
 ## Custom discovery metadata
 
@@ -337,7 +360,7 @@ bell shows queued and running actions, follows them while the user browses other
 workspaces or views, and retains their completed outputs for opening or path
 copying. Reloading the page reconnects to jobs still owned by the server.
 
-![Optional capabilities diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.48/docs/pypi-diagrams/03-optional-capabilities.svg)
+![Optional capabilities diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.49/docs/pypi-diagrams/03-optional-capabilities.svg)
 
 ## Configuration
 
