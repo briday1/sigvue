@@ -34,6 +34,26 @@ class RenderingTests(unittest.TestCase):
         self.assertEqual((2, 2), np.asarray(figure.data[0].z).shape)
         self.assertTrue(figure._sigvue_viewport_heatmap)
 
+    def test_unequal_edge_blocks_keep_exact_heatmap_coordinates(self):
+        source = np.arange(12, dtype=float).reshape(3, 4)
+        figure = go.Figure()
+        add_viewport_heatmap(
+            figure,
+            x=np.arange(4),
+            y=np.asarray([0.0, 1.0, 2.0, 10.0]),
+            z=source,
+            colorscale="Viridis",
+            render_width=4,
+            render_height=2,
+        )
+
+        self.assertEqual(0, len(figure.layout.images))
+        np.testing.assert_array_equal(np.asarray(figure.data[0].y), [0.0, 2.0, 10.0])
+        np.testing.assert_array_equal(
+            np.asarray(figure.data[0].z),
+            np.asarray([[2.0, 3.0, 4.0, 5.0], [8.0, 9.0, 10.0, 11.0]]),
+        )
+
     def test_zoom_rasters_only_requested_source_region(self):
         figure = go.Figure()
         add_viewport_heatmap(

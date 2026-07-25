@@ -16,6 +16,22 @@ The author returns one `Workspace`. A reusable `Reader` handles discovery and
 exact buffering; one unrestricted `view(data, ui)` callback does everything
 after that.
 
+Sigvue is intended to make signal viewing and repeatable batch processing
+simple to start and straightforward to extend. The same domain reader,
+processing functions, and plots work headlessly; the workspace adds discovery,
+buffer controls, lazy views, and optional durable batch actions without
+forcing the scientific pipeline into framework-specific stages.
+
+Two standalone applications show the same core serving very different signal
+workflows:
+
+- [NOAA NEXRAD Viewer](https://github.com/briday1/nexrad-viewer) discovers
+  Level III radar sequences, provides segmented scan playback, and renders
+  full-resolution GIFs as durable batch results.
+- [SigMF Viewer](https://github.com/briday1/sigmf-waterfall-viewer) discovers
+  recordings and collections, reads exact moving windows, presents progressive
+  waterfalls, and renders high-resolution per-channel PNGs in batch mode.
+
 ## Install and run
 
 ```bash
@@ -24,6 +40,13 @@ sigvue --config browser.toml
 ```
 
 Open <http://127.0.0.1:8000>.
+
+Application packages that provide a native pywebview window can install the
+shared desktop toolchain from a source checkout:
+
+```bash
+python -m pip install -e ".[desktop]"
+```
 
 ## The API
 

@@ -39,6 +39,10 @@ class PackagingTests(unittest.TestCase):
             self.dependency_names(extras["build"]),
         )
         self.assertEqual(
+            {"pyinstaller", "pywebview"},
+            self.dependency_names(extras["desktop"]),
+        )
+        self.assertEqual(
             {"numpy", "scipy"},
             self.dependency_names(extras["examples"]),
         )

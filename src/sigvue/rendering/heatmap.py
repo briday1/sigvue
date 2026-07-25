@@ -157,6 +157,30 @@ def _visible_coordinates(values: np.ndarray | None, cell_count: int, selected: s
     raise ValueError("Heatmap coordinates must contain one center per cell or one more edge than cells")
 
 
+def _aggregated_coordinate_edges(
+    edges: np.ndarray,
+    selected: slice,
+    block_size: int,
+    output_count: int,
+) -> np.ndarray:
+    """Return the exact source boundaries represented by reduced display cells."""
+    source_count = selected.stop - selected.start
+    offsets = np.minimum(
+        np.arange(output_count + 1, dtype=int) * block_size,
+        source_count,
+    )
+    offsets[-1] = source_count
+    return edges[selected.start + offsets]
+
+
+def _uniform_cell_widths(edges: np.ndarray) -> bool:
+    widths = np.diff(edges)
+    if widths.size < 2:
+        return True
+    scale = max(1.0, float(np.max(np.abs(widths))))
+    return bool(np.allclose(widths, widths[0], rtol=1e-10, atol=scale * 1e-12))
+
+
 def _translated_viewport(requested: Any, current: tuple[float, float]) -> Any:
     """Translate a requested range onto the current source bounds."""
     if not isinstance(requested, dict):
@@ -281,6 +305,33 @@ def add_viewport_heatmap(
     if zmax <= zmin:
         zmax = zmin + max(1.0, abs(zmin) * 1e-9)
     rendered = aggregate_heatmap(visible, width=render_width, height=render_height, method=aggregation)
+    row_block = max(1, ceil(visible.shape[0] / render_height))
+    column_block = max(1, ceil(visible.shape[1] / render_width))
+    rendered_x_edges = _aggregated_coordinate_edges(
+        x_edges,
+        x_slice,
+        column_block,
+        rendered.shape[1],
+    )
+    rendered_y_edges = _aggregated_coordinate_edges(
+        y_edges,
+        y_slice,
+        row_block,
+        rendered.shape[0],
+    )
+    if not (
+        _uniform_cell_widths(rendered_x_edges)
+        and _uniform_cell_widths(rendered_y_edges)
+    ):
+        # A single layout image necessarily gives every pixel the same size.
+        # Keep the bounded Heatmap trace when reduced cells have unequal
+        # physical extents so partial edge blocks are drawn at their exact
+        # coordinates instead of being stretched across a full raster row.
+        attached.x = rendered_x_edges
+        attached.y = rendered_y_edges
+        attached.z = rendered
+        attached.zsmooth = False
+        return trace_index
     xmin, xmax = sorted((float(x_edges[x_slice.start]), float(x_edges[x_slice.stop])))
     ymin, ymax = sorted((float(y_edges[y_slice.start]), float(y_edges[y_slice.stop])))
     figure.add_layout_image(
