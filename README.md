@@ -388,6 +388,11 @@ provide no code-level fallback, so `browser.toml` is their single source of
 truth for data locations. The same factory may still be reused in several TOML
 entries with different roots and metadata.
 
+When a profile contains exactly one enabled workspace, the browser opens that
+workspace's item discovery directly at `/`. Profiles with multiple workspaces
+retain the searchable workspace catalog. Workspace code and configuration are
+identical in both cases.
+
 ## Runnable examples
 
 Small examples live under [`examples/`](examples/README.md). The standalone examples

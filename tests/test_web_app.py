@@ -300,6 +300,16 @@ class WebAppTests(unittest.TestCase):
         self.assertNotIn("location.reload()", body)
         self.assertIn("if(navigate)pushRoute", body)
         self.assertIn("catalog()", body)
+        self.assertIn("singleWorkspaceMode=workspaces.length===1", body)
+        self.assertIn(
+            "if(singleWorkspaceMode){const workspace=workspaces[0];"
+            "return items(workspace.id,workspace.name,false,[])}",
+            body,
+        )
+        self.assertIn(
+            "singleWorkspaceMode?'/':`/workspace/${encodeURIComponent(id)}`",
+            body,
+        )
         self.assertIn('id="workspace-search"', body)
         self.assertIn('placeholder="Search workspaces…"', body)
         self.assertIn("No matching workspaces.", body)
