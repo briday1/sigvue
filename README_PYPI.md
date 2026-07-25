@@ -30,7 +30,7 @@ workflows:
 - [NOAA NEXRAD Viewer](https://github.com/briday1/nexrad-viewer) discovers
   Level III radar sequences, provides segmented scan playback, and renders
   full-resolution GIFs as durable batch results.
-- [SigMF Viewer](https://github.com/briday1/sigmf-waterfall-viewer) discovers
+- [SigMF Viewer](https://github.com/briday1/sigmf-viewer) discovers
   recordings and collections, reads exact moving windows, presents progressive
   waterfalls, and renders high-resolution per-channel PNGs in batch mode.
 
