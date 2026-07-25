@@ -90,7 +90,10 @@ class WorkspaceContractTests(unittest.TestCase):
             calls["present"] += 1
             color = str(ui.select("color", default="blue", options=("blue", "red")))
             with ui.tab("Signal"):
-                ui.plot(go.Figure(go.Scatter(y=products, line={"color": color})), key="signal")
+                ui.plot(
+                    go.Figure(go.Scatter(y=products, line={"color": color})),
+                    key="signal",
+                )
 
         workspace = make_workspace(
             identifier="split",
@@ -105,7 +108,9 @@ class WorkspaceContractTests(unittest.TestCase):
         recolored = opened.page.views[0].callback({"color": "red"})
         recomputed = opened.page.views[0].callback({"gain": "3", "color": "red"})
 
-        self.assertEqual((2.0, 4.0, 6.0, 8.0), opened.page.views[0].callback({}).data[0].y)
+        self.assertEqual(
+            (2.0, 4.0, 6.0, 8.0), opened.page.views[0].callback({}).data[0].y
+        )
         self.assertEqual("red", recolored.data[0].line.color)
         self.assertEqual((3.0, 6.0, 9.0, 12.0), recomputed.data[0].y)
         self.assertEqual(2, calls["process"])
@@ -165,7 +170,9 @@ class WorkspaceContractTests(unittest.TestCase):
         later = opened.page.views[0].callback({"__playback_time_seconds": "1"})
         self.assertEqual((2,), later.data[0].y)
         self.assertEqual(2, calls["process"])
-        self.assertEqual("not configured", opened.page.statistics["Configuration runtime"])
+        self.assertEqual(
+            "not configured", opened.page.statistics["Configuration runtime"]
+        )
 
     def test_configured_parameters_can_be_placed_in_a_view(self):
         def configure(data, ui):
@@ -209,7 +216,9 @@ class WorkspaceContractTests(unittest.TestCase):
 
     def test_public_source_and_delivery_are_explicit_framework_objects(self):
         class TypedDelivery(Delivery[list[int], tuple[int, ...]]):
-            def prepare(self, source_data: list[int], ui: AnalysisContext) -> tuple[int, ...]:
+            def prepare(
+                self, source_data: list[int], ui: AnalysisContext
+            ) -> tuple[int, ...]:
                 return tuple(source_data)
 
         self.assertIsInstance(ExampleSource(), Source)
@@ -286,7 +295,9 @@ class WorkspaceContractTests(unittest.TestCase):
             analysis=analysis_object(lambda value, settings: value + 1),
             presentation=presentation_object(present),
         )
-        self.assertEqual(["one"], [item.identifier for item in workspace.discover_items()])
+        self.assertEqual(
+            ["one"], [item.identifier for item in workspace.discover_items()]
+        )
         opened = workspace.open_item("one")
         self.assertEqual("11", opened.page.views[0].callback({}))
 
@@ -294,7 +305,9 @@ class WorkspaceContractTests(unittest.TestCase):
         class LooksLikeAnalysis:
             process = staticmethod(identity_process)
 
-        with self.assertRaisesRegex(TypeError, "analysis must be an Analysis object or omitted"):
+        with self.assertRaisesRegex(
+            TypeError, "analysis must be an Analysis object or omitted"
+        ):
             Workspace._from_runtime_components(
                 identifier="lookalike-analysis",
                 name="Lookalike",
@@ -304,7 +317,9 @@ class WorkspaceContractTests(unittest.TestCase):
                 presentation=presentation_object(lambda value, ui: None),
             )
 
-        with self.assertRaisesRegex(TypeError, "presentation must be a Presentation object"):
+        with self.assertRaisesRegex(
+            TypeError, "presentation must be a Presentation object"
+        ):
             Workspace._from_runtime_components(
                 identifier="lookalike-presentation",
                 name="Lookalike",
@@ -379,7 +394,9 @@ class WorkspaceContractTests(unittest.TestCase):
                 present=lambda data, ui: None,
             )
 
-        with self.assertRaisesRegex(TypeError, r"delivery must be a Delivery object or omitted"):
+        with self.assertRaisesRegex(
+            TypeError, r"delivery must be a Delivery object or omitted"
+        ):
             make_workspace(
                 identifier="invalid-delivery",
                 name="Invalid delivery",
@@ -424,7 +441,10 @@ class WorkspaceContractTests(unittest.TestCase):
 
         class DuplicateResources(Source[object]):
             def discover(self):
-                return [DataResource("same", "First", 1), DataResource("same", "Second", 2)]
+                return [
+                    DataResource("same", "First", 1),
+                    DataResource("same", "Second", 2),
+                ]
 
             def open(self, resource):
                 return resource.source
@@ -456,12 +476,21 @@ class WorkspaceContractTests(unittest.TestCase):
                 identifier="files",
                 name="Files",
                 description="Directory files",
-                source=DirectorySource(root, "*.dat", read=lambda path: [int(value) for value in path.read_text().split(",")]),
+                source=DirectorySource(
+                    root,
+                    "*.dat",
+                    read=lambda path: [
+                        int(value) for value in path.read_text().split(",")
+                    ],
+                ),
                 configure=no_parameters,
                 process=identity_process,
                 present=analyze,
             )
-            self.assertEqual(["first.dat", "second.dat"], [item.identifier for item in workspace.discover_items()])
+            self.assertEqual(
+                ["first.dat", "second.dat"],
+                [item.identifier for item in workspace.discover_items()],
+            )
             figure = workspace.open_item("second.dat").page.views[0].callback({})
             self.assertEqual((4, 5, 6), figure.data[0].y)
 
@@ -472,7 +501,9 @@ class WorkspaceContractTests(unittest.TestCase):
             ui.stat("Samples", len(data))
             with ui.tab("Data", columns=2):
                 ui.plot(go.Figure(go.Scatter(y=data[:size])), key="raw")
-                ui.plot(go.Figure(go.Scatter(y=list(reversed(data[:size])))), key="reversed")
+                ui.plot(
+                    go.Figure(go.Scatter(y=list(reversed(data[:size])))), key="reversed"
+                )
 
         workspace = make_workspace(
             identifier="example",
@@ -483,7 +514,9 @@ class WorkspaceContractTests(unittest.TestCase):
             process=identity_process,
             present=analyze,
         )
-        self.assertEqual(["recording"], [item.identifier for item in workspace.discover_items()])
+        self.assertEqual(
+            ["recording"], [item.identifier for item in workspace.discover_items()]
+        )
         opened = workspace.open_item("recording")
         self.assertEqual("grid", opened.page.layout.kind)
         self.assertEqual(2, len(opened.page.views))
@@ -515,8 +548,16 @@ class WorkspaceContractTests(unittest.TestCase):
             process=identity_process,
             present=analyze,
         )
-        page = workspace.open_item_with_values("recording", {"buffer_size": "3", "__playback_time_seconds": "1"}).page
-        self.assertEqual((2, 3, 4), page.views[0].callback({"buffer_size": "3", "__playback_time_seconds": "1"}).data[0].y)
+        page = workspace.open_item_with_values(
+            "recording", {"buffer_size": "3", "__playback_time_seconds": "1"}
+        ).page
+        self.assertEqual(
+            (2, 3, 4),
+            page.views[0]
+            .callback({"buffer_size": "3", "__playback_time_seconds": "1"})
+            .data[0]
+            .y,
+        )
         self.assertEqual("seek", page.playback.mode)
         self.assertIsNone(page.export)
 
@@ -529,7 +570,8 @@ class WorkspaceContractTests(unittest.TestCase):
                     minimum_window=0.5,
                     step=0.25,
                     overview=(0.1, 0.8, 0.2, 1.0),
-                    overview_label="Peak power",
+                    overview_heatmap=((0.0, 1.0, 2.0, 3.0), (4.0, 5.0, 6.0, 7.0)),
+                    overview_label="Power and spectrum",
                 )
                 return source_data[round(start) : round(end)]
 
@@ -550,9 +592,16 @@ class WorkspaceContractTests(unittest.TestCase):
         values = {"__window_start_seconds": "1", "__window_end_seconds": "3"}
         page = workspace.open_item_with_values("recording", values).page
         self.assertEqual("windowed", page.playback.mode)
-        self.assertEqual((1.0, 3.0), (page.playback.window_start_seconds, page.playback.window_end_seconds))
-        self.assertEqual("Peak power", page.playback.overview_label)
+        self.assertEqual(
+            (1.0, 3.0),
+            (page.playback.window_start_seconds, page.playback.window_end_seconds),
+        )
+        self.assertEqual("Power and spectrum", page.playback.overview_label)
         self.assertEqual((0.1, 0.8, 0.2, 1.0), page.playback.overview_values)
+        self.assertEqual(
+            ((0.0, 1.0, 2.0, 3.0), (4.0, 5.0, 6.0, 7.0)),
+            page.playback.overview_heatmap,
+        )
         self.assertEqual((2, 3), page.views[0].callback(values).data[0].y)
         self.assertIsNone(page.export)
 
@@ -560,6 +609,21 @@ class WorkspaceContractTests(unittest.TestCase):
         ui = AnalysisContext({})
         with self.assertRaisesRegex(ValueError, "finite"):
             ui.windowed(duration=1.0, default_window=0.1, overview=(0.0, float("nan")))
+
+    def test_windowed_heatmap_rejects_nonfinite_or_ragged_rows(self):
+        ui = AnalysisContext({})
+        with self.assertRaisesRegex(ValueError, "finite"):
+            ui.windowed(
+                duration=1.0,
+                default_window=0.1,
+                overview_heatmap=((0.0, float("nan")),),
+            )
+        with self.assertRaisesRegex(ValueError, "rectangular"):
+            ui.windowed(
+                duration=1.0,
+                default_window=0.1,
+                overview_heatmap=((0.0, 1.0), (2.0,)),
+            )
 
     def test_windowed_overview_is_optional_and_independent_of_sample_count(self):
         ui = AnalysisContext({})
@@ -616,14 +680,20 @@ class WorkspaceContractTests(unittest.TestCase):
 
     def test_workspace_can_choose_timeline_display_units_without_changing_seconds(self):
         playback = AnalysisContext({"__playback_time_seconds": "7200"})
-        self.assertEqual(7200.0, playback.playback(duration=172800.0, step=60.0, time_unit="h"))
+        self.assertEqual(
+            7200.0, playback.playback(duration=172800.0, step=60.0, time_unit="h")
+        )
         self.assertEqual("h", playback.playback_config.time_unit)
         self.assertEqual(172800.0, playback.playback_config.duration_seconds)
 
-        windowed = AnalysisContext({"__window_start_seconds": "0.0000001", "__window_end_seconds": "0.0000003"})
+        windowed = AnalysisContext(
+            {"__window_start_seconds": "0.0000001", "__window_end_seconds": "0.0000003"}
+        )
         self.assertEqual(
             (1e-7, 3e-7),
-            windowed.windowed(duration=1e-6, default_window=2e-7, minimum_window=1e-8, time_unit="ns"),
+            windowed.windowed(
+                duration=1e-6, default_window=2e-7, minimum_window=1e-8, time_unit="ns"
+            ),
         )
         self.assertEqual("ns", windowed.playback_config.time_unit)
         samples = AnalysisContext({})
@@ -652,13 +722,19 @@ class WorkspaceContractTests(unittest.TestCase):
             ),
         )
         self.assertEqual("late", selected.identifier)
-        self.assertEqual(["early", "late"], [segment.identifier for segment in ui.playback_config.segments])
+        self.assertEqual(
+            ["early", "late"],
+            [segment.identifier for segment in ui.playback_config.segments],
+        )
         self.assertEqual("segmented", ui.playback_config.mode)
 
     def test_segmented_can_generate_regular_intervals_with_skips(self):
         ui = AnalysisContext({"__segment_id": "segment-3"})
         selected = ui.segmented(duration=10.0, segment_duration=1.0, stride=3.0)
-        self.assertEqual((0.0, 3.0, 6.0, 9.0), tuple(segment.start_seconds for segment in ui.playback_config.segments))
+        self.assertEqual(
+            (0.0, 3.0, 6.0, 9.0),
+            tuple(segment.start_seconds for segment in ui.playback_config.segments),
+        )
         self.assertEqual("segment-3", selected.identifier)
 
     def test_analysis_can_request_framework_live_refresh(self):
@@ -676,13 +752,21 @@ class WorkspaceContractTests(unittest.TestCase):
             process=identity_process,
             present=analyze,
         )
-        self.assertEqual(1.0, workspace.open_item("recording").page.refresh.interval_seconds)
+        self.assertEqual(
+            1.0, workspace.open_item("recording").page.refresh.interval_seconds
+        )
 
     def test_numeric_inputs_return_typed_and_bounded_values(self):
         ui = AnalysisContext({"count": "12", "duration": "0.25"})
-        self.assertEqual(10, ui.number("count", default=4, minimum=1, maximum=10, step=1))
-        self.assertEqual(0.25, ui.number("duration", default=0.1, minimum=0.01, step=0.01))
-        self.assertEqual(["integer", "float"], [control.control_type for control in ui.controls])
+        self.assertEqual(
+            10, ui.number("count", default=4, minimum=1, maximum=10, step=1)
+        )
+        self.assertEqual(
+            0.25, ui.number("duration", default=0.1, minimum=0.01, step=0.01)
+        )
+        self.assertEqual(
+            ["integer", "float"], [control.control_type for control in ui.controls]
+        )
 
     def test_render_points_declares_an_explicit_user_control(self):
         ui = AnalysisContext({"frequency_points": "96"})
@@ -700,7 +784,9 @@ class WorkspaceContractTests(unittest.TestCase):
         control = ui.controls[0]
         self.assertEqual("integer", control.control_type)
         self.assertEqual("Rendering resolution", control.group)
-        self.assertEqual((16, 4096, 16), (control.minimum, control.maximum, control.step))
+        self.assertEqual(
+            (16, 4096, 16), (control.minimum, control.maximum, control.step)
+        )
 
     def test_render_points_rejects_invalid_bounds(self):
         ui = AnalysisContext({})
@@ -711,7 +797,9 @@ class WorkspaceContractTests(unittest.TestCase):
 
     def test_toggle_returns_boolean_and_declares_switch_control(self):
         ui = AnalysisContext({"annotations": "false"})
-        self.assertFalse(ui.toggle("annotations", default=True, label="Show annotations"))
+        self.assertFalse(
+            ui.toggle("annotations", default=True, label="Show annotations")
+        )
         self.assertEqual("toggle", ui.controls[0].control_type)
         self.assertEqual("Show annotations", ui.controls[0].label)
 
@@ -728,15 +816,28 @@ class WorkspaceContractTests(unittest.TestCase):
         style = ui.trace_style("average", label="Average", color="#087e8b")
 
         self.assertEqual("lines+markers", style.mode)
-        self.assertEqual({"color": "rgba(18,58,188,0.4)", "width": 3.5, "dash": "dashdot"}, style.line)
-        self.assertEqual({"color": "rgba(18,58,188,0.4)", "symbol": "diamond"}, style.plotly_marker)
+        self.assertEqual(
+            {"color": "rgba(18,58,188,0.4)", "width": 3.5, "dash": "dashdot"},
+            style.line,
+        )
+        self.assertEqual(
+            {"color": "rgba(18,58,188,0.4)", "symbol": "diamond"}, style.plotly_marker
+        )
         self.assertEqual("rgba(255,255,255,0.4)", style.color_with_opacity("#ffffff"))
-        self.assertEqual(["color", "float", "float", "select", "select"], [control.control_type for control in ui.controls])
+        self.assertEqual(
+            ["color", "float", "float", "select", "select"],
+            [control.control_type for control in ui.controls],
+        )
         self.assertTrue(all(control.placement == "details" for control in ui.controls))
         self.assertTrue(all(control.group == "Plot styles" for control in ui.controls))
         self.assertTrue(all(control.picker == "average" for control in ui.controls))
-        self.assertTrue(all(control.picker_label == "Average" for control in ui.controls))
-        self.assertEqual(["Color", "Line width", "Opacity", "Line style", "Marker"], [control.label for control in ui.controls])
+        self.assertTrue(
+            all(control.picker_label == "Average" for control in ui.controls)
+        )
+        self.assertEqual(
+            ["Color", "Line width", "Opacity", "Line style", "Marker"],
+            [control.label for control in ui.controls],
+        )
 
         with self.assertRaisesRegex(ValueError, "#RRGGBB"):
             AnalysisContext({}).trace_style("invalid", color="teal")
@@ -761,15 +862,21 @@ class WorkspaceContractTests(unittest.TestCase):
         self.assertEqual("Plot styles", control.group)
 
         with self.assertRaisesRegex(ValueError, "default colormap"):
-            AnalysisContext({}).colormap("invalid", default="Plasma", options=("Viridis",))
+            AnalysisContext({}).colormap(
+                "invalid", default="Plasma", options=("Viridis",)
+            )
 
     def test_select_matches_mixed_numeric_options_posted_as_text(self):
         options = (60, 120, 230, 459.54)
         selected = AnalysisContext({"display_radius": "459.54"}).select(
-            "display_radius", default=120, options=options,
+            "display_radius",
+            default=120,
+            options=options,
         )
         invalid = AnalysisContext({"display_radius": "not-an-option"}).select(
-            "display_radius", default=120, options=options,
+            "display_radius",
+            default=120,
+            options=options,
         )
 
         self.assertEqual(459.54, selected)
@@ -826,7 +933,9 @@ class WorkspaceContractTests(unittest.TestCase):
         control = ui.controls[0]
         self.assertEqual("limits", control.control_type)
         self.assertEqual((-90.0, -20.0), control.default)
-        self.assertEqual((-120.0, 0.0, 1.0), (control.minimum, control.maximum, control.step))
+        self.assertEqual(
+            (-120.0, 0.0, 1.0), (control.minimum, control.maximum, control.step)
+        )
 
         fallback = AnalysisContext({"limits": "5,-5"}).limits(
             "limits", default=(-10, 10), minimum=-20, maximum=20
@@ -837,8 +946,15 @@ class WorkspaceContractTests(unittest.TestCase):
         def analyze(data, ui: AnalysisContext):
             with ui.tab("Parameterized"):
                 with ui.parameter_group("Display parameters", columns=2):
-                    threshold = ui.number("threshold", label="Threshold (dB)", default=2.5, step=0.1)
-                    mode = ui.select("mode", label="Estimator", default="Mean", options=("Mean", "Maximum"))
+                    threshold = ui.number(
+                        "threshold", label="Threshold (dB)", default=2.5, step=0.1
+                    )
+                    mode = ui.select(
+                        "mode",
+                        label="Estimator",
+                        default="Mean",
+                        options=("Mean", "Maximum"),
+                    )
                 ui.plot(go.Figure(go.Scatter(y=[threshold], name=mode)), key="result")
 
         workspace = make_workspace(
@@ -850,12 +966,24 @@ class WorkspaceContractTests(unittest.TestCase):
             process=identity_process,
             present=analyze,
         )
-        page = workspace.open_item_with_values("recording", {"threshold": "4.5", "mode": "Maximum"}).page
-        self.assertEqual(["inline", "inline"], [control.placement for control in page.controls])
-        self.assertEqual(["Threshold (dB)", "Estimator"], [control.label for control in page.controls])
+        page = workspace.open_item_with_values(
+            "recording", {"threshold": "4.5", "mode": "Maximum"}
+        ).page
+        self.assertEqual(
+            ["inline", "inline"], [control.placement for control in page.controls]
+        )
+        self.assertEqual(
+            ["Threshold (dB)", "Estimator"],
+            [control.label for control in page.controls],
+        )
         self.assertEqual("control_group", page.layout.children[0].kind)
-        self.assertEqual({"label": "Display parameters", "columns": 2}, page.layout.children[0].props)
-        self.assertEqual(["threshold", "mode"], [node.props["name"] for node in page.layout.children[0].children])
+        self.assertEqual(
+            {"label": "Display parameters", "columns": 2}, page.layout.children[0].props
+        )
+        self.assertEqual(
+            ["threshold", "mode"],
+            [node.props["name"] for node in page.layout.children[0].children],
+        )
         figure = page.views[0].callback({"threshold": "4.5", "mode": "Maximum"})
         self.assertEqual((4.5,), figure.data[0].y)
         self.assertEqual("Maximum", figure.data[0].name)
@@ -891,11 +1019,19 @@ class WorkspaceContractTests(unittest.TestCase):
         )
         page = workspace.open_item("recording").page
         switcher = page.layout.children[0]
-        self.assertEqual(["Phase", "Noise"], [choice.props["label"] for choice in switcher.children])
+        self.assertEqual(
+            ["Phase", "Noise"], [choice.props["label"] for choice in switcher.children]
+        )
         self.assertEqual((1, 2), switcher.children[0].props["columns"])
-        self.assertEqual(["view_slot", "view_slot"], [node.kind for node in switcher.children[0].children])
+        self.assertEqual(
+            ["view_slot", "view_slot"],
+            [node.kind for node in switcher.children[0].children],
+        )
         self.assertEqual("inline", page.controls[0].placement)
-        self.assertEqual(["control_group", "view_slot"], [node.kind for node in switcher.children[1].children[0].children])
+        self.assertEqual(
+            ["control_group", "view_slot"],
+            [node.kind for node in switcher.children[1].children[0].children],
+        )
 
     def test_analysis_can_add_multiple_button_and_dropdown_view_switchers(self):
         def figure(value):
@@ -903,8 +1039,18 @@ class WorkspaceContractTests(unittest.TestCase):
 
         def analyze(data, ui: AnalysisContext):
             with ui.tab("Comparisons", columns=2):
-                ui.view_switcher("Channel", {"One": figure(1), "Two": figure(2)}, key="channel", selector="buttons")
-                ui.view_switcher("Metric", {"Raw": figure(3), "Filtered": figure(4)}, key="metric", selector="dropdown")
+                ui.view_switcher(
+                    "Channel",
+                    {"One": figure(1), "Two": figure(2)},
+                    key="channel",
+                    selector="buttons",
+                )
+                ui.view_switcher(
+                    "Metric",
+                    {"Raw": figure(3), "Filtered": figure(4)},
+                    key="metric",
+                    selector="dropdown",
+                )
 
         workspace = make_workspace(
             identifier="switchers",
@@ -917,7 +1063,10 @@ class WorkspaceContractTests(unittest.TestCase):
         )
         page = workspace.open_item("recording").page
         self.assertEqual(4, len(page.views))
-        self.assertEqual(["buttons", "dropdown"], [node.props["selector"] for node in page.layout.children])
+        self.assertEqual(
+            ["buttons", "dropdown"],
+            [node.props["selector"] for node in page.layout.children],
+        )
 
     def test_view_switcher_can_combine_multiple_selection_dimensions(self):
         def analyze(data, ui: AnalysisContext):
@@ -947,9 +1096,15 @@ class WorkspaceContractTests(unittest.TestCase):
         switcher = page.layout.children[0]
         self.assertEqual(("Domain", "Channels"), switcher.props["labels"])
         self.assertEqual(("buttons", "dropdown"), switcher.props["selectors"])
-        self.assertEqual((("Time", "Frequency"), ("All", "Ch1")), switcher.props["options"])
-        self.assertEqual(((0, 0), (0, 1), (1, 0), (1, 1)), switcher.props["coordinates"])
-        self.assertEqual(("waterfall:0", "waterfall:1"), switcher.props["selection_keys"])
+        self.assertEqual(
+            (("Time", "Frequency"), ("All", "Ch1")), switcher.props["options"]
+        )
+        self.assertEqual(
+            ((0, 0), (0, 1), (1, 0), (1, 1)), switcher.props["coordinates"]
+        )
+        self.assertEqual(
+            ("waterfall:0", "waterfall:1"), switcher.props["selection_keys"]
+        )
         self.assertEqual(4, len(page.views))
 
     def test_plot_axis_navigation_is_an_explicit_page_contract(self):
@@ -973,7 +1128,10 @@ class WorkspaceContractTests(unittest.TestCase):
             present=analyze,
         )
         page = workspace.open_item("recording").page
-        self.assertEqual(["bounded", "bounded", "bounded"], [view.axis_navigation for view in page.views])
+        self.assertEqual(
+            ["bounded", "bounded", "bounded"],
+            [view.axis_navigation for view in page.views],
+        )
 
         ui = AnalysisContext({})
         with self.assertRaisesRegex(ValueError, "axis_navigation"):
@@ -1004,11 +1162,18 @@ class WorkspaceContractTests(unittest.TestCase):
             present=analyze,
         )
         initial = workspace.open_item("recording").page
-        later = workspace.open_item_with_values("recording", {"__playback_time_seconds": "1.5"}).page
-        self.assertEqual(["static", "dynamic"], [view.update_policy for view in initial.views])
+        later = workspace.open_item_with_values(
+            "recording", {"__playback_time_seconds": "1.5"}
+        ).page
+        self.assertEqual(
+            ["static", "dynamic"], [view.update_policy for view in initial.views]
+        )
         self.assertIs(initial.views[0].callback({}), later.views[0].callback({}))
         self.assertEqual(1, builds["static"])
-        self.assertEqual((1.5,), later.views[1].callback({"__playback_time_seconds": "1.5"}).data[0].y)
+        self.assertEqual(
+            (1.5,),
+            later.views[1].callback({"__playback_time_seconds": "1.5"}).data[0].y,
+        )
 
     def test_unknown_view_update_policy_is_rejected(self):
         ui = AnalysisContext({})
@@ -1027,9 +1192,16 @@ class WorkspaceContractTests(unittest.TestCase):
 
         layout = ui.layout()
         self.assertEqual((1, 2), layout.props["columns"])
-        self.assertEqual(["column", "column"], [child.kind for child in layout.children])
-        self.assertEqual(["notes", "offsets"], [child.view for child in layout.children[0].children])
-        self.assertEqual({"notes": "static", "offsets": "static", "alignment": "static"}, ui.figure_updates)
+        self.assertEqual(
+            ["column", "column"], [child.kind for child in layout.children]
+        )
+        self.assertEqual(
+            ["notes", "offsets"], [child.view for child in layout.children[0].children]
+        )
+        self.assertEqual(
+            {"notes": "static", "offsets": "static", "alignment": "static"},
+            ui.figure_updates,
+        )
 
 
 if __name__ == "__main__":

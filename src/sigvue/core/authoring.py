@@ -206,6 +206,11 @@ class Reader(Generic[Reference, Opened]):
         duration: float | Callable[[Opened], float],
         default: float,
         overview: Iterable[float] | Callable[[Opened], Iterable[float]] | None = None,
+        overview_heatmap: (
+            Iterable[Iterable[float]]
+            | Callable[[Opened], Iterable[Iterable[float]]]
+            | None
+        ) = None,
         overview_label: str | None = None,
         minimum: float | None = None,
         step: float | None = None,
@@ -218,6 +223,7 @@ class Reader(Generic[Reference, Opened]):
             duration=duration,
             default=default,
             overview=overview,
+            overview_heatmap=overview_heatmap,
             overview_label=overview_label,
             minimum=minimum,
             step=step,
@@ -229,7 +235,9 @@ class Reader(Generic[Reference, Opened]):
         read: Callable[[Opened, Segment], Selected],
         *,
         duration: float | Callable[[Opened], float],
-        segments: Iterable[Segment] | Callable[[Opened], Iterable[Segment]] | None = None,
+        segments: Iterable[Segment]
+        | Callable[[Opened], Iterable[Segment]]
+        | None = None,
         segment_duration: float | None = None,
         stride: float | None = None,
         default: str | None = None,
@@ -333,9 +341,7 @@ class Reader(Generic[Reference, Opened]):
         if reference is _MISSING:
             self._discover_resources()
             with self._resource_lock:
-                reference = self._resource_references.get(
-                    resource.identifier, _MISSING
-                )
+                reference = self._resource_references.get(resource.identifier, _MISSING)
         if reference is _MISSING:
             raise KeyError(resource.identifier)
         selected = cast(Reference, reference)
@@ -374,7 +380,9 @@ class Reader(Generic[Reference, Opened]):
     def _reference_revision(self, reference: Reference) -> object:
         if self._revision is not None:
             return self._revision(reference)
-        candidate = reference.source if isinstance(reference, DataResource) else reference
+        candidate = (
+            reference.source if isinstance(reference, DataResource) else reference
+        )
         if isinstance(candidate, (str, Path)):
             path = Path(candidate)
             try:
@@ -413,7 +421,9 @@ class Files(Reader[Path, Opened], Generic[Opened]):
     ) -> None:
         root = Path(directory).expanduser().resolve()
         patterns = (pattern,) if isinstance(pattern, str) else tuple(pattern)
-        if not patterns or any(not isinstance(value, str) or not value for value in patterns):
+        if not patterns or any(
+            not isinstance(value, str) or not value for value in patterns
+        ):
             raise ValueError("Files requires at least one non-empty glob pattern")
         if not isinstance(recursive, bool):
             raise TypeError("recursive must be true or false")
@@ -565,6 +575,11 @@ class WindowedReader(Generic[Reference, Opened, Selected]):
         duration: float | Callable[[Opened], float],
         default: float,
         overview: Iterable[float] | Callable[[Opened], Iterable[float]] | None,
+        overview_heatmap: (
+            Iterable[Iterable[float]]
+            | Callable[[Opened], Iterable[Iterable[float]]]
+            | None
+        ),
         overview_label: str | None,
         minimum: float | None,
         step: float | None,
@@ -588,6 +603,10 @@ class WindowedReader(Generic[Reference, Opened, Selected]):
             overview = tuple(float(value) for value in overview)
             if not all(isfinite(value) for value in overview):
                 raise ValueError("overview values must be finite")
+        if callable(overview_heatmap):
+            _require_accepts(overview_heatmap, 1, "overview heatmap")
+        elif overview_heatmap is not None:
+            overview_heatmap = self._validate_heatmap(overview_heatmap)
         self.reader = reader
         self._read = read
         self._duration = duration
@@ -596,8 +615,12 @@ class WindowedReader(Generic[Reference, Opened, Selected]):
         self.step = step
         self.time_unit = _validate_time_unit(time_unit)
         self._overview = overview
+        self._overview_heatmap = overview_heatmap
         self.overview_label = overview_label
         self._overview_cache: list[tuple[Opened, object, tuple[float, ...]]] = []
+        self._heatmap_cache: list[
+            tuple[Opened, object, tuple[tuple[float, ...], ...]]
+        ] = []
         self._overview_lock = RLock()
         self._cache: _RangeCache[Opened, Selected] = _RangeCache()
 
@@ -617,9 +640,7 @@ class WindowedReader(Generic[Reference, Opened, Selected]):
     def overview(self, opened: Opened) -> tuple[float, ...]:
         revision = self.reader._opened_revision(opened)
         with self._overview_lock:
-            for index, (candidate, version, values) in enumerate(
-                self._overview_cache
-            ):
+            for index, (candidate, version, values) in enumerate(self._overview_cache):
                 if candidate is opened and version == revision:
                     self._overview_cache.append(self._overview_cache.pop(index))
                     return values
@@ -633,6 +654,43 @@ class WindowedReader(Generic[Reference, Opened, Selected]):
             self._overview_cache.append((opened, revision, result))
             if len(self._overview_cache) > 4:
                 self._overview_cache.pop(0)
+        return result
+
+    @staticmethod
+    def _validate_heatmap(
+        values: Iterable[Iterable[float]],
+    ) -> tuple[tuple[float, ...], ...]:
+        result = tuple(tuple(float(value) for value in row) for row in values)
+        if any(not row for row in result):
+            raise ValueError("overview heatmap rows cannot be empty")
+        if result and len({len(row) for row in result}) != 1:
+            raise ValueError("overview heatmap must be rectangular")
+        if not all(isfinite(value) for row in result for value in row):
+            raise ValueError("overview heatmap values must be finite")
+        return result
+
+    def overview_heatmap(
+        self,
+        opened: Opened,
+    ) -> tuple[tuple[float, ...], ...]:
+        revision = self.reader._opened_revision(opened)
+        with self._overview_lock:
+            for index, (candidate, version, values) in enumerate(self._heatmap_cache):
+                if candidate is opened and version == revision:
+                    self._heatmap_cache.append(self._heatmap_cache.pop(index))
+                    return values
+        values = (
+            self._overview_heatmap(opened)
+            if callable(self._overview_heatmap)
+            else self._overview_heatmap
+        )
+        if values is None:
+            return ()
+        result = self._validate_heatmap(values)
+        with self._overview_lock:
+            self._heatmap_cache.append((opened, revision, result))
+            if len(self._heatmap_cache) > 4:
+                self._heatmap_cache.pop(0)
         return result
 
     def read(
@@ -660,6 +718,7 @@ class WindowedReader(Generic[Reference, Opened, Selected]):
         self._cache.clear()
         with self._overview_lock:
             self._overview_cache.clear()
+            self._heatmap_cache.clear()
 
     def _open_resource(self, resource: DataResource) -> Opened:
         return self.reader._open_resource(resource)
@@ -700,6 +759,7 @@ class WindowedReader(Generic[Reference, Opened, Selected]):
             duration=total,
             default_window=min(self.default, total),
             overview=self.overview(opened) or None,
+            overview_heatmap=self.overview_heatmap(opened) or None,
             overview_label=self.overview_label,
             minimum_window=self.minimum,
             step=self.step,
@@ -789,7 +849,9 @@ class SegmentedReader(Generic[Reference, Opened, Selected]):
                 for index in range(count)
             )
         else:
-            values = self._segments(opened) if callable(self._segments) else self._segments
+            values = (
+                self._segments(opened) if callable(self._segments) else self._segments
+            )
             descriptors = tuple(values)
         if not descriptors:
             raise ValueError("Segmented readers require at least one segment")
@@ -918,9 +980,7 @@ class PlaybackReader(Generic[Reference, Opened, Selected]):
             maximum = _positive_number(maximum, "maximum buffer")
         default = _positive_number(default, "default buffer")
         minimum = (
-            default
-            if minimum is None
-            else _positive_number(minimum, "minimum buffer")
+            default if minimum is None else _positive_number(minimum, "minimum buffer")
         )
         buffer_step = (
             minimum
@@ -973,14 +1033,14 @@ class PlaybackReader(Generic[Reference, Opened, Selected]):
         return _positive_number(value, "duration")
 
     def maximum(self, opened: Opened) -> float:
-        value = (
-            self._maximum(opened)
-            if callable(self._maximum)
-            else self._maximum
-        )
-        return self.default if value is None else _positive_number(
-            value,
-            "maximum buffer",
+        value = self._maximum(opened) if callable(self._maximum) else self._maximum
+        return (
+            self.default
+            if value is None
+            else _positive_number(
+                value,
+                "maximum buffer",
+            )
         )
 
     def read(
@@ -1043,26 +1103,30 @@ class PlaybackReader(Generic[Reference, Opened, Selected]):
         minimum = min(maximum, self.minimum)
         default = min(maximum, max(minimum, self.default))
         width = (
-            float(ui.number(
-                "buffer_duration",
-                label=f"Buffer duration ({self.time_unit})",
-                default=default,
-                minimum=minimum,
-                maximum=maximum,
-                step=self.buffer_step,
-                group="Buffering",
-            ))
+            float(
+                ui.number(
+                    "buffer_duration",
+                    label=f"Buffer duration ({self.time_unit})",
+                    default=default,
+                    minimum=minimum,
+                    maximum=maximum,
+                    step=self.buffer_step,
+                    group="Buffering",
+                )
+            )
             if maximum > minimum
             else default
         )
-        position = float(ui.playback(
-            mode=self.mode,
-            duration=total,
-            step=self.seek_step,
-            refresh_interval=self.refresh_interval,
-            loop=self.loop,
-            time_unit=self.time_unit,
-        ))
+        position = float(
+            ui.playback(
+                mode=self.mode,
+                duration=total,
+                step=self.seek_step,
+                refresh_interval=self.refresh_interval,
+                loop=self.loop,
+                time_unit=self.time_unit,
+            )
+        )
         start = min(max(0.0, position), max(0.0, total - width))
         stop = min(total, start + width)
         return self._cache.get(

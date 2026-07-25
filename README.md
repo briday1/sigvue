@@ -124,6 +124,7 @@ reader = Files(root, "*.bin", open_recording).windowed(
     minimum=0.010,
     step=0.010,
     overview=power_overview,
+    overview_heatmap=low_resolution_waterfall,
     overview_label="Median power",
 )
 ```
@@ -136,7 +137,13 @@ window = reader.load(path, start=2.0, stop=2.1)
 
 Opened recordings, recent exact buffers, and overviews are revision-aware
 cached for repeated browser requests. Reader buffering never approximates
-scientific data.
+scientific data. `overview` remains the lightweight line drawn across the
+window bar; `overview_heatmap` optionally adds a rectangular numeric raster
+behind it without changing the bar's geometry. Heatmap columns run
+left-to-right in recording-time order and rows run bottom-to-top, so a
+conventional frequency-x/time-y waterfall should be transposed before it is
+supplied. The bar's expand icon selects the complete recording extent on
+demand.
 
 ### Segmented data
 

@@ -35,7 +35,12 @@ from sigvue.web.application import (
     _module_watch_snapshot,
     _run_batch_command,
 )
-from tests.fixtures import IdentityAnalysis, MemorySource, create_test_app, identity_process
+from tests.fixtures import (
+    IdentityAnalysis,
+    MemorySource,
+    create_test_app,
+    identity_process,
+)
 
 
 class WebAppTests(unittest.TestCase):
@@ -45,7 +50,10 @@ class WebAppTests(unittest.TestCase):
     def test_app_lists_registered_workspaces(self):
         app = self.create_example_app()
         workspaces = app.list_workspaces()
-        self.assertEqual({"test-workspace", "matplotlib-workspace"}, {workspace["id"] for workspace in workspaces})
+        self.assertEqual(
+            {"test-workspace", "matplotlib-workspace"},
+            {workspace["id"] for workspace in workspaces},
+        )
 
     def test_workspace_defines_sortable_discovery_columns(self):
         listing = self.create_example_app().browse_items("test-workspace", {})
@@ -53,7 +61,9 @@ class WebAppTests(unittest.TestCase):
             ["date", "sample_rate", "rf_frequency"],
             [column["key"] for column in listing["columns"]],
         )
-        self.assertEqual(2_000_000.0, listing["items"][0]["summary_fields"]["sample_rate"])
+        self.assertEqual(
+            2_000_000.0, listing["items"][0]["summary_fields"]["sample_rate"]
+        )
         self.assertIsNone(listing["items"][0]["summary_fields"]["rf_frequency"])
 
     def test_open_item_returns_layout_and_views(self):
@@ -67,12 +77,25 @@ class WebAppTests(unittest.TestCase):
         self.assertTrue(payload["page"]["annotation"]["enabled"])
         self.assertTrue(payload["page"]["export"]["enabled"])
         self.assertNotIn("Analysis runtime", payload["page"]["statistics"])
-        self.assertRegex(payload["page"]["runtime_statistics"]["Analysis runtime"], r"^\d+\.\d ms$")
-        self.assertRegex(payload["page"]["runtime_statistics"]["View callbacks"], r"^\d+\.\d ms$")
-        self.assertRegex(payload["page"]["runtime_statistics"]["Discovery runtime"], r"^\d+\.\d ms$")
-        self.assertRegex(payload["page"]["runtime_statistics"]["Source open runtime"], r"^\d+\.\d ms$")
-        self.assertRegex(payload["page"]["runtime_statistics"]["Workspace total"], r"^\d+\.\d ms$")
-        self.assertRegex(payload["page"]["runtime_statistics"]["Server total"], r"^\d+\.\d ms$")
+        self.assertRegex(
+            payload["page"]["runtime_statistics"]["Analysis runtime"], r"^\d+\.\d ms$"
+        )
+        self.assertRegex(
+            payload["page"]["runtime_statistics"]["View callbacks"], r"^\d+\.\d ms$"
+        )
+        self.assertRegex(
+            payload["page"]["runtime_statistics"]["Discovery runtime"], r"^\d+\.\d ms$"
+        )
+        self.assertRegex(
+            payload["page"]["runtime_statistics"]["Source open runtime"],
+            r"^\d+\.\d ms$",
+        )
+        self.assertRegex(
+            payload["page"]["runtime_statistics"]["Workspace total"], r"^\d+\.\d ms$"
+        )
+        self.assertRegex(
+            payload["page"]["runtime_statistics"]["Server total"], r"^\d+\.\d ms$"
+        )
 
     def test_workspace_controls_change_rendered_playback(self):
         app = self.create_example_app()
@@ -83,7 +106,9 @@ class WebAppTests(unittest.TestCase):
         )
         page = payload["page"]
         self.assertEqual(1, len(page["controls"]))
-        playback = next(view for view in page["rendered_views"] if view["name"] == "signal")["value"]
+        playback = next(
+            view for view in page["rendered_views"] if view["name"] == "signal"
+        )["value"]
         self.assertEqual([2.0, 4.0, 6.0, 8.0], playback["data"][0]["y"])
 
     def test_lazy_workspace_renders_only_the_selected_tab_and_switcher_view(self):
@@ -95,6 +120,7 @@ class WebAppTests(unittest.TestCase):
                     def build():
                         resolved.append(name)
                         return go.Figure(go.Scatter(y=[name]))
+
                     return build
 
                 with ui.tab("Summary"):
@@ -126,16 +152,21 @@ class WebAppTests(unittest.TestCase):
         )
 
         self.assertTrue(initial["page"]["lazy_views"])
-        self.assertEqual(["summary"], [view["name"] for view in initial["page"]["rendered_views"]])
-        self.assertEqual(["channel-1"], [view["name"] for view in selected["page"]["rendered_views"]])
+        self.assertEqual(
+            ["summary"], [view["name"] for view in initial["page"]["rendered_views"]]
+        )
+        self.assertEqual(
+            ["channel-1"], [view["name"] for view in selected["page"]["rendered_views"]]
+        )
         self.assertEqual(["summary", "two"], resolved)
 
     def test_eager_workspace_remains_the_default(self):
         payload = self.create_example_app().open_item("test-workspace", "recording")
         self.assertFalse(payload["page"]["lazy_views"])
-        self.assertEqual(set(payload["page"]["views"]), {
-            view["name"] for view in payload["page"]["rendered_views"]
-        })
+        self.assertEqual(
+            set(payload["page"]["views"]),
+            {view["name"] for view in payload["page"]["rendered_views"]},
+        )
 
     def test_open_item_renders_only_requested_plot_viewport(self):
         class RasterPresentation(Presentation):
@@ -170,7 +201,11 @@ class WebAppTests(unittest.TestCase):
         payload = app.open_item(
             "raster-workspace",
             "recording",
-            {"__plot_viewports": json.dumps({"heatmap": {"xaxis": [40, 49], "yaxis": [20, 27]}})},
+            {
+                "__plot_viewports": json.dumps(
+                    {"heatmap": {"xaxis": [40, 49], "yaxis": [20, 27]}}
+                )
+            },
         )
 
         rendered = payload["page"]["rendered_views"][0]
@@ -184,9 +219,13 @@ class WebAppTests(unittest.TestCase):
             root = Path(directory)
             (root / "root.dat").write_text("root", encoding="utf-8")
             (root / "campaign-a").mkdir()
-            (root / "campaign-a" / "capture.dat").write_text("capture", encoding="utf-8")
+            (root / "campaign-a" / "capture.dat").write_text(
+                "capture", encoding="utf-8"
+            )
             (root / "campaign-a" / "day-2").mkdir()
-            (root / "campaign-a" / "day-2" / "capture.dat").write_text("nested", encoding="utf-8")
+            (root / "campaign-a" / "day-2" / "capture.dat").write_text(
+                "nested", encoding="utf-8"
+            )
 
             def analyze(data, ui):
                 with ui.tab("Data"):
@@ -200,7 +239,12 @@ class WebAppTests(unittest.TestCase):
                 identifier="nested-files",
                 name="Nested files",
                 description="Nested directory fixture",
-                source=DirectorySource(root, pattern="*.dat", loader=lambda path: path.read_text(), recursive=True),
+                source=DirectorySource(
+                    root,
+                    pattern="*.dat",
+                    loader=lambda path: path.read_text(),
+                    recursive=True,
+                ),
                 analysis=IdentityAnalysis(),
                 presentation=TextPresentation(),
             )
@@ -208,12 +252,22 @@ class WebAppTests(unittest.TestCase):
             app.register_workspace(workspace)
 
             root_listing = app.browse_items("nested-files", {})
-            self.assertEqual([{"name": "campaign-a", "path": ["campaign-a"]}], root_listing["directories"])
-            self.assertEqual(["root.dat"], [item["id"] for item in root_listing["items"]])
+            self.assertEqual(
+                [{"name": "campaign-a", "path": ["campaign-a"]}],
+                root_listing["directories"],
+            )
+            self.assertEqual(
+                ["root.dat"], [item["id"] for item in root_listing["items"]]
+            )
 
             campaign = app.browse_items("nested-files", {"directory": ["campaign-a"]})
-            self.assertEqual([{"name": "day-2", "path": ["campaign-a", "day-2"]}], campaign["directories"])
-            self.assertEqual(["campaign-a::capture.dat"], [item["id"] for item in campaign["items"]])
+            self.assertEqual(
+                [{"name": "day-2", "path": ["campaign-a", "day-2"]}],
+                campaign["directories"],
+            )
+            self.assertEqual(
+                ["campaign-a::capture.dat"], [item["id"] for item in campaign["items"]]
+            )
             opened = app.open_item("nested-files", "campaign-a::capture.dat")
             self.assertEqual(["campaign-a"], opened["item"]["navigation_path"])
 
@@ -385,10 +439,12 @@ class WebAppTests(unittest.TestCase):
         self.assertNotIn('class="batch-indicator', body)
         self.assertIn("Copy path", body)
         self.assertIn('target="_blank"', body)
-        self.assertIn('<th class="tags-column">Tags</th><th class="batch-cell">Run</th>', body)
-        self.assertIn('.toolbar>.batch-menu { order:2 }', body)
-        self.assertIn('.item-browser:has(.batch-menu) { overflow:visible }', body)
-        self.assertIn('.batch-menu.ready summary { color:#16803c;', body)
+        self.assertIn(
+            '<th class="tags-column">Tags</th><th class="batch-cell">Run</th>', body
+        )
+        self.assertIn(".toolbar>.batch-menu { order:2 }", body)
+        self.assertIn(".item-browser:has(.batch-menu) { overflow:visible }", body)
+        self.assertIn(".batch-menu.ready summary { color:#16803c;", body)
         self.assertIn("${w.name} ${w.description||''} ${w.category||''}", body)
         self.assertNotIn('id="reload-config"', body)
         self.assertNotIn("Reload browser.toml", body)
@@ -399,7 +455,9 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("parts[2]==='browse'", body)
         self.assertIn("params.append('directory',segment)", body)
         self.assertNotIn("applyTheme();boot()", body)
-        self.assertIn("if(activeThemeRefresh)await activeThemeRefresh();else applyTheme()", body)
+        self.assertIn(
+            "if(activeThemeRefresh)await activeThemeRefresh();else applyTheme()", body
+        )
         self.assertIn("activeThemeRefresh=async()=>", body)
         self.assertIn("commitTheme(render)", body)
         self.assertIn("refresh(true,true)", body)
@@ -420,11 +478,11 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("function bindLimitsPickers(onCommit)", body)
         self.assertIn('data-limit-number="lower"', body)
         self.assertIn('data-limit-number="upper"', body)
-        self.assertNotIn('data-limit-range=', body)
-        self.assertNotIn('data-limits-handle=', body)
+        self.assertNotIn("data-limit-range=", body)
+        self.assertNotIn("data-limits-handle=", body)
         self.assertIn("data-style-swatch", body)
         self.assertIn("control.picker", body)
-        self.assertIn('/assets/plotly.min.js', body)
+        self.assertIn("/assets/plotly.min.js", body)
         self.assertIn("mountRenderedViews(p.rendered_views)", body)
         self.assertIn("updatePlotlyViews(updates)", body)
         self.assertIn(
@@ -436,25 +494,25 @@ class WebAppTests(unittest.TestCase):
             ".finally(()=>{target._sigvueUpdating=false})",
             body,
         )
-        update_plotly = body.split(
-            "async function updatePlotlyViews", 1
-        )[1].split("async function updateMatplotlibViews", 1)[0]
+        update_plotly = body.split("async function updatePlotlyViews", 1)[1].split(
+            "async function updateMatplotlibViews", 1
+        )[0]
         self.assertNotIn("Plotly.relayout", update_plotly)
         self.assertNotIn("Plotly.Plots.resize", update_plotly)
         self.assertIn("activeViewChanged=()=>p.lazy_views?refresh(true)", body)
         self.assertIn("data-view-slot", body)
         self.assertIn("updateMatplotlibViews(p.rendered_views)", body)
         self.assertIn("updateGenericViews(p.rendered_views)", body)
-        self.assertIn('data-matplotlib-view', body)
+        self.assertIn("data-matplotlib-view", body)
         self.assertIn("node.kind==='control_slot'", body)
         self.assertIn('class="parameter-group"', body)
         self.assertIn('class="data-stage"', body)
         self.assertIn('class="workspace-sidebar"', body)
-        self.assertIn('data-sidebar-toggle', body)
+        self.assertIn("data-sidebar-toggle", body)
         self.assertIn("bindSidebar()", body)
         self.assertIn('class="view-stats"', body)
-        self.assertIn('<h2>View details</h2>', body)
-        self.assertIn('<h2>Runtime</h2>', body)
+        self.assertIn("<h2>View details</h2>", body)
+        self.assertIn("<h2>Runtime</h2>", body)
         self.assertIn('id="runtime-stats"', body)
         self.assertIn("Data & analysis", body)
         self.assertIn("View generation", body)
@@ -482,13 +540,17 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("canonicalTime(value,config)", body)
         self.assertIn("formatTimelineTime", body)
         self.assertIn('id="jump-live"', body)
-        self.assertIn("const isPlayback=['seek','live'].includes(p.playback.mode)", body)
+        self.assertIn(
+            "const isPlayback=['seek','live'].includes(p.playback.mode)", body
+        )
         self.assertIn("app.innerHTML='<div class=\"empty\">Opening item…</div>'", body)
         self.assertLess(
             body.index("app.innerHTML='<div class=\"empty\">Opening item…</div>'"),
             body.index("app.className='item-page'"),
         )
-        self.assertNotIn("app.innerHTML='<div class=\"empty\">Discovering items…</div>'", body)
+        self.assertNotIn(
+            "app.innerHTML='<div class=\"empty\">Discovering items…</div>'", body
+        )
         self.assertNotIn("Loading workspaces…", body)
         self.assertIn("isWindowed=p.playback.mode==='windowed'", body)
         self.assertIn("playbackConfig.mode==='live'", body)
@@ -543,20 +605,41 @@ class WebAppTests(unittest.TestCase):
         self.assertIn('id="windowed-end"', body)
         self.assertIn('id="windowed-total"', body)
         self.assertIn('id="windowed-width"', body)
+        self.assertIn('id="windowed-full-extent"', body)
         self.assertIn('class="windowed-track-stack ${', body)
-        self.assertIn('<div class="windowed-track" id="windowed-track">${hasWindowOverview?`<span class="windowed-label"', body)
-        self.assertIn('.annotation-marker { position:absolute; top:0; bottom:0;', body)
-        self.assertIn('.windowed-track-stack { flex:1; height:30px;', body)
-        self.assertIn('.windowed-width-label { display:flex; flex:none; min-width:0;', body)
-        self.assertIn('.windowed-bar .windowed-width { width:118px }', body)
-        self.assertNotIn('.windowed-track-stack.has-overview .windowed-track', body)
-        self.assertNotIn('windowed-separator', body)
-        self.assertNotIn('s buffer)</label>', body)
+        self.assertIn(
+            '<div class="windowed-track" id="windowed-track">${hasWindowOverview?`<span class="windowed-label"',
+            body,
+        )
+        self.assertIn(".annotation-marker { position:absolute; top:0; bottom:0;", body)
+        self.assertIn(".windowed-track-stack { flex:1; height:30px;", body)
+        self.assertIn(
+            ".windowed-track { position:relative; width:100%; height:30px;",
+            body,
+        )
+        self.assertIn(".windowed-full-extent { position:absolute;", body)
+        self.assertIn(
+            ".windowed-width-label { display:flex; flex:none; min-width:0;", body
+        )
+        self.assertIn(".windowed-bar .windowed-width { width:118px }", body)
+        self.assertNotIn(".windowed-track-stack.has-overview .windowed-track", body)
+        self.assertNotIn("windowed-separator", body)
+        self.assertNotIn("s buffer)</label>", body)
         self.assertIn("const editEndpoint=(kind,value)=>", body)
         self.assertIn("const editWidth=value=>", body)
         self.assertIn("__window_start_seconds:windowStart", body)
         self.assertIn("__window_end_seconds:windowEnd", body)
         self.assertIn("config.overview_values", body)
+        self.assertIn("config.overview_heatmap", body)
+        self.assertIn("const prepareHeatmap=()=>", body)
+        self.assertIn(
+            "(rowCount-1-rowIndex)*columnCount+columnIndex",
+            body,
+        )
+        self.assertIn(
+            "windowStart=0;windowEnd=selectedDuration();render();finalCommit()",
+            body,
+        )
         self.assertIn("config.overview_series", body)
         self.assertIn("config.overview_durations_seconds", body)
         self.assertIn("config.overview_switcher_key", body)
@@ -564,7 +647,9 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("rememberPlotResetRanges", body)
         self.assertIn("function managedPlotlyLayout(view)", body)
         self.assertIn("delete layout.uirevision", body)
-        self.assertIn("delete layout.width;delete layout.height;layout.autosize=true", body)
+        self.assertIn(
+            "delete layout.width;delete layout.height;layout.autosize=true", body
+        )
         self.assertIn("managedPlotlyLayout(view),plotlyConfig", body)
         self.assertIn("plotly_relayouting", body)
         self.assertIn("plotly_relayout", body)
@@ -584,9 +669,7 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("plot._sigvueViewport=viewport", body)
         self.assertIn("target._sigvueViewport=Object.fromEntries", body)
         self.assertIn(
-            "restoredPlotViewport("
-            "view,viewport,previous,state.reset,state.bounds"
-            ")",
+            "restoredPlotViewport(view,viewport,previous,state.reset,state.bounds)",
             body,
         )
         self.assertIn("translatedAxisRange", body)
@@ -692,7 +775,9 @@ class WebAppTests(unittest.TestCase):
         handler.do_GET()
 
         app.open_item.assert_called_once_with("radar-waterfall", "2mhz::lfm-2mhz", {})
-        handler._write_json.assert_called_once_with(200, {"item": {"id": "2mhz::lfm-2mhz"}})
+        handler._write_json.assert_called_once_with(
+            200, {"item": {"id": "2mhz::lfm-2mhz"}}
+        )
 
     def test_annotation_endpoint_routes_capability_values(self):
         app = Mock()
@@ -721,7 +806,9 @@ class WebAppTests(unittest.TestCase):
             0.25,
             {"comment": "Check this"},
         )
-        handler._write_json.assert_called_once_with(201, {"id": "a1", "position_seconds": 1.25})
+        handler._write_json.assert_called_once_with(
+            201, {"id": "a1", "position_seconds": 1.25}
+        )
 
     def test_workspace_export_runs_as_a_background_job(self):
         app = self.create_example_app()
@@ -747,14 +834,21 @@ class WebAppTests(unittest.TestCase):
 
             def run_item(self, resource, source_data, request: BatchRequest, directory):
                 target = directory / "item.txt"
-                target.write_text(f"{resource.identifier}:{sum(source_data)}", encoding="utf-8")
+                target.write_text(
+                    f"{resource.identifier}:{sum(source_data)}", encoding="utf-8"
+                )
                 report = directory / "report.html"
                 report.write_text("<h1>Item report</h1>", encoding="utf-8")
                 return BatchResult((target, report), "Item summarized")
 
-            def run_workspace(self, resources, open_resource, request: BatchRequest, directory):
+            def run_workspace(
+                self, resources, open_resource, request: BatchRequest, directory
+            ):
                 target = directory / "workspace.txt"
-                target.write_text(str(sum(sum(open_resource(resource)) for resource in resources)), encoding="utf-8")
+                target.write_text(
+                    str(sum(sum(open_resource(resource)) for resource in resources)),
+                    encoding="utf-8",
+                )
                 return BatchResult((target,), "Workspace compiled")
 
         base = self.create_example_app().registry.get("test-workspace")
@@ -772,7 +866,9 @@ class WebAppTests(unittest.TestCase):
         app.register_workspace(workspace)
 
         listing = app.browse_items("batch-workspace", {})
-        self.assertEqual("summarize", listing["items"][0]["batch"]["actions"][0]["value"])
+        self.assertEqual(
+            "summarize", listing["items"][0]["batch"]["actions"][0]["value"]
+        )
         self.assertEqual("compile", listing["batch"]["actions"][0]["value"])
 
         item_job = app.start_batch("batch-workspace", "summarize", "recording")
@@ -787,8 +883,12 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual("Item summarized", item_status["summary"])
         self.assertTrue(Path(item_status["files"][0]["path"]).is_absolute())
         self.assertIsNone(item_status["files"][0]["open_url"])
-        self.assertEqual(f"/batches/{item_job}/report.html", item_status["files"][1]["open_url"])
-        self.assertEqual("recording:10.0", app.batch_file(item_job, "item.txt").read_text())
+        self.assertEqual(
+            f"/batches/{item_job}/report.html", item_status["files"][1]["open_url"]
+        )
+        self.assertEqual(
+            "recording:10.0", app.batch_file(item_job, "item.txt").read_text()
+        )
         refreshed = app.browse_items("batch-workspace", {})
         item_action = refreshed["items"][0]["batch"]["actions"][0]
         self.assertEqual("ready", item_action["status"])
@@ -796,7 +896,9 @@ class WebAppTests(unittest.TestCase):
 
         workspace_job = app.start_batch("batch-workspace", "compile")
         app._batch_jobs[workspace_job].future.result(timeout=10)
-        self.assertEqual("Workspace compiled", app.batch_status(workspace_job)["summary"])
+        self.assertEqual(
+            "Workspace compiled", app.batch_status(workspace_job)["summary"]
+        )
         recent_jobs = app.batch_statuses()["jobs"]
         self.assertEqual([workspace_job, item_job], [job["id"] for job in recent_jobs])
         workspace_action = app.list_workspaces()[0]["batch"]["actions"][0]
@@ -810,14 +912,17 @@ class WebAppTests(unittest.TestCase):
         with TemporaryDirectory() as output:
             stream = StringIO()
             with redirect_stdout(stream):
-                result = _run_batch_command(app, Namespace(
-                    list_batch=False,
-                    workspace="batch-workspace",
-                    item="recording",
-                    action="summarize",
-                    output=Path(output),
-                    json=False,
-                ))
+                result = _run_batch_command(
+                    app,
+                    Namespace(
+                        list_batch=False,
+                        workspace="batch-workspace",
+                        item="recording",
+                        action="summarize",
+                        output=Path(output),
+                        json=False,
+                    ),
+                )
             self.assertEqual(0, result)
             self.assertEqual("recording:10.0", (Path(output) / "item.txt").read_text())
             self.assertIn("saved:", stream.getvalue())
@@ -908,12 +1013,16 @@ class WebAppTests(unittest.TestCase):
             self.assertTrue(expected.is_file())
 
             relaunched = make_app()
-            action = relaunched.browse_items("durable-workspace", {})["items"][0]["batch"]["actions"][0]
+            action = relaunched.browse_items("durable-workspace", {})["items"][0][
+                "batch"
+            ]["actions"][0]
             self.assertEqual("ready", action["status"])
             self.assertEqual(str(expected.resolve()), action["files"][0]["path"])
             self.assertTrue(action["files"][0]["open_url"].startswith("/batch-files/"))
             _, _, token, filename = action["files"][0]["open_url"].split("/")
-            self.assertEqual(expected.resolve(), relaunched.declared_batch_file(token, filename))
+            self.assertEqual(
+                expected.resolve(), relaunched.declared_batch_file(token, filename)
+            )
             encoded = relaunched._batch_files(None, output_path, ("report #1.html",))[0]
             self.assertIn("report%20%231.html", encoded["open_url"])
 
@@ -922,18 +1031,22 @@ class WebAppTests(unittest.TestCase):
         app.start_export.return_value = "job-1"
         handler_type = _make_handler(app)
         handler = handler_type.__new__(handler_type)
-        payload = json.dumps({
-            "control_values": {"gain": "2"},
-            "scope": "full",
-            "format": "mat",
-        }).encode("utf-8")
+        payload = json.dumps(
+            {
+                "control_values": {"gain": "2"},
+                "scope": "full",
+                "format": "mat",
+            }
+        ).encode("utf-8")
         handler.path = "/workspaces/test/items/capture.dat/exports"
         handler.headers = {"Content-Length": str(len(payload))}
         handler.rfile = BytesIO(payload)
         handler._write_json = Mock()
         handler.do_POST()
 
-        app.start_export.assert_called_once_with("test", "capture.dat", {"gain": "2"}, "full", "mat")
+        app.start_export.assert_called_once_with(
+            "test", "capture.dat", {"gain": "2"}, "full", "mat"
+        )
         handler._write_json.assert_called_once_with(
             202,
             {"id": "job-1", "status": "pending", "status_url": "/exports/job-1"},
@@ -998,7 +1111,9 @@ class WebAppTests(unittest.TestCase):
         handler.do_GET()
 
         app.batch_file.assert_called_once_with("batch-1", "report.html")
-        handler._write_export_file.assert_called_once_with(Path("/tmp/report.html"), inline=True)
+        handler._write_export_file.assert_called_once_with(
+            Path("/tmp/report.html"), inline=True
+        )
 
     def test_workspace_without_exporter_rejects_export(self):
         app = self.create_example_app()
@@ -1042,14 +1157,19 @@ class WebAppTests(unittest.TestCase):
             try:
                 app = SigvueApp(
                     reload_workspaces=True,
-                    workspace_modules=(WorkspaceModuleRegistration(module_name, "Workspace", root),),
+                    workspace_modules=(
+                        WorkspaceModuleRegistration(module_name, "Workspace", root),
+                    ),
                 )
                 app_identity = id(app)
                 self.assertEqual("Before", app.list_workspaces()[0]["name"])
 
                 previous_mtime = module_path.stat().st_mtime_ns
                 write_workspace("After")
-                os.utime(module_path, ns=(previous_mtime + 1_000_000, previous_mtime + 1_000_000))
+                os.utime(
+                    module_path,
+                    ns=(previous_mtime + 1_000_000, previous_mtime + 1_000_000),
+                )
 
                 handler_type = _make_handler(app)
                 handler = handler_type.__new__(handler_type)

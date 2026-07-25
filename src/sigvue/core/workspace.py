@@ -9,7 +9,19 @@ import json
 from pathlib import Path
 from threading import RLock
 from time import perf_counter
-from typing import Any, Callable, ContextManager, Generic, Iterable, Iterator, Literal, Mapping, Protocol, TypeVar, runtime_checkable
+from typing import (
+    Any,
+    Callable,
+    ContextManager,
+    Generic,
+    Iterable,
+    Iterator,
+    Literal,
+    Mapping,
+    Protocol,
+    TypeVar,
+    runtime_checkable,
+)
 
 from plotly.colors import get_colorscale
 
@@ -26,12 +38,31 @@ from .capabilities import (
     ExportCapability,
 )
 from .layout import LayoutNode, container, control_slot, view_slot
-from .models import ItemDescriptor, RefreshConfiguration, RefreshResult, WorkspaceMetadata
-from .page import AxisNavigation, ControlSpec, OpenedItem, PageDefinition, PlaybackConfiguration, PlaybackMode, Segment, TimeUnit, ViewSpec
+from .models import (
+    ItemDescriptor,
+    RefreshConfiguration,
+    RefreshResult,
+    WorkspaceMetadata,
+)
+from .page import (
+    AxisNavigation,
+    ControlSpec,
+    OpenedItem,
+    PageDefinition,
+    PlaybackConfiguration,
+    PlaybackMode,
+    Segment,
+    TimeUnit,
+    ViewSpec,
+)
 
 
 def _is_hex_color(value: str) -> bool:
-    return len(value) == 7 and value.startswith("#") and all(character in "0123456789abcdefABCDEF" for character in value[1:])
+    return (
+        len(value) == 7
+        and value.startswith("#")
+        and all(character in "0123456789abcdefABCDEF" for character in value[1:])
+    )
 
 
 @dataclass(frozen=True)
@@ -105,8 +136,7 @@ class Source(Generic[SourceData]):
         if (discover is None) != (open is None):
             raise TypeError("Source requires both discover and open callbacks")
         if discover is None and (
-            type(self).discover is Source.discover
-            or type(self).open is Source.open
+            type(self).discover is Source.discover or type(self).open is Source.open
         ):
             raise TypeError(
                 "Source requires discover/open callbacks or both overridden methods"
@@ -134,13 +164,10 @@ class Delivery(Generic[SourceData, DeliveredData]):
 
     def __init__(
         self,
-        prepare: Callable[[SourceData, BufferUI], DeliveredData]
-        | None = None,
+        prepare: Callable[[SourceData, BufferUI], DeliveredData] | None = None,
     ) -> None:
         if prepare is None and type(self).prepare is Delivery.prepare:
-            raise TypeError(
-                "Delivery requires a prepare callback or overridden method"
-            )
+            raise TypeError("Delivery requires a prepare callback or overridden method")
         self._prepare_callback = prepare
 
     def prepare(self, source_data: SourceData, ui: BufferUI) -> DeliveredData:
@@ -168,9 +195,7 @@ class Analysis(Generic[DeliveredData, SettingsData, AnalysisProducts]):
         | None = None,
     ) -> None:
         if process is None and type(self).process is Analysis.process:
-            raise TypeError(
-                "Analysis requires a process callback or overridden method"
-            )
+            raise TypeError("Analysis requires a process callback or overridden method")
         self._process_callback = process
         self._configure_callback = configure
 
@@ -220,9 +245,7 @@ class Presentation(Generic[AnalysisProducts]):
         """Declare the workspace's display for one set of products."""
         callback = getattr(self, "_present_callback", None)
         if callback is None:
-            raise NotImplementedError(
-                "Presentation.present is not implemented"
-            )
+            raise NotImplementedError("Presentation.present is not implemented")
         callback(products, ui)
 
 
@@ -294,11 +317,19 @@ class TraceStyle:
 
     @property
     def line(self) -> dict[str, object]:
-        return {"color": self.color_with_opacity(), "width": self.width, "dash": self.line_style}
+        return {
+            "color": self.color_with_opacity(),
+            "width": self.width,
+            "dash": self.line_style,
+        }
 
     @property
     def plotly_marker(self) -> dict[str, object]:
-        return {} if self.marker == "none" else {"color": self.color_with_opacity(), "symbol": self.marker}
+        return (
+            {}
+            if self.marker == "none"
+            else {"color": self.color_with_opacity(), "symbol": self.marker}
+        )
 
     def color_with_opacity(self, color: str | None = None) -> str:
         """Return a Plotly color carrying this style's opacity."""
@@ -335,6 +366,7 @@ class BufferUI(_ControlUI, Protocol):
         duration: float,
         default_window: float,
         overview: Iterable[float] | None = None,
+        overview_heatmap: Iterable[Iterable[float]] | None = None,
         overview_series: Iterable[Iterable[float]] | None = None,
         overview_durations: Iterable[float] | None = None,
         overview_switcher: str | None = None,
@@ -357,7 +389,9 @@ class BufferUI(_ControlUI, Protocol):
 
     def refresh(self, *, every: float, timeout: float = 30.0) -> None: ...
 
-    def once(self, key: str, factory: Callable[[], Any], *, depends_on: Iterable[str] = ()) -> Any: ...
+    def once(
+        self, key: str, factory: Callable[[], Any], *, depends_on: Iterable[str] = ()
+    ) -> Any: ...
 
     def compute(
         self,
@@ -424,7 +458,9 @@ class UI(_ControlUI, Protocol):
 
     def stat(self, label: str, value: object) -> None: ...
 
-    def once(self, key: str, factory: Callable[[], Any], *, depends_on: Iterable[str] = ()) -> Any: ...
+    def once(
+        self, key: str, factory: Callable[[], Any], *, depends_on: Iterable[str] = ()
+    ) -> Any: ...
 
     def compute(
         self,
@@ -442,15 +478,23 @@ class UI(_ControlUI, Protocol):
         update: str = "dynamic",
     ) -> ContextManager[None]: ...
 
-    def group(self, direction: str = "column", **props: object) -> ContextManager[None]: ...
+    def group(
+        self, direction: str = "column", **props: object
+    ) -> ContextManager[None]: ...
 
     def details_group(self, label: str) -> ContextManager[None]: ...
 
-    def parameter_group(self, label: str | None = None, *, columns: int = 1) -> ContextManager[None]: ...
+    def parameter_group(
+        self, label: str | None = None, *, columns: int = 1
+    ) -> ContextManager[None]: ...
 
-    def place_parameters(self, *names: str, label: str | None = None, columns: int = 1) -> None: ...
+    def place_parameters(
+        self, *names: str, label: str | None = None, columns: int = 1
+    ) -> None: ...
 
-    def switcher(self, label: str, *, key: str, selector: str = "buttons") -> ContextManager[None]: ...
+    def switcher(
+        self, label: str, *, key: str, selector: str = "buttons"
+    ) -> ContextManager[None]: ...
 
     def switcher_view(
         self,
@@ -544,12 +588,18 @@ class DirectorySource(Source[LoadedData], Generic[LoadedData]):
         paths = {
             path
             for pattern in self.patterns
-            for path in (self.directory.rglob(pattern) if self.recursive else self.directory.glob(pattern))
+            for path in (
+                self.directory.rglob(pattern)
+                if self.recursive
+                else self.directory.glob(pattern)
+            )
             if path.is_file()
         }
         resources = []
         for path in sorted(paths):
-            resource = self.describe(path) if self.describe else self._default_resource(path)
+            resource = (
+                self.describe(path) if self.describe else self._default_resource(path)
+            )
             if resource.navigation_path is None:
                 parent = path.relative_to(self.directory).parent
                 navigation_path = () if parent == Path(".") else parent.parts
@@ -626,7 +676,12 @@ class WorkspaceUIContext:
     @property
     def following_live(self) -> bool:
         """Whether a live-capable playback request should use the newest buffer."""
-        return str(self.values.get("__playback_follow_live", "false")).lower() in {"1", "true", "yes", "on"}
+        return str(self.values.get("__playback_follow_live", "false")).lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
 
     def select(
         self,
@@ -639,7 +694,11 @@ class WorkspaceUIContext:
         picker: str | None = None,
         picker_label: str | None = None,
     ) -> object:
-        labels = tuple(str(label) for label in options.values()) if isinstance(options, Mapping) else ()
+        labels = (
+            tuple(str(label) for label in options.values())
+            if isinstance(options, Mapping)
+            else ()
+        )
         choices = tuple(options)
         self._add_control(
             ControlSpec(
@@ -685,7 +744,11 @@ class WorkspaceUIContext:
             )
         )
         value = self.values.setdefault(name, default)
-        return value if isinstance(value, bool) else str(value).lower() in {"1", "true", "yes", "on"}
+        return (
+            value
+            if isinstance(value, bool)
+            else str(value).lower() in {"1", "true", "yes", "on"}
+        )
 
     def number(
         self,
@@ -701,7 +764,11 @@ class WorkspaceUIContext:
         picker_label: str | None = None,
     ) -> int | float:
         """Add an editable numeric input and return its current typed value."""
-        control_type = "integer" if isinstance(default, int) and not isinstance(default, bool) else "float"
+        control_type = (
+            "integer"
+            if isinstance(default, int) and not isinstance(default, bool)
+            else "float"
+        )
         self._add_control(
             ControlSpec(
                 name=name,
@@ -740,7 +807,9 @@ class WorkspaceUIContext:
     ) -> int:
         """Declare a user-controlled point target for opt-in view downsampling."""
         if default < 1 or minimum < 1 or step < 1:
-            raise ValueError("Render-point defaults, minimums, and steps must be positive")
+            raise ValueError(
+                "Render-point defaults, minimums, and steps must be positive"
+            )
         if maximum is not None and maximum < minimum:
             raise ValueError("Render-point maximum must not be below its minimum")
         return int(
@@ -801,7 +870,10 @@ class WorkspaceUIContext:
         for choice in choices:
             try:
                 previews.append(
-                    tuple(f"{entry[1]} {float(entry[0]) * 100:g}%" for entry in get_colorscale(choice))
+                    tuple(
+                        f"{entry[1]} {float(entry[0]) * 100:g}%"
+                        for entry in get_colorscale(choice)
+                    )
                 )
             except Exception as error:
                 raise ValueError(f"Unknown Plotly colormap: {choice}") from error
@@ -838,7 +910,9 @@ class WorkspaceUIContext:
         if step <= 0:
             raise ValueError("Limits step must be positive")
         if not minimum <= lower_default < upper_default <= maximum:
-            raise ValueError("Default limits must be ordered and within the available range")
+            raise ValueError(
+                "Default limits must be ordered and within the available range"
+            )
         self._add_control(
             ControlSpec(
                 name=name,
@@ -944,7 +1018,13 @@ class WorkspaceUIContext:
                 picker_label=prefix,
             )
         )
-        return TraceStyle(selected_style, selected_marker, selected_color, selected_width, selected_opacity)
+        return TraceStyle(
+            selected_style,
+            selected_marker,
+            selected_color,
+            selected_width,
+            selected_opacity,
+        )
 
     def _add_control(self, control: ControlSpec) -> None:
         if any(existing.name == control.name for existing in self.controls):
@@ -1001,6 +1081,7 @@ class WorkspaceUIContext:
         duration: float,
         default_window: float,
         overview: Iterable[float] | None = None,
+        overview_heatmap: Iterable[Iterable[float]] | None = None,
         overview_series: Iterable[Iterable[float]] | None = None,
         overview_durations: Iterable[float] | None = None,
         overview_switcher: str | None = None,
@@ -1009,10 +1090,14 @@ class WorkspaceUIContext:
         step: float | None = None,
         time_unit: TimeUnit = "s",
     ) -> tuple[float, float]:
-        """Select an interval, optionally drawn over a proportional 1D overview."""
+        """Select an interval over optional proportional line and heatmap overviews."""
         duration = float(duration)
         default_window = float(default_window)
-        minimum = float(minimum_window if minimum_window is not None else (step or default_window / 20))
+        minimum = float(
+            minimum_window
+            if minimum_window is not None
+            else (step or default_window / 20)
+        )
         if duration <= 0:
             raise ValueError("Windowed duration must be positive")
         if default_window <= 0:
@@ -1031,7 +1116,9 @@ class WorkspaceUIContext:
         series = (
             ()
             if overview_series is None
-            else tuple(tuple(float(value) for value in values) for values in overview_series)
+            else tuple(
+                tuple(float(value) for value in values) for values in overview_series
+            )
         )
         durations = (
             ()
@@ -1043,6 +1130,11 @@ class WorkspaceUIContext:
             if overview is not None
             else (series[0] if series else ())
         )
+        heatmap = (
+            ()
+            if overview_heatmap is None
+            else tuple(tuple(float(value) for value in row) for row in overview_heatmap)
+        )
         self.playback_config = PlaybackConfiguration(
             mode="windowed",
             duration_seconds=duration,
@@ -1052,6 +1144,7 @@ class WorkspaceUIContext:
             window_end_seconds=end,
             minimum_window_seconds=minimum,
             overview_values=values,
+            overview_heatmap=heatmap,
             overview_series=series,
             overview_durations_seconds=durations,
             overview_switcher_key=overview_switcher,
@@ -1078,11 +1171,15 @@ class WorkspaceUIContext:
             raise ValueError("Provide explicit segments or segment_duration, not both")
         if segments is None:
             if segment_duration is None:
-                raise ValueError("Segmented playback requires segments or segment_duration")
+                raise ValueError(
+                    "Segmented playback requires segments or segment_duration"
+                )
             segment_duration = float(segment_duration)
             stride = float(stride if stride is not None else segment_duration)
             if segment_duration <= 0 or segment_duration > duration:
-                raise ValueError("Segment duration must be positive and within the recording")
+                raise ValueError(
+                    "Segment duration must be positive and within the recording"
+                )
             if stride <= 0:
                 raise ValueError("Segment stride must be positive")
             count = int((duration - segment_duration) // stride) + 1
@@ -1096,14 +1193,20 @@ class WorkspaceUIContext:
                 for index in range(count)
             )
         else:
-            descriptors = tuple(sorted(segments, key=lambda segment: segment.start_seconds))
+            descriptors = tuple(
+                sorted(segments, key=lambda segment: segment.start_seconds)
+            )
         if not descriptors:
             raise ValueError("Segmented playback requires at least one segment")
         identifiers = {segment.identifier for segment in descriptors}
-        requested = str(self.values.get("__segment_id", default or descriptors[0].identifier))
+        requested = str(
+            self.values.get("__segment_id", default or descriptors[0].identifier)
+        )
         if requested not in identifiers:
             requested = default if default in identifiers else descriptors[0].identifier
-        selected = next(segment for segment in descriptors if segment.identifier == requested)
+        selected = next(
+            segment for segment in descriptors if segment.identifier == requested
+        )
         self.playback_config = PlaybackConfiguration(
             mode="segmented",
             duration_seconds=duration,
@@ -1116,15 +1219,21 @@ class WorkspaceUIContext:
 
     def refresh(self, *, every: float, timeout: float = 30.0) -> None:
         """Ask the framework to rerun this analysis for a live source."""
-        self.refresh_config = RefreshConfiguration(enabled=True, interval_seconds=every, timeout_seconds=timeout)
+        self.refresh_config = RefreshConfiguration(
+            enabled=True, interval_seconds=every, timeout_seconds=timeout
+        )
 
     def stat(self, label: str, value: object) -> None:
         """Expose a workflow-defined value alongside framework timings."""
         self.statistics[label] = value
 
-    def once(self, key: str, factory: Callable[[], Any], *, depends_on: Iterable[str] = ()) -> Any:
+    def once(
+        self, key: str, factory: Callable[[], Any], *, depends_on: Iterable[str] = ()
+    ) -> Any:
         """Compute and cache item-level work, optionally varying with named settings."""
-        dependency_values = tuple((name, repr(self.values.get(name))) for name in depends_on)
+        dependency_values = tuple(
+            (name, repr(self.values.get(name))) for name in depends_on
+        )
         cache_key = (
             "value",
             key,
@@ -1167,8 +1276,7 @@ class WorkspaceUIContext:
         )
         dependency_names = tuple(dict.fromkeys((*lifecycle_names, *names)))
         dependency_values = tuple(
-            (name, repr(self.values.get(name)))
-            for name in dependency_names
+            (name, repr(self.values.get(name))) for name in dependency_names
         )
         cache_key = (
             "compute",
@@ -1212,7 +1320,9 @@ class WorkspaceUIContext:
     def group(self, direction: str = "column", **props: object) -> Iterator[None]:
         """Nest mixed views in a row, column, stack, or panel."""
         if self._active_parameter_nodes is not None:
-            raise RuntimeError("Parameter groups may contain only number and select controls")
+            raise RuntimeError(
+                "Parameter groups may contain only number and select controls"
+            )
         if self._active_nodes is None:
             raise RuntimeError("ui.group() must be used inside ui.tab()")
         if direction not in {"row", "column", "stack", "panel"}:
@@ -1244,7 +1354,9 @@ class WorkspaceUIContext:
             self._active_details_group = None
 
     @contextmanager
-    def parameter_group(self, label: str | None = None, *, columns: int = 1) -> Iterator[None]:
+    def parameter_group(
+        self, label: str | None = None, *, columns: int = 1
+    ) -> Iterator[None]:
         """Place number/select controls directly inside the active tab layout."""
         if self._active_nodes is None:
             raise RuntimeError("ui.parameter_group() must be used inside ui.tab()")
@@ -1260,10 +1372,16 @@ class WorkspaceUIContext:
         finally:
             self._active_parameter_nodes = None
         if not children:
-            raise ValueError("ui.parameter_group() must contain at least one number or select control")
-        parent.append(container("control_group", children, label=label, columns=columns))
+            raise ValueError(
+                "ui.parameter_group() must contain at least one number or select control"
+            )
+        parent.append(
+            container("control_group", children, label=label, columns=columns)
+        )
 
-    def place_parameters(self, *names: str, label: str | None = None, columns: int = 1) -> None:
+    def place_parameters(
+        self, *names: str, label: str | None = None, columns: int = 1
+    ) -> None:
         """Place previously declared controls into the active view layout."""
         if self._active_nodes is None:
             raise RuntimeError("ui.place_parameters() must be used inside ui.tab()")
@@ -1293,7 +1411,9 @@ class WorkspaceUIContext:
         )
 
     @contextmanager
-    def switcher(self, label: str, *, key: str, selector: str = "buttons") -> Iterator[None]:
+    def switcher(
+        self, label: str, *, key: str, selector: str = "buttons"
+    ) -> Iterator[None]:
         """Build a switcher whose choices may contain mixed framework layouts."""
         if self._active_nodes is None or self._active_tab is None:
             raise RuntimeError("ui.switcher() must be used inside ui.tab()")
@@ -1312,8 +1432,12 @@ class WorkspaceUIContext:
         finally:
             self._active_switcher = None
         if not choices:
-            raise ValueError("ui.switcher() must contain at least one ui.switcher_view()")
-        parent.append(container("view_switcher", choices, label=label, key=key, selector=selector))
+            raise ValueError(
+                "ui.switcher() must contain at least one ui.switcher_view()"
+            )
+        parent.append(
+            container("view_switcher", choices, label=label, key=key, selector=selector)
+        )
 
     @contextmanager
     def switcher_view(
@@ -1357,7 +1481,9 @@ class WorkspaceUIContext:
     ) -> None:
         """Add any supported renderable: plot, table, text, markdown, or image."""
         if self._active_parameter_nodes is not None:
-            raise RuntimeError("Parameter groups may contain only number and select controls")
+            raise RuntimeError(
+                "Parameter groups may contain only number and select controls"
+            )
         if self._active_tab is None or self._active_nodes is None:
             raise RuntimeError("ui.view() must be used inside ui.tab()")
         view_key = key or f"view-{len(self.figures) + 1}"
@@ -1366,7 +1492,9 @@ class WorkspaceUIContext:
         policy = update or self._active_tab.update
         self._validate_update(policy)
         self._validate_axis_navigation(axis_navigation)
-        self.figures[view_key] = self._resolve_figure(view_key, value, policy, depends_on)
+        self.figures[view_key] = self._resolve_figure(
+            view_key, value, policy, depends_on
+        )
         self.figure_updates[view_key] = policy
         self.figure_axis_navigation[view_key] = axis_navigation
         self.figure_dependencies[view_key] = tuple(depends_on)
@@ -1432,15 +1560,23 @@ class WorkspaceUIContext:
         selectors = (selector,) if isinstance(selector, str) else tuple(selector)
         if not labels:
             raise ValueError("View switchers require at least one selection dimension")
-        if len(selectors) != len(labels) or any(choice not in {"buttons", "dropdown"} for choice in selectors):
-            raise ValueError("selector must provide 'buttons' or 'dropdown' for every selection dimension")
+        if len(selectors) != len(labels) or any(
+            choice not in {"buttons", "dropdown"} for choice in selectors
+        ):
+            raise ValueError(
+                "selector must provide 'buttons' or 'dropdown' for every selection dimension"
+            )
         coordinates = []
         options: list[list[str]] = [[] for _ in labels]
         normalized_views = []
         for view_label, figure in views.items():
-            coordinate = (view_label,) if isinstance(view_label, str) else tuple(view_label)
+            coordinate = (
+                (view_label,) if isinstance(view_label, str) else tuple(view_label)
+            )
             if len(coordinate) != len(labels):
-                raise ValueError("Every view key must provide one choice per selection dimension")
+                raise ValueError(
+                    "Every view key must provide one choice per selection dimension"
+                )
             text_coordinate = tuple(str(choice) for choice in coordinate)
             indexes = []
             for dimension, choice in enumerate(text_coordinate):
@@ -1458,7 +1594,9 @@ class WorkspaceUIContext:
             view_key = f"{key}-{index}"
             if view_key in self.figures:
                 raise ValueError(f"Duplicate view-switcher key: {view_key}")
-            self.figures[view_key] = self._resolve_figure(view_key, figure, policy, depends_on)
+            self.figures[view_key] = self._resolve_figure(
+                view_key, figure, policy, depends_on
+            )
             self.figure_updates[view_key] = policy
             self.figure_axis_navigation[view_key] = axis_navigation
             self.figure_dependencies[view_key] = tuple(depends_on)
@@ -1510,14 +1648,19 @@ class WorkspaceUIContext:
                 "__window_end_seconds",
                 "__segment_id",
             )
-            dependency_names = tuple(dict.fromkeys(
-                ("__theme", *lifecycle_names, *depends_on)
-            ))
+            dependency_names = tuple(
+                dict.fromkeys(("__theme", *lifecycle_names, *depends_on))
+            )
             dependency_values = tuple(
-                (name, repr(self.values.get(
+                (
                     name,
-                    "light" if name == "__theme" else None,
-                )))
+                    repr(
+                        self.values.get(
+                            name,
+                            "light" if name == "__theme" else None,
+                        )
+                    ),
+                )
                 for name in dependency_names
             )
             cache_key = (
@@ -1718,7 +1861,10 @@ class Workspace:
         if exporter is not None:
             if not exporter.scopes or not exporter.formats:
                 raise ValueError("Exporter must provide at least one scope and format")
-            for choice_kind, choices in (("scope", exporter.scopes), ("format", exporter.formats)):
+            for choice_kind, choices in (
+                ("scope", exporter.scopes),
+                ("format", exporter.formats),
+            ):
                 values = [choice.value for choice in choices]
                 if len(values) != len(set(values)):
                     raise ValueError(f"Exporter {choice_kind} values must be unique")
@@ -1726,17 +1872,20 @@ class Workspace:
             raise TypeError("batch must be a Batch object or omitted")
         if batch is not None:
             if not batch.item_actions and not batch.workspace_actions:
-                raise ValueError("Batch must provide at least one item or workspace action")
+                raise ValueError(
+                    "Batch must provide at least one item or workspace action"
+                )
             for choice_kind, choices in (
                 ("item", batch.item_actions),
                 ("workspace", batch.workspace_actions),
             ):
                 values = [choice.value for choice in choices]
                 if len(values) != len(set(values)):
-                    raise ValueError(f"Batch {choice_kind} action values must be unique")
+                    raise ValueError(
+                        f"Batch {choice_kind} action values must be unique"
+                    )
         if any(
-            not isinstance(column, DiscoveryColumn)
-            for column in normalized_columns
+            not isinstance(column, DiscoveryColumn) for column in normalized_columns
         ):
             raise TypeError("discovery_columns must contain DiscoveryColumn values")
         if not isinstance(lazy_views, bool):
@@ -1746,7 +1895,9 @@ class Workspace:
         column_keys = [column.key for column in normalized_columns]
         if len(column_keys) != len(set(column_keys)):
             raise ValueError("Discovery column keys must be unique")
-        self.metadata = WorkspaceMetadata(identifier, name, description, version, category, tags)
+        self.metadata = WorkspaceMetadata(
+            identifier, name, description, version, category, tags
+        )
         self.discovery_columns = normalized_columns
         self.annotator = annotator
         self.exporter = exporter
@@ -1804,7 +1955,9 @@ class Workspace:
             raise ValueError("This workspace does not provide batch support")
         if action not in {choice.value for choice in self.batch.workspace_actions}:
             raise ValueError("Unsupported workspace batch action")
-        return self.batch.workspace_destination(tuple(self._resources().values()), BatchRequest(action))
+        return self.batch.workspace_destination(
+            tuple(self._resources().values()), BatchRequest(action)
+        )
 
     def _resources(self) -> dict[str, DataResource]:
         discovered = list(
@@ -1860,9 +2013,7 @@ class Workspace:
                 timestamp=resource.timestamp,
                 tags=resource.tags,
                 navigation_path=(
-                    ()
-                    if self.flatten_discovery
-                    else resource.navigation_path or ()
+                    () if self.flatten_discovery else resource.navigation_path or ()
                 ),
                 summary_fields=resource.summary,
             )
@@ -1872,7 +2023,9 @@ class Workspace:
     def open_item(self, item_id: str) -> OpenedItem:
         return self.open_item_with_values(item_id, {})
 
-    def open_item_with_values(self, item_id: str, values: dict[str, object]) -> OpenedItem:
+    def open_item_with_values(
+        self, item_id: str, values: dict[str, object]
+    ) -> OpenedItem:
         workspace_started = perf_counter()
         discovery_started = perf_counter()
         resources = self._resources()
@@ -1888,7 +2041,10 @@ class Workspace:
             once_cache = self._once_caches.setdefault(item_id, {})
             process_cache = self._legacy_process_caches.setdefault(item_id, {})
 
-        source_revision: tuple[object, ...] = (repr(resource.source), repr(resource.timestamp))
+        source_revision: tuple[object, ...] = (
+            repr(resource.source),
+            repr(resource.timestamp),
+        )
         try:
             source_path = Path(resource.source)
             source_stat = source_path.stat()
@@ -1925,7 +2081,9 @@ class Workspace:
                     configure_started = perf_counter()
                     settings = legacy.analysis.configure(prepared, context)
                     configure_elapsed = perf_counter() - configure_started
-                    compute_controls = tuple(control.name for control in context.controls)
+                    compute_controls = tuple(
+                        control.name for control in context.controls
+                    )
                     lifecycle_names = (
                         "__playback_time_seconds",
                         "__playback_follow_live",
@@ -1936,8 +2094,14 @@ class Workspace:
                     process_key = (
                         "process",
                         source_revision,
-                        tuple((name, repr(context.values.get(name))) for name in lifecycle_names),
-                        tuple((name, repr(context.values.get(name))) for name in compute_controls),
+                        tuple(
+                            (name, repr(context.values.get(name)))
+                            for name in lifecycle_names
+                        ),
+                        tuple(
+                            (name, repr(context.values.get(name)))
+                            for name in compute_controls
+                        ),
                         repr(settings),
                     )
                     missing = object()
@@ -1977,8 +2141,7 @@ class Workspace:
                     context.statistics.setdefault(
                         "Delivery runtime",
                         f"{delivery_elapsed * 1_000:.1f} ms"
-                        if legacy is not None
-                        and legacy.delivery is not None
+                        if legacy is not None and legacy.delivery is not None
                         else "not configured",
                     )
                     context.statistics.setdefault(
@@ -1994,8 +2157,7 @@ class Workspace:
                     context.statistics.setdefault(
                         "Process runtime",
                         "not configured"
-                        if legacy is None
-                        or legacy.analysis is None
+                        if legacy is None or legacy.analysis is None
                         else (
                             "cached"
                             if process_cached
@@ -2015,17 +2177,19 @@ class Workspace:
             return cache[key]
 
         initial = render(values)
-        initial.statistics.setdefault("Discovery runtime", f"{discovery_elapsed * 1_000:.1f} ms")
         initial.statistics.setdefault(
-            "Data open runtime"
-            if self.reader is not None
-            else "Source open runtime",
+            "Discovery runtime", f"{discovery_elapsed * 1_000:.1f} ms"
+        )
+        initial.statistics.setdefault(
+            "Data open runtime" if self.reader is not None else "Source open runtime",
             f"{source_elapsed * 1_000:.1f} ms",
         )
         views = tuple(
             ViewSpec(
                 name,
-                lambda values, key=name: _resolve_deferred_view(render(values).figures[key]),
+                lambda values, key=name: _resolve_deferred_view(
+                    render(values).figures[key]
+                ),
                 initial.figure_updates[name],
                 initial.figure_axis_navigation[name],
                 initial.figure_dependencies[name],
@@ -2040,14 +2204,14 @@ class Workspace:
             timestamp=resource.timestamp,
             tags=resource.tags,
             navigation_path=(
-                ()
-                if self.flatten_discovery
-                else resource.navigation_path or ()
+                () if self.flatten_discovery else resource.navigation_path or ()
             ),
             summary_fields=resource.summary,
         )
 
-        def annotate(requested_values: dict[str, object], request: AnnotationRequest) -> Annotation:
+        def annotate(
+            requested_values: dict[str, object], request: AnnotationRequest
+        ) -> Annotation:
             if self.annotator is None:
                 raise RuntimeError("Workspace does not provide annotation support")
             result = self.annotator.annotate(
@@ -2076,7 +2240,9 @@ class Workspace:
                     fields=tuple(self.annotator.fields),
                     discover_callback=lambda: tuple(self.annotator.discover(data)),
                     annotate_callback=annotate,
-                    timeline_color_control=getattr(self.annotator, "timeline_color_control", None),
+                    timeline_color_control=getattr(
+                        self.annotator, "timeline_color_control", None
+                    ),
                 )
                 if self.annotator is not None
                 else None
@@ -2085,8 +2251,13 @@ class Workspace:
                 ExportCapability(
                     scopes=tuple(self.exporter.scopes),
                     formats=tuple(self.exporter.formats),
-                    export_callback=lambda requested_values, request, directory: self.exporter.export(
-                        data, render(requested_values)._delivered_data, request, directory
+                    export_callback=lambda requested_values, request, directory: (
+                        self.exporter.export(
+                            data,
+                            render(requested_values)._delivered_data,
+                            request,
+                            directory,
+                        )
                     ),
                 )
                 if self.exporter is not None
@@ -2094,7 +2265,9 @@ class Workspace:
             ),
         )
         page.validate()
-        page.statistics.setdefault("Workspace total", f"{(perf_counter() - workspace_started) * 1_000:.1f} ms")
+        page.statistics.setdefault(
+            "Workspace total", f"{(perf_counter() - workspace_started) * 1_000:.1f} ms"
+        )
         return OpenedItem(item=item, page=page)
 
     def refresh_item(self, item_id: str) -> RefreshResult:

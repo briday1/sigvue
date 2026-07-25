@@ -41,6 +41,10 @@ def test_files_support_an_exact_headless_window_flow(tmp_path: Path):
         duration=lambda recording: float(len(recording)),
         default=2.0,
         overview=lambda recording: recording,
+        overview_heatmap=lambda recording: (
+            recording[:3],
+            tuple(reversed(recording[:3])),
+        ),
         overview_label="Power",
         minimum=1.0,
         step=1.0,
@@ -50,6 +54,10 @@ def test_files_support_an_exact_headless_window_flow(tmp_path: Path):
     assert files.discover() == (first, second)
     assert files.load(first) == (0.0, 1.0, 2.0, 3.0, 4.0, 5.0)
     assert reader.load(first, 1.0, 4.0) == (1.0, 2.0, 3.0)
+    assert reader.overview_heatmap(reader.open(first)) == (
+        (0.0, 1.0, 2.0),
+        (2.0, 1.0, 0.0),
+    )
 
 
 def test_reader_keeps_native_references_outside_the_browser_model():
@@ -152,9 +160,7 @@ def test_segmented_reader_passes_the_selected_segment(tmp_path: Path):
     reader = Files(
         tmp_path,
         "*.txt",
-        lambda selected: tuple(
-            int(value) for value in selected.read_text().split(",")
-        ),
+        lambda selected: tuple(int(value) for value in selected.read_text().split(",")),
     ).segmented(
         select,
         duration=6.0,
@@ -178,9 +184,7 @@ def test_playback_reader_is_headless_and_selects_a_moving_buffer(tmp_path: Path)
     reader = Files(
         tmp_path,
         "*.txt",
-        lambda selected: tuple(
-            int(value) for value in selected.read_text().split(",")
-        ),
+        lambda selected: tuple(int(value) for value in selected.read_text().split(",")),
     ).playback(
         lambda recording, start, stop: recording[int(start) : int(stop)],
         duration=6.0,
@@ -214,9 +218,7 @@ def test_buffered_reader_keeps_custom_selection_at_the_reader_boundary(
     files = Files(
         tmp_path,
         "*.txt",
-        lambda selected: tuple(
-            int(value) for value in selected.read_text().split(",")
-        ),
+        lambda selected: tuple(int(value) for value in selected.read_text().split(",")),
     )
 
     def read(recording, start=0, count=None):
@@ -246,9 +248,10 @@ def test_buffered_reader_keeps_custom_selection_at_the_reader_boundary(
         "recording.txt",
         {"custom_start": 2, "custom_count": 2},
     )
-    assert opened.page.views[0].callback(
-        {"custom_start": 2, "custom_count": 2}
-    ) == (2, 3)
+    assert opened.page.views[0].callback({"custom_start": 2, "custom_count": 2}) == (
+        2,
+        3,
+    )
 
 
 def test_workspace_has_one_unrestricted_view_callback(tmp_path: Path):
@@ -263,9 +266,7 @@ def test_workspace_has_one_unrestricted_view_callback(tmp_path: Path):
     reader = Files(
         tmp_path,
         "*.txt",
-        lambda selected: tuple(
-            int(value) for value in selected.read_text().split(",")
-        ),
+        lambda selected: tuple(int(value) for value in selected.read_text().split(",")),
     ).windowed(
         read_window,
         duration=4.0,
@@ -284,14 +285,18 @@ def test_workspace_has_one_unrestricted_view_callback(tmp_path: Path):
         ui.stat("Buffer items", len(data))
         with ui.tab("Quick"):
             ui.view(
-                lambda: calls.__setitem__("quick", calls["quick"] + 1)
-                or {"values": products},
+                lambda: (
+                    calls.__setitem__("quick", calls["quick"] + 1)
+                    or {"values": products}
+                ),
                 key="quick",
             )
         with ui.tab("Slow"):
             ui.view(
-                lambda: calls.__setitem__("slow", calls["slow"] + 1)
-                or {"squares": tuple(value**2 for value in products)},
+                lambda: (
+                    calls.__setitem__("slow", calls["slow"] + 1)
+                    or {"squares": tuple(value**2 for value in products)}
+                ),
                 key="slow",
             )
 
@@ -317,9 +322,7 @@ def test_workspace_has_one_unrestricted_view_callback(tmp_path: Path):
 
     slow_values = {**values, "__view_selection___tabs": 1}
     second = workspace.open_item_with_values("recording.txt", slow_values)
-    assert second.page.views[1].callback(slow_values) == {
-        "squares": (4, 16)
-    }
+    assert second.page.views[1].callback(slow_values) == {"squares": (4, 16)}
     assert calls == {"read": 1, "analysis": 1, "quick": 1, "slow": 1}
 
     changed = {**values, "gain": 3}
