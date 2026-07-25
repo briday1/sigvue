@@ -30,8 +30,17 @@ class FrameworkNeutralHelperTests(unittest.TestCase):
         })
         self.assertEqual(
             Path("/tmp/profile/recordings"),
-            config.path("data_root", "data"),
+            config.path("data_root"),
         )
+        self.assertEqual(
+            Path("/tmp/profile/data"),
+            WorkspaceConfig({"profile_dir": "/tmp/profile"}).path(
+                "data_root",
+                "data",
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "requires a 'data_root' path"):
+            WorkspaceConfig().path("data_root")
         self.assertEqual("*.sigmf-meta", config.string("pattern", "*"))
         self.assertEqual(2.0, config.floating("gain", 1.0))
         self.assertEqual(4, config.integer("channels", 1))

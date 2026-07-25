@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-from sigvue.plugin import (
+from sigvue import (
     Annotation,
     AnnotationField,
     AnnotationPlotBinding,

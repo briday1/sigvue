@@ -12,17 +12,19 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock
 
-from sigvue.plugin import (
+from sigvue.core.workspace import (
     Analysis,
+    DirectorySource,
+    Presentation,
+    Workspace,
+)
+from sigvue import (
     Batch,
     BatchDestination,
     BatchRequest,
     BatchResult,
     CapabilityChoice,
-    DirectorySource,
-    Presentation,
     add_viewport_heatmap,
-    Workspace,
 )
 from sigvue.web.application import (
     SigvueApp,
@@ -102,7 +104,7 @@ class WebAppTests(unittest.TestCase):
                         key="channel",
                     )
 
-        workspace = Workspace(
+        workspace = Workspace._from_runtime_components(
             identifier="lazy-workspace",
             name="Lazy workspace",
             description="Active views only",
@@ -152,7 +154,7 @@ class WebAppTests(unittest.TestCase):
                 with ui.tab("Heatmap"):
                     ui.plot(figure, key="heatmap", axis_navigation="bounded")
 
-        workspace = Workspace(
+        workspace = Workspace._from_runtime_components(
             identifier="raster-workspace",
             name="Raster workspace",
             description="Raster callback fixture",
@@ -192,7 +194,7 @@ class WebAppTests(unittest.TestCase):
                 def present(self, data, ui):
                     analyze(data, ui)
 
-            workspace = Workspace(
+            workspace = Workspace._from_runtime_components(
                 identifier="nested-files",
                 name="Nested files",
                 description="Nested directory fixture",
@@ -213,7 +215,7 @@ class WebAppTests(unittest.TestCase):
             opened = app.open_item("nested-files", "campaign-a::capture.dat")
             self.assertEqual(["campaign-a"], opened["item"]["navigation_path"])
 
-    def test_plugin_annotation_is_created_and_rediscovered(self):
+    def test_workspace_annotation_is_created_and_rediscovered(self):
         app = self.create_example_app()
         result = app.write_item_annotation(
             "test-workspace",
@@ -571,7 +573,7 @@ class WebAppTests(unittest.TestCase):
         app.open_item.assert_called_once_with("radar-waterfall", "2mhz::lfm-2mhz", {})
         handler._write_json.assert_called_once_with(200, {"item": {"id": "2mhz::lfm-2mhz"}})
 
-    def test_annotation_endpoint_routes_plugin_values(self):
+    def test_annotation_endpoint_routes_capability_values(self):
         app = Mock()
         app.write_item_annotation.return_value = {"id": "a1", "position_seconds": 1.25}
         handler_type = _make_handler(app)
@@ -600,7 +602,7 @@ class WebAppTests(unittest.TestCase):
         )
         handler._write_json.assert_called_once_with(201, {"id": "a1", "position_seconds": 1.25})
 
-    def test_plugin_export_runs_as_a_background_job(self):
+    def test_workspace_export_runs_as_a_background_job(self):
         app = self.create_example_app()
         job_id = app.start_export(
             "test-workspace",
@@ -617,7 +619,7 @@ class WebAppTests(unittest.TestCase):
         path = app.export_file(job_id, status["files"][0]["name"])
         self.assertEqual("buffer", json.loads(path.read_text())["scope"])
 
-    def test_plugin_batch_runs_item_and_workspace_actions_in_background(self):
+    def test_workspace_batch_runs_item_and_workspace_actions_in_background(self):
         class ExampleBatch(Batch):
             item_actions = (CapabilityChoice("summarize", "Summarize item"),)
             workspace_actions = (CapabilityChoice("compile", "Compile workspace"),)
@@ -635,14 +637,14 @@ class WebAppTests(unittest.TestCase):
                 return BatchResult((target,), "Workspace compiled")
 
         base = self.create_example_app().registry.get("test-workspace")
-        workspace = Workspace(
+        workspace = Workspace._from_runtime_components(
             identifier="batch-workspace",
             name="Batch workspace",
             description="Background jobs",
-            source=base.source,
-            delivery=base.delivery,
-            analysis=base.analysis,
-            presentation=base.presentation,
+            source=base._legacy_runtime.source,
+            delivery=base._legacy_runtime.delivery,
+            analysis=base._legacy_runtime.analysis,
+            presentation=base._legacy_runtime.presentation,
             batch=ExampleBatch(),
         )
         app = SigvueApp()
@@ -714,14 +716,14 @@ class WebAppTests(unittest.TestCase):
             base = self.create_example_app().registry.get("test-workspace")
 
             def make_app():
-                workspace = Workspace(
+                workspace = Workspace._from_runtime_components(
                     identifier="durable-workspace",
                     name="Durable workspace",
                     description="Persistent reports",
-                    source=base.source,
-                    delivery=base.delivery,
-                    analysis=base.analysis,
-                    presentation=base.presentation,
+                    source=base._legacy_runtime.source,
+                    delivery=base._legacy_runtime.delivery,
+                    analysis=base._legacy_runtime.analysis,
+                    presentation=base._legacy_runtime.presentation,
                     batch=DurableBatch(),
                 )
                 result = SigvueApp()
@@ -744,7 +746,7 @@ class WebAppTests(unittest.TestCase):
             encoded = relaunched._batch_files(None, output_path, ("report #1.html",))[0]
             self.assertIn("report%20%231.html", encoded["open_url"])
 
-    def test_export_endpoint_routes_plugin_scope_and_format(self):
+    def test_export_endpoint_routes_capability_scope_and_format(self):
         app = Mock()
         app.start_export.return_value = "job-1"
         handler_type = _make_handler(app)

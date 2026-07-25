@@ -651,7 +651,7 @@ class SigvueApp:
         return {"status": "idle"}
 
     def start_batch(self, workspace_id: str, action: str, item_id: str | None = None) -> str:
-        """Dispatch one plugin-owned item or workspace batch job."""
+        """Dispatch one workspace-defined item or workspace batch job."""
         workspace = self.registry.get(workspace_id)
         capability = getattr(workspace, "batch", None)
         choices = capability.item_actions if capability is not None and item_id is not None else (
@@ -900,7 +900,7 @@ class SigvueApp:
         scope: str,
         export_format: str,
     ) -> str:
-        """Run a plugin-owned export on the dedicated export executor."""
+        """Run a workspace export on the dedicated export executor."""
         job_id = uuid4().hex
         directory = Path(mkdtemp(prefix=f"sigvue-export-{job_id[:8]}-"))
 
@@ -1341,7 +1341,7 @@ def main() -> None:
     parser.add_argument("--config", type=Path, help="Load workspace selection and data settings from browser.toml")
     parser.add_argument("--workspace", help="Workspace identifier for a batch action")
     parser.add_argument("--item", help="Optional discovered item identifier for an item batch action")
-    parser.add_argument("--action", help="Plugin-defined batch action identifier")
+    parser.add_argument("--action", help="Workspace batch action identifier")
     parser.add_argument("--output", type=Path, default=Path.cwd(), help="Directory for completed batch artifacts")
     parser.add_argument("--list", dest="list_batch", action="store_true", help="List batch-capable workspaces, items, and actions")
     parser.add_argument("--json", action="store_true", help="Print the final batch result as JSON")

@@ -6,7 +6,7 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from sigvue.plugin import add_viewport_heatmap, aggregate_heatmap
+from sigvue import add_viewport_heatmap, aggregate_heatmap
 from sigvue.rendering.dispatch import RenderKind, detect_render_kind
 from sigvue.rendering.matplotlib_renderer import render_matplotlib_figure
 

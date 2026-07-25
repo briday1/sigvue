@@ -7,7 +7,7 @@ class DuplicateWorkspaceError(WorkspaceBrowserError):
 
 
 class WorkspaceLoadError(WorkspaceBrowserError):
-    """Raised when a plugin workspace fails to load."""
+    """Raised when a workspace fails to load."""
 
 
 class InvalidLayoutError(WorkspaceBrowserError):

@@ -14,7 +14,15 @@ class WorkspaceConfig:
     def __init__(self, values: Mapping[str, object] | None = None) -> None:
         self.values = MappingProxyType(dict(values or {}))
 
-    def path(self, key: str, default: str | Path) -> Path:
+    def path(
+        self,
+        key: str,
+        default: str | Path | None = None,
+    ) -> Path:
+        if key not in self.values and default is None:
+            raise ValueError(
+                f"Workspace configuration requires a '{key}' path"
+            )
         value = self.values.get(key, default)
         if not isinstance(value, (str, Path)):
             raise TypeError(f"{key} must be a path string")

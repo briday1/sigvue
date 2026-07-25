@@ -7,18 +7,20 @@ from pathlib import Path
 from matplotlib.figure import Figure
 import plotly.graph_objects as go
 
-from sigvue.plugin import (
+from sigvue.core.workspace import (
     Analysis,
-    Annotation,
-    AnnotationField,
-    CapabilityChoice,
-    Annotator,
-    Exporter,
     DataResource,
     DiscoveryColumn,
     Presentation,
     Source,
     Workspace,
+)
+from sigvue import (
+    Annotation,
+    AnnotationField,
+    CapabilityChoice,
+    Annotator,
+    Exporter,
 )
 from sigvue.web.application import SigvueApp
 
@@ -110,7 +112,7 @@ class MatplotlibPresentation(Presentation):
 
 def create_workspace(config=None):
     values = config or {}
-    return Workspace(
+    return Workspace._from_runtime_components(
         identifier=str(values.get("id", "test-workspace")),
         name=str(values.get("name", "Test Workspace")),
         description="Framework test fixture",
@@ -131,7 +133,7 @@ def create_test_app() -> SigvueApp:
     app = SigvueApp(title="Sigvue")
     app.register_workspace(create_workspace())
     app.register_workspace(
-        Workspace(
+        Workspace._from_runtime_components(
             identifier="matplotlib-workspace",
             name="Matplotlib Workspace",
             description="Matplotlib export fixture",

@@ -51,7 +51,7 @@ class AnnotationPlotBinding:
 
 @dataclass(frozen=True)
 class AnnotationField:
-    """One plugin-defined input in the annotation popover."""
+    """One workspace-defined input in the annotation popover."""
 
     name: str
     label: str
@@ -72,7 +72,7 @@ class AnnotationField:
 
 @dataclass(frozen=True)
 class Annotation:
-    """A plugin-discovered position or interval on the source timeline."""
+    """A discovered position or interval on the source timeline."""
 
     identifier: str
     start_seconds: float
@@ -113,7 +113,7 @@ class Annotation:
 
 @dataclass(frozen=True)
 class AnnotationRequest:
-    """Framework position plus plugin-defined values submitted by the user."""
+    """Framework position plus workspace-defined values submitted by the user."""
 
     position_seconds: float
     duration_seconds: float | None = None
@@ -145,7 +145,7 @@ class AnnotationRequest:
 
 
 class Annotator(ABC, Generic[SourceData_contra, DeliveredData_contra]):
-    """Framework object for plugin-owned annotation persistence."""
+    """Optional workspace capability for annotation persistence."""
 
     @property
     @abstractmethod
@@ -165,7 +165,7 @@ class Annotator(ABC, Generic[SourceData_contra, DeliveredData_contra]):
 
 @dataclass(frozen=True)
 class ExportRequest:
-    """A plugin-owned export selection made in the framework UI."""
+    """An export selection made in the framework UI."""
 
     scope: str
     format: str
@@ -177,7 +177,7 @@ class ExportRequest:
 
 
 class Exporter(ABC, Generic[SourceData_contra, DeliveredData_contra]):
-    """Framework object for plugin-owned serialization."""
+    """Optional workspace capability for serialization."""
 
     @property
     @abstractmethod
@@ -199,7 +199,7 @@ class Exporter(ABC, Generic[SourceData_contra, DeliveredData_contra]):
 
 @dataclass(frozen=True)
 class BatchRequest:
-    """One plugin-defined action dispatched without opening an item view."""
+    """One workspace-defined action dispatched without opening an item view."""
 
     action: str
 
@@ -218,7 +218,7 @@ class BatchResult:
 
 @dataclass(frozen=True)
 class BatchDestination:
-    """Pipeline-owned output location and optional completion contract."""
+    """Workspace-action output location and optional completion contract."""
 
     directory: Path | None = None
     files: tuple[str, ...] = ()
@@ -235,7 +235,7 @@ class BatchDestination:
 
 
 class Batch(ABC, Generic[SourceData_contra]):
-    """Plugin-owned item and workspace jobs run by the framework in background threads."""
+    """Item and workspace jobs run by the framework in background threads."""
 
     @property
     def item_actions(self) -> tuple[CapabilityChoice, ...]:

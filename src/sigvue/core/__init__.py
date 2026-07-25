@@ -2,7 +2,7 @@ from .contracts import WorkspaceProtocol
 from .layout import LayoutNode, container, validate_layout, view_slot
 from .models import ItemDescriptor, RefreshConfiguration, RefreshResult, WorkspaceMetadata
 from .page import ControlSpec, OpenedItem, PageDefinition, Segment, ViewSpec
-from .plugin import TraceStyle
+from .workspace import TraceStyle
 
 __all__ = [
     "WorkspaceProtocol",

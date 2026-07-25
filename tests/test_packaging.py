@@ -51,7 +51,7 @@ class PackagingTests(unittest.TestCase):
             self.dependency_names(extras["release"]),
         )
 
-    def test_core_helpers_remain_plugin_neutral(self):
+    def test_core_helpers_remain_workspace_neutral(self):
         helper_root = Path(__file__).resolve().parents[1] / "src/sigvue/helpers"
         modules = {
             path.relative_to(helper_root).as_posix()
@@ -68,7 +68,7 @@ class PackagingTests(unittest.TestCase):
         )
         for module in modules:
             contents = (helper_root / module).read_text(encoding="utf-8")
-            self.assertNotIn("sigvue.plugin", contents)
+            self.assertNotIn("sigvue.core.workspace", contents)
 
     def test_public_typing_marker_is_installed_as_package_data(self):
         self.assertTrue(files("sigvue").joinpath("py.typed").is_file())
