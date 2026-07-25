@@ -41,7 +41,13 @@ from sigvue.catalog.browser import filter_items, paginate_items, search_items, s
 from sigvue.core.capabilities import Annotation, AnnotationRequest, BatchDestination, BatchResult, ExportRequest
 from sigvue.core.layout import selected_view_names
 from sigvue.core.models import WorkspaceMetadata
-from sigvue.profile import WorkspaceLaunchSpec, load_browser_profile
+from sigvue.profile import (
+    WorkspaceLaunchSpec,
+    append_workspace_to_profile,
+    load_browser_profile,
+    workspace_factory_catalog,
+    workspace_launch_spec,
+)
 from sigvue.registry.registry import WorkspaceRegistry
 from sigvue.rendering import render_matplotlib_figure
 from sigvue.rendering.dispatch import RenderKind, detect_render_kind
@@ -94,10 +100,34 @@ _INDEX_HTML = r"""<!doctype html>
     .batch-menu.pending summary,.batch-menu.running summary { color:#d69e2e; border-color:#d69e2e; background:color-mix(in srgb,#d69e2e 10%,var(--wash)) }
     .batch-menu.ready summary { color:#16803c; border-color:#20a957; background:color-mix(in srgb,#20a957 10%,var(--wash)) }
     .batch-menu.error summary { color:#b42318; border-color:#d13c32; background:color-mix(in srgb,#d13c32 10%,var(--wash)) }
+    .workspace-add-toggle { min-height:30px; padding:4px 10px; border:1px solid #b9d0d54d; border-radius:6px; color:#e7f1f3; background:#193741; font:600 12px system-ui,sans-serif; cursor:pointer } .workspace-add-toggle:hover { border-color:#8ed0d7; background:#214752 } .workspace-wizard { width:min(720px,calc(100vw - 28px)); max-height:calc(100vh - 36px); padding:0; overflow:hidden; border:1px solid var(--line); border-radius:12px; color:var(--ink); background:#fbfcfc; box-shadow:0 24px 70px #071b2260 } .workspace-wizard::backdrop { background:#071b2273; backdrop-filter:blur(3px) } html[data-theme="dark"] .workspace-wizard { background:#10252d } .workspace-wizard-form { display:flex; max-height:calc(100vh - 38px); flex-direction:column } .workspace-wizard-head { display:flex; align-items:start; gap:18px; padding:20px 22px 16px; border-bottom:1px solid var(--line) } .workspace-wizard-head>div { flex:1 } .workspace-wizard-head h1 { margin:0; font-size:22px } .workspace-wizard-head p { margin:4px 0 0; color:var(--muted); font-size:13px } .workspace-wizard-close { padding:0 5px; border:0; color:var(--muted); background:transparent; font-size:24px; line-height:1; cursor:pointer } .workspace-wizard-body { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:13px 14px; padding:18px 22px; overflow-y:auto } .workspace-wizard-body label,.workspace-wizard-field { display:flex; min-width:0; flex-direction:column; gap:4px; color:var(--muted); font-size:11px; font-weight:600 } .workspace-wizard-body input,.workspace-wizard-body select,.workspace-wizard-body textarea { width:100%; min-height:38px; padding:7px 9px; color:var(--ink); background:white; border:1px solid var(--line); border-radius:6px; font:13px system-ui,sans-serif } html[data-theme="dark"] .workspace-wizard-body input,html[data-theme="dark"] .workspace-wizard-body select,html[data-theme="dark"] .workspace-wizard-body textarea { background:#193741 } .workspace-wizard-wide { grid-column:1/-1 } .workspace-path-field { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:7px } .workspace-path-field button,.workspace-discover { min-height:38px; padding:6px 10px; border:1px solid var(--line); border-radius:6px; color:var(--ink); background:var(--wash); font:600 12px system-ui,sans-serif; cursor:pointer } .workspace-source-field { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:7px } .workspace-config-details { grid-column:1/-1; border:1px solid var(--line); border-radius:7px; background:var(--wash) } .workspace-config-details summary { padding:9px 11px; color:var(--muted); font-size:12px; font-weight:650; cursor:pointer } .workspace-config-details label { padding:0 11px 11px } .workspace-config-details textarea { min-height:84px; resize:vertical; font:12px ui-monospace,monospace } .workspace-persist { grid-column:1/-1; display:grid!important; grid-template-columns:auto 1fr; align-items:center; gap:0 9px!important; padding:10px 11px; border:1px solid var(--line); border-radius:7px; background:var(--wash) } .workspace-persist input { width:17px; min-height:17px; grid-row:1/3; margin:0 } .workspace-persist strong { color:var(--ink); font-size:12px } .workspace-persist span { font-weight:400 } .workspace-wizard-error { grid-column:1/-1; margin:0; padding:9px 11px; border:1px solid #d13c32; border-radius:6px; color:#8c2e2e; background:#fff7f7; font-size:12px } html[data-theme="dark"] .workspace-wizard-error { color:#ff9b94; background:#4a2020 } .workspace-wizard-actions { display:flex; justify-content:flex-end; gap:8px; padding:13px 22px; border-top:1px solid var(--line); background:var(--wash) } .workspace-wizard-actions button { min-height:36px; padding:7px 13px; border:1px solid var(--line); border-radius:6px; color:var(--ink); background:white; font:600 13px system-ui,sans-serif; cursor:pointer } .workspace-wizard-actions .primary { color:white; background:var(--accent); border-color:var(--accent) } .workspace-wizard-actions button:disabled { opacity:.55; cursor:wait } .workspace-empty-action { margin-top:12px }
+    @media(max-width:700px){.workspace-wizard-body{grid-template-columns:1fr}.workspace-wizard-body>*{grid-column:1}.workspace-source-field{grid-template-columns:minmax(0,1fr) auto}.workspace-source-field .workspace-discover{grid-column:1/-1}.workspace-wizard-head,.workspace-wizard-body,.workspace-wizard-actions{padding-left:14px;padding-right:14px}}
     ::view-transition-old(root),::view-transition-new(root) { animation-duration:100ms; animation-timing-function:ease-out }
   </style>
 </head>
-<body><header><button class="header-nav" id="header-back" type="button" aria-label="Back" title="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button><button class="header-nav" id="header-forward" type="button" aria-label="Forward" title="Forward"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button><button class="header-nav" id="header-refresh" type="button" aria-label="Refresh" title="Refresh"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v5h-5"/><path d="M19 11a8 8 0 1 0 1 5"/></svg></button><button class="home-title" id="app-home">__BROWSER_TITLE__</button><span id="app-subtitle">__BROWSER_SUBTITLE__</span><span class="header-spacer"></span><details class="notification-center" id="header-notifications"><summary aria-label="Notifications" title="Notifications"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg><span class="notification-badge" id="notification-badge" hidden>0</span></summary><div class="notification-popover"><div class="notification-head"><strong>Notifications</strong></div><div id="notification-list"><p class="notification-empty">No notifications yet.</p></div></div></details><select id="theme-toggle" aria-label="Color theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select><details class="header-menu" id="header-annotate" hidden><summary>Annotate</summary><form class="header-popover" id="annotation-form"></form></details><details class="header-menu" id="header-download" hidden><summary>Download</summary><form class="header-popover" id="download-form"></form></details><button class="sidebar-toggle" id="header-details" data-sidebar-toggle aria-expanded="false" hidden>Details</button><button class="fullscreen-toggle" id="fullscreen-toggle" aria-label="Enter fullscreen" aria-pressed="false">⛶</button></header><div class="notification-toasts" id="notification-toasts" aria-live="polite"></div><main id="app"></main>
+<body><header><button class="header-nav" id="header-back" type="button" aria-label="Back" title="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button><button class="header-nav" id="header-forward" type="button" aria-label="Forward" title="Forward"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button><button class="header-nav" id="header-refresh" type="button" aria-label="Refresh" title="Refresh"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v5h-5"/><path d="M19 11a8 8 0 1 0 1 5"/></svg></button><button class="home-title" id="app-home">__BROWSER_TITLE__</button><span id="app-subtitle">__BROWSER_SUBTITLE__</span><span class="header-spacer"></span><button class="workspace-add-toggle" id="workspace-add" type="button">+ Workspace</button><details class="notification-center" id="header-notifications"><summary aria-label="Notifications" title="Notifications"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg><span class="notification-badge" id="notification-badge" hidden>0</span></summary><div class="notification-popover"><div class="notification-head"><strong>Notifications</strong></div><div id="notification-list"><p class="notification-empty">No notifications yet.</p></div></div></details><select id="theme-toggle" aria-label="Color theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select><details class="header-menu" id="header-annotate" hidden><summary>Annotate</summary><form class="header-popover" id="annotation-form"></form></details><details class="header-menu" id="header-download" hidden><summary>Download</summary><form class="header-popover" id="download-form"></form></details><button class="sidebar-toggle" id="header-details" data-sidebar-toggle aria-expanded="false" hidden>Details</button><button class="fullscreen-toggle" id="fullscreen-toggle" aria-label="Enter fullscreen" aria-pressed="false">⛶</button></header><div class="notification-toasts" id="notification-toasts" aria-live="polite"></div>
+<dialog class="workspace-wizard" id="workspace-wizard">
+  <form class="workspace-wizard-form" id="workspace-wizard-form">
+    <div class="workspace-wizard-head"><div><h1>Add workspace</h1><p>Pair a workspace implementation with local data for this running session.</p></div><button class="workspace-wizard-close" id="workspace-wizard-close" type="button" aria-label="Close">×</button></div>
+    <div class="workspace-wizard-body">
+      <div class="workspace-wizard-field workspace-wizard-wide"><span>Workspace repository <small>(optional)</small></span><div class="workspace-source-field"><input id="workspace-repository" type="text" placeholder="/path/to/workspace/repository"><button id="workspace-repository-browse" type="button" hidden>Browse</button><button class="workspace-discover" id="workspace-discover" type="button">Discover</button></div></div>
+      <label class="workspace-wizard-wide">Workspace type<select id="workspace-factory" required></select></label>
+      <div class="workspace-wizard-field workspace-wizard-wide"><span>Data directory <small>(optional)</small></span><div class="workspace-path-field"><input id="workspace-data-root" type="text" placeholder="/path/to/data"><button id="workspace-data-browse" type="button" hidden>Browse</button></div></div>
+      <label>Instance name<input id="workspace-name" type="text" required></label>
+      <label>Identifier<input id="workspace-id" type="text" required pattern="[A-Za-z0-9][A-Za-z0-9._-]*"></label>
+      <label class="workspace-wizard-wide">Description<input id="workspace-description" type="text"></label>
+      <label>Category<input id="workspace-category" type="text" placeholder="scientific data"></label>
+      <label>Tags<input id="workspace-tags" type="text" placeholder="radar, field test"></label>
+      <label class="workspace-persist"><input id="workspace-flatten" type="checkbox"><strong>Flatten discovery</strong><span>Show every discovered item in one list instead of preserving folders.</span></label>
+      <details class="workspace-config-details"><summary>Additional factory configuration</summary><label>JSON object<textarea id="workspace-config">{}</textarea></label></details>
+      <label class="workspace-persist"><input id="workspace-persist" type="checkbox"><strong>Save to a profile</strong><span>Append this workspace to TOML as well as opening it now.</span></label>
+      <label class="workspace-wizard-wide" id="workspace-profile-field" hidden>Profile path<input id="workspace-profile-path" type="text"></label>
+      <p class="workspace-wizard-error" id="workspace-wizard-error" hidden></p>
+    </div>
+    <div class="workspace-wizard-actions"><button id="workspace-wizard-cancel" type="button">Cancel</button><button class="primary" id="workspace-wizard-submit" type="submit">Open workspace</button></div>
+  </form>
+</dialog>
+<main id="app"></main>
 <script src="/assets/plotly.min.js"></script>
 <script>
 const app=document.querySelector('#app');
@@ -113,12 +143,62 @@ const headerNotifications=document.querySelector('#header-notifications');
 const notificationBadge=document.querySelector('#notification-badge');
 const notificationList=document.querySelector('#notification-list');
 const notificationToasts=document.querySelector('#notification-toasts');
+const workspaceAdd=document.querySelector('#workspace-add');
+const workspaceWizard=document.querySelector('#workspace-wizard');
+const workspaceWizardForm=document.querySelector('#workspace-wizard-form');
+const workspaceFactory=document.querySelector('#workspace-factory');
+const workspaceRepository=document.querySelector('#workspace-repository');
+const workspaceDataRoot=document.querySelector('#workspace-data-root');
+const workspaceFlatten=document.querySelector('#workspace-flatten');
+const workspacePersist=document.querySelector('#workspace-persist');
+const workspaceProfileField=document.querySelector('#workspace-profile-field');
+const workspaceProfilePath=document.querySelector('#workspace-profile-path');
+const workspaceWizardError=document.querySelector('#workspace-wizard-error');
+const workspaceWizardSubmit=document.querySelector('#workspace-wizard-submit');
 const fullscreenToggle=document.querySelector('#fullscreen-toggle');
 const themeToggle=document.querySelector('#theme-toggle');let themePreference=localStorage.getItem('sigvue-theme')||'system',activeThemeRefresh=null,singleWorkspaceMode=false;
 function resolvedTheme(){return themePreference==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):themePreference}function applyTheme(){document.documentElement.dataset.theme=resolvedTheme();themeToggle.value=themePreference}async function commitTheme(update){if(!document.startViewTransition){await update();return}const transition=document.startViewTransition(update);await transition.finished}async function refreshTheme(){if(activeThemeRefresh)await activeThemeRefresh();else applyTheme()}applyTheme();themeToggle.onchange=async()=>{themePreference=themeToggle.value;localStorage.setItem('sigvue-theme',themePreference);themeToggle.disabled=true;try{await refreshTheme()}catch(error){applyTheme();alert(`Theme refresh failed: ${error.message}`)}finally{themeToggle.disabled=false}};matchMedia('(prefers-color-scheme: dark)').addEventListener('change',async()=>{if(themePreference==='system'){try{await refreshTheme()}catch(error){applyTheme();console.error(error)}}});
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const api=async path=>{const r=await fetch(path);if(!r.ok)throw new Error((await r.json()).detail||`Request failed (${r.status})`);return r.json()};
 const apiPost=async(path,payload)=>{const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(!r.ok)throw new Error((await r.json()).detail||`Request failed (${r.status})`);return r.json()};
+let workspaceSetupState=null;
+const workspaceNameFromFactory=value=>String(value||'workspace').split(/[-_.]+/).filter(Boolean).map(part=>part[0].toUpperCase()+part.slice(1)).join(' ');
+const workspaceSlug=value=>String(value||'workspace').toLowerCase().trim().replace(/[^a-z0-9._-]+/g,'-').replace(/^[^a-z0-9]+|[^a-z0-9]+$/g,'')||'workspace';
+function availableWorkspaceId(base){const used=new Set((workspaceSetupState?.workspaces||[]).map(workspace=>workspace.id)),slug=workspaceSlug(base);if(!used.has(slug))return slug;let suffix=2;while(used.has(`${slug}-${suffix}`))suffix++;return`${slug}-${suffix}`}
+function selectedWorkspaceFactory(){return workspaceSetupState?.factories?.[Number(workspaceFactory.value)]}
+function applyWorkspaceFactoryDefaults(){const factory=selectedWorkspaceFactory();if(!factory)return;const defaults=factory.defaults||{},configuration={...(defaults.config||{})},dataRoot=configuration.data_root||'';delete configuration.data_root;const name=defaults.name||workspaceNameFromFactory(factory.name);document.querySelector('#workspace-name').value=name;document.querySelector('#workspace-id').value=availableWorkspaceId(defaults.id||factory.name);document.querySelector('#workspace-description').value=defaults.description||'';document.querySelector('#workspace-category').value=defaults.category||'';document.querySelector('#workspace-tags').value=(defaults.tags||[]).join(', ');workspaceDataRoot.value=dataRoot;workspaceFlatten.checked=Boolean(defaults.flatten_discovery);document.querySelector('#workspace-config').value=JSON.stringify(configuration,null,2)}
+function setWorkspaceWizardError(error=null){workspaceWizardError.hidden=!error;workspaceWizardError.textContent=error?.message||String(error||'')}
+async function loadWorkspaceFactories(){setWorkspaceWizardError();const repository=workspaceRepository.value.trim(),query=repository?`?repository=${encodeURIComponent(repository)}`:'';workspaceSetupState=await api(`/workspace-setup${query}`);workspaceFactory.innerHTML=(workspaceSetupState.factories||[]).map((factory,index)=>`<option value="${index}">${esc(factory.name)}${factory.package?` · ${esc(factory.package)}`:''}</option>`).join('');workspaceFactory.disabled=!workspaceSetupState.factories?.length;workspaceWizardSubmit.disabled=!workspaceSetupState.factories?.length;if(!workspaceSetupState.factories?.length)workspaceFactory.innerHTML='<option>No workspace factories found</option>';workspaceProfilePath.value=workspaceSetupState.default_profile_path||'';applyWorkspaceFactoryDefaults()}
+function nativeDirectoryPickerAvailable(){return Boolean(window.pywebview?.api?.choose_directory)}
+function syncDirectoryPickerButtons(){document.querySelector('#workspace-repository-browse').hidden=!nativeDirectoryPickerAvailable();document.querySelector('#workspace-data-browse').hidden=!nativeDirectoryPickerAvailable()}
+async function chooseWorkspaceDirectory(input){const selected=await window.pywebview?.api?.choose_directory?.();const value=Array.isArray(selected)?selected[0]:selected;if(value)input.value=value}
+async function openWorkspaceWizard(){workspaceWizardForm.reset();document.querySelector('#workspace-config').value='{}';workspaceProfileField.hidden=true;setWorkspaceWizardError();workspaceWizard.showModal();syncDirectoryPickerButtons();try{await loadWorkspaceFactories()}catch(error){setWorkspaceWizardError(error);workspaceWizardSubmit.disabled=true}}
+function closeWorkspaceWizard(){workspaceWizard.close();setWorkspaceWizardError()}
+function showWorkspaceToast(workspace,persistedTo){const toast=document.createElement('div');toast.className='notification-toast';toast.innerHTML=`<strong>${esc(workspace.name)} opened</strong><span>${persistedTo?`Saved to ${esc(persistedTo)}`:'Available for this session.'}</span>`;notificationToasts.append(toast);setTimeout(()=>toast.remove(),3000)}
+workspaceAdd.onclick=openWorkspaceWizard;
+document.querySelector('#workspace-wizard-close').onclick=closeWorkspaceWizard;
+document.querySelector('#workspace-wizard-cancel').onclick=closeWorkspaceWizard;
+document.querySelector('#workspace-discover').onclick=async()=>{try{await loadWorkspaceFactories()}catch(error){setWorkspaceWizardError(error)}};
+document.querySelector('#workspace-repository-browse').onclick=()=>chooseWorkspaceDirectory(workspaceRepository);
+document.querySelector('#workspace-data-browse').onclick=()=>chooseWorkspaceDirectory(workspaceDataRoot);
+workspaceFactory.onchange=applyWorkspaceFactoryDefaults;
+workspacePersist.onchange=()=>workspaceProfileField.hidden=!workspacePersist.checked;
+workspaceWizard.onclick=event=>{if(event.target===workspaceWizard)closeWorkspaceWizard()};
+window.addEventListener('pywebviewready',syncDirectoryPickerButtons);
+workspaceWizardForm.onsubmit=async event=>{
+  event.preventDefault();setWorkspaceWizardError();workspaceWizardSubmit.disabled=true;workspaceWizardSubmit.textContent=workspacePersist.checked?'Saving…':'Opening…';
+  try{
+    const factory=selectedWorkspaceFactory();if(!factory)throw new Error('Choose a workspace type');
+    let configuration;
+    try{configuration=JSON.parse(document.querySelector('#workspace-config').value||'{}')}catch(error){throw new Error(`Additional configuration must be valid JSON: ${error.message}`)}
+    if(!configuration||Array.isArray(configuration)||typeof configuration!=='object')throw new Error('Additional configuration must be a JSON object');
+    if(workspaceDataRoot.value.trim())configuration.data_root=workspaceDataRoot.value.trim();
+    const payload={use:factory.use,id:document.querySelector('#workspace-id').value.trim(),name:document.querySelector('#workspace-name').value.trim(),description:document.querySelector('#workspace-description').value.trim(),category:document.querySelector('#workspace-category').value.trim(),tags:document.querySelector('#workspace-tags').value.split(',').map(value=>value.trim()).filter(Boolean),flatten_discovery:workspaceFlatten.checked,config:configuration,persist:workspacePersist.checked,profile_path:workspacePersist.checked?workspaceProfilePath.value.trim():null};
+    if(!payload.description)delete payload.description;if(!payload.category)delete payload.category;if(!payload.tags.length)delete payload.tags;const repository=workspaceRepository.value.trim()||factory.repository;if(repository)payload.path=repository;
+    const result=await apiPost('/workspaces',payload);closeWorkspaceWizard();const current=await api('/workspaces');singleWorkspaceMode=current.workspaces.length===1;showWorkspaceToast(result.workspace,result.persisted_to);await items(result.workspace.id,result.workspace.name,true,[])
+  }catch(error){setWorkspaceWizardError(error)}
+  finally{workspaceWizardSubmit.disabled=false;workspaceWizardSubmit.textContent='Open workspace'}
+};
 const nativePushState=history.pushState.bind(history);let routeIndex=Number(history.state?.sigvueIndex??0),routeMaximum=Number(sessionStorage.getItem('sigvue-route-maximum')??routeIndex);if(!Number.isFinite(routeIndex))routeIndex=0;if(!Number.isFinite(routeMaximum)||routeMaximum<routeIndex)routeMaximum=routeIndex;if(history.state?.sigvueIndex==null)history.replaceState({...history.state,sigvueIndex:routeIndex},'',location.href);
 function syncHeaderNavigation(){headerBack.disabled=routeIndex<=0;headerForward.disabled=routeIndex>=routeMaximum}
 history.pushState=(state,title,path)=>{routeIndex+=1;routeMaximum=routeIndex;sessionStorage.setItem('sigvue-route-maximum',String(routeMaximum));nativePushState({...state,sigvueIndex:routeIndex},title,path);syncHeaderNavigation()};
@@ -298,7 +378,21 @@ function closeBatchMenus(except=null){document.querySelectorAll('[data-batch-men
 headerNotifications.onclick=event=>{event.stopPropagation();closeBatchMenus()};
 document.addEventListener('click',()=>{closeBatchMenus();headerNotifications.open=false});
 function bindBatchMenus(){document.querySelectorAll('[data-batch-menu]').forEach(menu=>{menu.onclick=event=>{event.stopPropagation();headerNotifications.open=false;if(event.target.closest('summary'))closeBatchMenus(menu)};bindCopyPaths(menu);menu.querySelectorAll('[data-batch-action]').forEach(button=>button.onclick=async event=>{event.preventDefault();event.stopPropagation();button.dataset.batchStatus='running';const state=button.querySelector('.batch-state');state.className='batch-state running';state.textContent='● running';menu.className='batch-menu running';menu.querySelector('summary').innerHTML=batchLauncherHtml({status:'running'});menu.open=false;try{monitorBatchJob(await apiPost(menu.dataset.batchUrl,{action:button.dataset.batchAction}))}catch(error){button.dataset.batchStatus='error';state.className='batch-state error';state.textContent='! error';menu.className='batch-menu error';const failed={id:`client-${Date.now()}-${Math.random()}`,action:button.dataset.batchAction,action_label:button.querySelector('span')?.textContent||'Batch action',status:'error',detail:error.message};upsertBatchNotification(failed);showBatchToast(failed)}})})}
-async function catalog(navigate=true){stopPlayback();activeThemeRefresh=null;headerDetails.hidden=true;headerDownload.hidden=true;headerDownload.open=false;headerAnnotate.hidden=true;headerAnnotate.open=false;app.className='';if(navigate)pushRoute('/');try{const initial=await api('/workspaces'),workspaces=initial.workspaces;singleWorkspaceMode=workspaces.length===1;if(singleWorkspaceMode){const workspace=workspaces[0];return items(workspace.id,workspace.name,false,[])}app.innerHTML=`<h1>Workspaces</h1><p class="lead">Choose a workspace, or run one of its batch actions in the background.</p><div class="toolbar"><input id="workspace-search" type="search" placeholder="Search workspaces…" aria-label="Search workspaces"></div><div class="list" id="workspaces"></div>`;const draw=()=>{const q=document.querySelector('#workspace-search').value.toLowerCase().trim();const shown=workspaces.filter(w=>!q||`${w.name} ${w.description||''} ${w.category||''} ${(w.tags||[]).join(' ')} ${w.id}`.toLowerCase().includes(q));document.querySelector('#workspaces').innerHTML=shown.length?shown.map(w=>`<article class="card" data-id="${esc(w.id)}"><div><span class="tag">${esc(w.category||'workspace')}</span><h2>${esc(w.name)}</h2></div><p class="muted">${esc(w.description)}</p><div class="card-tags">${w.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>${batchMenuHtml(w.batch,`/workspaces/${encodeURIComponent(w.id)}/batch`)}</article>`).join(''):'<div class="empty">No matching workspaces.</div>';document.querySelectorAll('[data-id]').forEach(x=>x.onclick=()=>items(x.dataset.id,workspaces.find(w=>w.id===x.dataset.id).name));bindBatchMenus()};draw();document.querySelector('#workspace-search').oninput=draw}catch(e){fail(e)}}
+async function catalog(navigate=true){
+  stopPlayback();activeThemeRefresh=null;headerDetails.hidden=true;headerDownload.hidden=true;headerDownload.open=false;headerAnnotate.hidden=true;headerAnnotate.open=false;app.className='';if(navigate)pushRoute('/');
+  try{
+    const initial=await api('/workspaces'),workspaces=initial.workspaces;
+    singleWorkspaceMode=workspaces.length===1;
+    if(singleWorkspaceMode){const workspace=workspaces[0];return items(workspace.id,workspace.name,false,[])}
+    app.innerHTML=`<h1>Workspaces</h1><p class="lead">Choose a workspace, or run one of its batch actions in the background.</p><div class="toolbar"><input id="workspace-search" type="search" placeholder="Search workspaces…" aria-label="Search workspaces"></div><div class="list" id="workspaces"></div>`;
+    const draw=()=>{
+      const q=document.querySelector('#workspace-search').value.toLowerCase().trim(),shown=workspaces.filter(w=>!q||`${w.name} ${w.description||''} ${w.category||''} ${(w.tags||[]).join(' ')} ${w.id}`.toLowerCase().includes(q)),empty=!workspaces.length&&!q?'<div class="empty">No workspaces are open.<br><button class="primary workspace-empty-action" id="workspace-empty-add" type="button">Add a workspace</button></div>':'<div class="empty">No matching workspaces.</div>';
+      document.querySelector('#workspaces').innerHTML=shown.length?shown.map(w=>`<article class="card" data-id="${esc(w.id)}"><div><span class="tag">${esc(w.category||'workspace')}</span><h2>${esc(w.name)}</h2></div><p class="muted">${esc(w.description)}</p><div class="card-tags">${w.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>${batchMenuHtml(w.batch,`/workspaces/${encodeURIComponent(w.id)}/batch`)}</article>`).join(''):empty;
+      document.querySelectorAll('[data-id]').forEach(x=>x.onclick=()=>items(x.dataset.id,workspaces.find(w=>w.id===x.dataset.id).name));document.querySelector('#workspace-empty-add')?.addEventListener('click',openWorkspaceWizard);bindBatchMenus()
+    };
+    draw();document.querySelector('#workspace-search').oninput=draw
+  }catch(e){fail(e)}
+}
 function siDiscoveryValue(value,unit){const number=Number(value);if(!Number.isFinite(number))return String(value);const magnitude=Math.abs(number),prefixes=[[1e12,'T'],[1e9,'G'],[1e6,'M'],[1e3,'k'],[1,''],[1e-3,'m'],[1e-6,'µ'],[1e-9,'n']];const [scale,prefix]=prefixes.find(([scale])=>magnitude>=scale)||[1,''];return `${Number((number/scale).toPrecision(4))} ${prefix}${unit||''}`.trim()}
 function discoveryValue(value,column){if(value==null||value==='')return '<span class="discovery-null">—</span>';if(column.kind==='datetime'){const date=new Date(value);return esc(Number.isNaN(date.valueOf())?value:date.toLocaleString())}if(column.kind==='si')return esc(siDiscoveryValue(value,column.unit));return esc(value)}
 function discoverySortValue(item,key,kind){const value=key==='title'?item.title:item.summary_fields?.[key];if(value==null||value==='')return null;if(['number','si'].includes(kind))return Number(value);if(kind==='datetime')return new Date(value).valueOf();return String(value).toLocaleLowerCase()}
@@ -331,12 +425,19 @@ class WorkspaceModuleRegistration:
     watch_path: Path | None = None
     configuration: dict[str, Any] = field(default_factory=dict)
     metadata_overrides: dict[str, Any] = field(default_factory=dict)
+    reference: str | None = None
+    flatten_discovery: bool | None = None
 
 
 class _ConfiguredWorkspace:
-    """Delegate analysis behavior while giving one profile entry its own identity."""
+    """Delegate behavior while applying browser-owned instance settings."""
 
-    def __init__(self, workspace: Any, overrides: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        workspace: Any,
+        overrides: dict[str, Any],
+        flatten_discovery: bool | None = None,
+    ) -> None:
         self._workspace = workspace
         metadata = workspace.metadata
         self.metadata = WorkspaceMetadata(
@@ -347,6 +448,11 @@ class _ConfiguredWorkspace:
             category=overrides.get("category", metadata.category),
             tags=overrides.get("tags", metadata.tags),
             icon=overrides.get("icon", metadata.icon),
+        )
+        self.flatten_discovery = (
+            workspace.flatten_discovery
+            if flatten_discovery is None
+            else flatten_discovery
         )
 
     def __getattr__(self, name: str) -> Any:
@@ -395,6 +501,16 @@ class SigvueApp:
     workspace_modules: tuple[WorkspaceModuleRegistration, ...] = ()
     config_path: Path | None = None
     _fixed_workspaces: list[Any] = field(default_factory=list, init=False, repr=False)
+    _profile_workspace_modules: tuple[WorkspaceModuleRegistration, ...] = field(
+        default=(),
+        init=False,
+        repr=False,
+    )
+    _session_workspace_modules: tuple[WorkspaceModuleRegistration, ...] = field(
+        default=(),
+        init=False,
+        repr=False,
+    )
     _workspace_snapshot: dict[Path, int] = field(default_factory=dict, init=False, repr=False)
     _reload_lock: RLock = field(default_factory=RLock, init=False, repr=False)
     _export_lock: RLock = field(default_factory=RLock, init=False, repr=False)
@@ -418,6 +534,7 @@ class SigvueApp:
         if self.registry is None:
             self.registry = WorkspaceRegistry()
         self._fixed_workspaces = self.registry.list()
+        self._profile_workspace_modules = self.workspace_modules
         if self.workspace_modules:
             self.reload_workspace_modules(force=True)
 
@@ -431,15 +548,169 @@ class SigvueApp:
         attribute: str,
         *,
         watch_path: str | Path | None = None,
+        configuration: dict[str, Any] | None = None,
+        metadata_overrides: dict[str, Any] | None = None,
+        reference: str | None = None,
+        flatten_discovery: bool | None = None,
     ) -> None:
-        """Register a reloadable workspace class, factory, or instance by module path."""
+        """Add a configured workspace factory for this application session."""
         registration = WorkspaceModuleRegistration(
             module_name,
             attribute,
             Path(watch_path).resolve() if watch_path is not None else None,
+            dict(configuration or {}),
+            dict(metadata_overrides or {}),
+            reference,
+            flatten_discovery,
         )
-        self.workspace_modules = (*self.workspace_modules, registration)
-        self.reload_workspace_modules(force=True)
+        self.add_workspace_spec(
+            WorkspaceLaunchSpec(
+                registration.module_name,
+                registration.attribute,
+                registration.configuration,
+                registration.watch_path,
+                registration.metadata_overrides,
+                registration.reference,
+                registration.flatten_discovery,
+            )
+        )
+
+    def add_workspace_spec(self, spec: WorkspaceLaunchSpec) -> dict[str, Any]:
+        """Instantiate and retain one configured workspace for this session."""
+        registration = _profile_registration(spec)
+        with self._reload_lock:
+            previous_identifiers = {
+                workspace.metadata.identifier for workspace in self.registry.list()
+            }
+            previous_modules = self.workspace_modules
+            previous_session = self._session_workspace_modules
+            previous_registry = self.registry
+            previous_snapshot = self._workspace_snapshot
+            try:
+                self._session_workspace_modules = (
+                    *self._session_workspace_modules,
+                    registration,
+                )
+                self.workspace_modules = (
+                    *self._profile_workspace_modules,
+                    *self._session_workspace_modules,
+                )
+                self.reload_workspace_modules(force=True)
+                added = [
+                    workspace
+                    for workspace in self.list_workspaces()
+                    if workspace["id"] not in previous_identifiers
+                ]
+                if len(added) != 1:
+                    raise RuntimeError(
+                        "Workspace factory did not add exactly one workspace"
+                    )
+            except Exception:
+                self.workspace_modules = previous_modules
+                self._session_workspace_modules = previous_session
+                self.registry = previous_registry
+                self._workspace_snapshot = previous_snapshot
+                raise
+            return added[0]
+
+    def configure_workspace(
+        self,
+        entry: dict[str, Any],
+        *,
+        base_directory: str | Path | None = None,
+        persist_path: str | Path | None = None,
+    ) -> dict[str, Any]:
+        """Resolve and add a profile-shaped workspace entry to this session."""
+        base = (
+            Path(base_directory).expanduser().resolve()
+            if base_directory is not None
+            else Path.cwd()
+        )
+        spec = workspace_launch_spec(entry, base)
+        with self._reload_lock:
+            previous = (
+                self.registry,
+                self.workspace_modules,
+                self._profile_workspace_modules,
+                self._session_workspace_modules,
+                self._workspace_snapshot,
+                self.config_path,
+                self.title,
+                self.subtitle,
+            )
+            try:
+                workspace = self.add_workspace_spec(spec)
+                persisted_to = None
+                if persist_path is not None:
+                    persisted_to = append_workspace_to_profile(persist_path, spec)
+                    registration = self._session_registration(workspace["id"])
+                    if (
+                        self.config_path is not None
+                        and persisted_to == self.config_path
+                    ):
+                        self._session_workspace_modules = tuple(
+                            candidate
+                            for candidate in self._session_workspace_modules
+                            if candidate is not registration
+                        )
+                        self.reload_browser_profile()
+                    elif self.config_path is None:
+                        self._session_workspace_modules = tuple(
+                            candidate
+                            for candidate in self._session_workspace_modules
+                            if candidate is not registration
+                        )
+                        self.config_path = persisted_to
+                        self.reload_browser_profile()
+            except Exception:
+                (
+                    self.registry,
+                    self.workspace_modules,
+                    self._profile_workspace_modules,
+                    self._session_workspace_modules,
+                    self._workspace_snapshot,
+                    self.config_path,
+                    self.title,
+                    self.subtitle,
+                ) = previous
+                raise
+        return {
+            "workspace": workspace,
+            "persisted_to": str(persisted_to) if persisted_to else None,
+        }
+
+    def workspace_setup(
+        self,
+        repository: str | Path | None = None,
+    ) -> dict[str, Any]:
+        """Return local factory discovery and profile defaults for the wizard."""
+        return {
+            "factories": workspace_factory_catalog(repository),
+            "workspaces": [
+                {"id": workspace["id"], "name": workspace["name"]}
+                for workspace in self.list_workspaces()
+            ],
+            "working_directory": str(Path.cwd()),
+            "config_path": str(self.config_path) if self.config_path else None,
+            "default_profile_path": str(
+                self.config_path or (Path.cwd() / "browser.toml").resolve()
+            ),
+        }
+
+    def _session_registration(
+        self,
+        identifier: str,
+    ) -> WorkspaceModuleRegistration:
+        for registration in reversed(self._session_workspace_modules):
+            configured = (
+                registration.metadata_overrides.get("identifier")
+                or registration.configuration.get("id")
+            )
+            if configured == identifier:
+                return registration
+        raise ValueError(
+            "Persisted session workspaces require an explicit instance identifier"
+        )
 
     def reload_browser_profile(self) -> bool:
         """Atomically reload browser.toml and replace its workspace registrations."""
@@ -451,13 +722,18 @@ class SigvueApp:
             previous = (
                 self.registry,
                 self.workspace_modules,
+                self._profile_workspace_modules,
                 self._workspace_snapshot,
                 self.title,
                 self.subtitle,
             )
             try:
-                self.workspace_modules = registrations
-                if registrations:
+                self._profile_workspace_modules = registrations
+                self.workspace_modules = (
+                    *registrations,
+                    *self._session_workspace_modules,
+                )
+                if self.workspace_modules:
                     self.reload_workspace_modules(force=True)
                 else:
                     replacement = WorkspaceRegistry()
@@ -471,6 +747,7 @@ class SigvueApp:
                 (
                     self.registry,
                     self.workspace_modules,
+                    self._profile_workspace_modules,
                     self._workspace_snapshot,
                     self.title,
                     self.subtitle,
@@ -522,8 +799,15 @@ class SigvueApp:
                 for component in registration.attribute.split("."):
                     target = getattr(target, component)
                 workspace = _instantiate_workspace(target, registration.configuration)
-                if registration.metadata_overrides:
-                    workspace = _ConfiguredWorkspace(workspace, registration.metadata_overrides)
+                if (
+                    registration.metadata_overrides
+                    or registration.flatten_discovery is not None
+                ):
+                    workspace = _ConfiguredWorkspace(
+                        workspace,
+                        registration.metadata_overrides,
+                        registration.flatten_discovery,
+                    )
                 replacement.register(workspace)
 
             self.registry = replacement
@@ -1101,6 +1385,8 @@ def _profile_registration(spec: WorkspaceLaunchSpec) -> WorkspaceModuleRegistrat
         spec.watch_path,
         spec.configuration,
         spec.metadata_overrides,
+        spec.reference,
+        spec.flatten_discovery,
     )
 
 
@@ -1110,22 +1396,28 @@ def create_app(
     subtitle: str = "Explore scientific and analytical results",
     reload_workspaces: bool = True,
     config_path: str | Path | None = None,
+    workspace_specs: tuple[WorkspaceLaunchSpec, ...] = (),
 ) -> SigvueApp:
     if config_path is not None:
         profile = load_browser_profile(config_path)
-        return SigvueApp(
+        app = SigvueApp(
             title=profile.title or title,
             subtitle=profile.subtitle or subtitle,
             reload_workspaces=reload_workspaces,
-            workspace_modules=tuple(_profile_registration(spec) for spec in profile.workspaces),
+            workspace_modules=tuple(
+                _profile_registration(spec) for spec in profile.workspaces
+            ),
             config_path=Path(config_path).expanduser().resolve(),
         )
-    return SigvueApp(
-        title=title,
-        subtitle=subtitle,
-        reload_workspaces=reload_workspaces,
-        workspace_modules=(),
-    )
+    else:
+        app = SigvueApp(
+            title=title,
+            subtitle=subtitle,
+            reload_workspaces=reload_workspaces,
+        )
+    for spec in workspace_specs:
+        app.add_workspace_spec(spec)
+    return app
 
 
 def _make_handler(app: SigvueApp) -> type[BaseHTTPRequestHandler]:
@@ -1198,6 +1490,16 @@ def _make_handler(app: SigvueApp) -> type[BaseHTTPRequestHandler]:
             if parsed.path == "/health":
                 self._write_json(200, {"status": "ok"})
                 return
+            if parsed.path == "/workspace-setup":
+                try:
+                    repository = parse_qs(parsed.query).get("repository", [None])[-1]
+                    self._write_json(200, app.workspace_setup(repository))
+                except ValueError as exc:
+                    self._write_json(
+                        400,
+                        {"error": "bad_request", "detail": str(exc)},
+                    )
+                return
             if parsed.path == "/workspaces":
                 try:
                     if parse_qs(parsed.query).get("reload") == ["1"] and app.config_path is not None:
@@ -1269,6 +1571,31 @@ def _make_handler(app: SigvueApp) -> type[BaseHTTPRequestHandler]:
             parsed = urlparse(self.path)
             parts = [unquote(segment) for segment in parsed.path.split("/") if segment]
             try:
+                if parsed.path == "/workspaces":
+                    payload = self._read_json()
+                    persist = payload.pop("persist", False)
+                    profile_path = payload.pop("profile_path", None)
+                    if not isinstance(persist, bool):
+                        raise ValueError("persist must be a boolean")
+                    if persist and (
+                        not isinstance(profile_path, str)
+                        or not profile_path.strip()
+                    ):
+                        raise ValueError(
+                            "profile_path is required when persisting a workspace"
+                        )
+                    base_directory = (
+                        Path(profile_path).expanduser().resolve().parent
+                        if persist
+                        else Path.cwd()
+                    )
+                    result = app.configure_workspace(
+                        payload,
+                        base_directory=base_directory,
+                        persist_path=profile_path if persist else None,
+                    )
+                    self._write_json(201, result)
+                    return
                 if len(parts) == 5 and parts[0] == "workspaces" and parts[2] == "items" and parts[4] == "annotations":
                     payload = self._read_json()
                     control_values = payload.pop("control_values", {})

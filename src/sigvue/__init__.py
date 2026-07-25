@@ -28,6 +28,12 @@ from .rendering.heatmap import (
     add_viewport_heatmap,
     aggregate_heatmap,
 )
+from .profile import (
+    WorkspaceLaunchSpec,
+    append_workspace_to_profile,
+    workspace_factory_catalog,
+    workspace_launch_spec,
+)
 from .web.application import SigvueApp, create_app
 
 __all__ = [
@@ -58,7 +64,11 @@ __all__ = [
     "TraceStyle",
     "UI",
     "Workspace",
+    "WorkspaceLaunchSpec",
     "add_viewport_heatmap",
     "aggregate_heatmap",
+    "append_workspace_to_profile",
     "create_app",
+    "workspace_factory_catalog",
+    "workspace_launch_spec",
 ]

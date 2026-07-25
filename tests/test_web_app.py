@@ -287,6 +287,16 @@ class WebAppTests(unittest.TestCase):
         self.assertIn('id="header-forward"', body)
         self.assertIn('id="header-refresh"', body)
         self.assertIn('id="fullscreen-toggle"', body)
+        self.assertIn('id="workspace-add"', body)
+        self.assertIn('id="workspace-wizard"', body)
+        self.assertIn('id="workspace-factory"', body)
+        self.assertIn('id="workspace-data-root"', body)
+        self.assertIn('id="workspace-flatten"', body)
+        self.assertIn('id="workspace-persist"', body)
+        self.assertIn("`/workspace-setup${query}`", body)
+        self.assertIn("apiPost('/workspaces',payload)", body)
+        self.assertIn("No workspaces are open.", body)
+        self.assertIn("window.pywebview?.api?.choose_directory", body)
         self.assertIn('id="header-details"', body)
         self.assertIn('id="header-download"', body)
         self.assertIn('id="header-annotate"', body)
@@ -608,6 +618,62 @@ class WebAppTests(unittest.TestCase):
         handler.do_GET()
         javascript = handler._write_javascript.call_args.args[0]
         self.assertIn("plotly.js", javascript)
+
+    def test_workspace_setup_endpoint_reports_session_defaults(self):
+        app = self.create_example_app()
+        handler_type = _make_handler(app)
+        handler = handler_type.__new__(handler_type)
+        handler.path = "/workspace-setup"
+        handler._write_json = Mock()
+
+        handler.do_GET()
+
+        status, payload = handler._write_json.call_args.args
+        self.assertEqual(200, status)
+        self.assertIn("factories", payload)
+        self.assertEqual(
+            {"test-workspace", "matplotlib-workspace"},
+            {workspace["id"] for workspace in payload["workspaces"]},
+        )
+        self.assertEqual(
+            str((Path.cwd() / "browser.toml").resolve()),
+            payload["default_profile_path"],
+        )
+
+    def test_workspace_setup_endpoint_adds_a_session_workspace(self):
+        app = SigvueApp()
+        handler_type = _make_handler(app)
+        handler = handler_type.__new__(handler_type)
+        payload = json.dumps(
+            {
+                "use": "tests.fixtures:create_workspace",
+                "id": "wizard-data",
+                "name": "Wizard data",
+                "description": "Added through the setup endpoint",
+                "category": "test",
+                "tags": ["wizard"],
+                "flatten_discovery": True,
+                "config": {},
+                "persist": False,
+                "profile_path": None,
+            }
+        ).encode("utf-8")
+        handler.path = "/workspaces"
+        handler.headers = {"Content-Length": str(len(payload))}
+        handler.rfile = BytesIO(payload)
+        handler._write_json = Mock()
+
+        handler.do_POST()
+
+        status, result = handler._write_json.call_args.args
+        self.assertEqual(201, status)
+        self.assertEqual("wizard-data", result["workspace"]["id"])
+        self.assertIsNone(result["persisted_to"])
+        self.assertEqual(
+            ["wizard-data"],
+            [workspace["id"] for workspace in app.list_workspaces()],
+        )
+        self.assertTrue(app.registry.get("wizard-data").flatten_discovery)
 
     def test_item_routes_decode_url_encoded_identifiers(self):
         app = Mock()

@@ -384,10 +384,48 @@ title = "My data browser"
 use = "my-analysis"
 id = "recordings"
 name = "Recordings"
+flatten_discovery = false
 
 [workspaces.config]
 data_root = "./data"
 ```
+
+The profile is optional. Running `sigvue` without `--config` opens an empty
+catalog with an **Add workspace** wizard. The wizard first discovers workspace
+factories owned by the current project (including its `browser.toml`,
+`examples/browser.toml`, and project entry points), falling back to installed
+entry points only when the project has none. Selecting a different source
+repository scopes discovery to that repository. The wizard pairs a factory
+with a data directory and lets the user set the instance name,
+identifier, description, category, tags, and additional factory
+configuration. **Flatten discovery** can present all discovered items in one
+list instead of retaining the reader's folder hierarchy. The new workspace
+exists only in the running server unless
+**Save to a profile** is selected; saving atomically creates or appends to the
+chosen TOML file.
+
+Applications can use the same profile-shaped spec without creating a file:
+
+```python
+from pathlib import Path
+
+from sigvue import create_app, workspace_launch_spec
+
+workspace = workspace_launch_spec(
+    {
+        "use": "my-analysis",
+        "id": "recordings",
+        "name": "Recordings",
+        "config": {"data_root": "./data"},
+    },
+    Path.cwd(),
+)
+app = create_app(workspace_specs=(workspace,))
+```
+
+`app.configure_workspace(...)` adds another instance later and optionally
+accepts `persist_path=` to promote that session workspace to TOML. Profile
+reloads preserve all other session-only workspaces.
 
 The factory reads that location with
 `WorkspaceConfig(config).path("data_root")`. The bundled examples deliberately
