@@ -10,6 +10,7 @@ import numpy as np
 import plotly.graph_objects as go
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from threading import Event
 from unittest.mock import Mock
 
 from sigvue.core.workspace import (
@@ -352,7 +353,7 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("document.addEventListener('click',()=>{closeBatchMenus()", body)
         self.assertIn("closeBatchMenus(menu)", body)
         self.assertIn("data-batch-action", body)
-        self.assertIn("Batch complete", body)
+        self.assertIn("function batchNotificationTitle", body)
         self.assertIn('id="header-notifications"', body)
         self.assertIn('id="notification-list"', body)
         self.assertIn("#notification-list { max-height:min(330px", body)
@@ -361,6 +362,12 @@ class WebAppTests(unittest.TestCase):
         self.assertIn('id="notification-toasts"', body)
         self.assertIn("notificationToasts.append(toast)", body)
         self.assertIn("setTimeout(()=>toast.remove(),3000)", body)
+        self.assertIn("function monitorBatchJob", body)
+        self.assertIn("function syncBatchNotifications", body)
+        self.assertIn("syncBatchNotifications();boot()", body)
+        self.assertIn("data-batch-status", body)
+        self.assertIn("notification-status.pending,.notification-status.running", body)
+        self.assertIn("sessionStorage.getItem(key)", body)
         self.assertNotIn("renderNotifications();headerNotifications.open=true", body)
         self.assertIn("data-dismiss-notification", body)
         self.assertNotIn("data-batch-result", body)
@@ -700,6 +707,11 @@ class WebAppTests(unittest.TestCase):
         app._batch_jobs[item_job].future.result(timeout=10)
         item_status = app.batch_status(item_job)
         self.assertEqual("ready", item_status["status"])
+        self.assertEqual("batch-workspace", item_status["workspace_id"])
+        self.assertEqual("Batch workspace", item_status["workspace_name"])
+        self.assertEqual("recording", item_status["item_id"])
+        self.assertEqual("Summarize item", item_status["action_label"])
+        self.assertEqual(f"/batches/{item_job}", item_status["status_url"])
         self.assertEqual("Item summarized", item_status["summary"])
         self.assertTrue(Path(item_status["files"][0]["path"]).is_absolute())
         self.assertIsNone(item_status["files"][0]["open_url"])
@@ -713,6 +725,8 @@ class WebAppTests(unittest.TestCase):
         workspace_job = app.start_batch("batch-workspace", "compile")
         app._batch_jobs[workspace_job].future.result(timeout=10)
         self.assertEqual("Workspace compiled", app.batch_status(workspace_job)["summary"])
+        recent_jobs = app.batch_statuses()["jobs"]
+        self.assertEqual([workspace_job, item_job], [job["id"] for job in recent_jobs])
         workspace_action = app.list_workspaces()[0]["batch"]["actions"][0]
         self.assertEqual("ready", workspace_action["status"])
 
@@ -735,6 +749,49 @@ class WebAppTests(unittest.TestCase):
             self.assertEqual(0, result)
             self.assertEqual("recording:10.0", (Path(output) / "item.txt").read_text())
             self.assertIn("saved:", stream.getvalue())
+
+    def test_running_batch_is_available_to_page_independent_notifications(self):
+        started = Event()
+        release = Event()
+
+        class SlowBatch(Batch):
+            item_actions = (CapabilityChoice("wait", "Wait for result"),)
+
+            def run_item(self, resource, source_data, request, directory):
+                started.set()
+                if not release.wait(timeout=10):
+                    raise TimeoutError("Test batch was not released")
+                target = directory / "result.txt"
+                target.write_text("done", encoding="utf-8")
+                return BatchResult((target,), "Slow result complete")
+
+        base = self.create_example_app().registry.get("test-workspace")
+        workspace = Workspace._from_runtime_components(
+            identifier="slow-workspace",
+            name="Slow workspace",
+            description="Notification fixture",
+            source=base._legacy_runtime.source,
+            delivery=base._legacy_runtime.delivery,
+            analysis=base._legacy_runtime.analysis,
+            presentation=base._legacy_runtime.presentation,
+            batch=SlowBatch(),
+        )
+        app = SigvueApp()
+        app.register_workspace(workspace)
+
+        job_id = app.start_batch("slow-workspace", "wait", "recording")
+        self.assertTrue(started.wait(timeout=2))
+        running = app.batch_statuses()["jobs"]
+        self.assertEqual(1, len(running))
+        self.assertEqual(job_id, running[0]["id"])
+        self.assertEqual("running", running[0]["status"])
+        self.assertEqual("Slow workspace", running[0]["workspace_name"])
+        self.assertEqual("recording", running[0]["item_title"])
+        self.assertEqual("Wait for result", running[0]["action_label"])
+
+        release.set()
+        app._batch_jobs[job_id].future.result(timeout=10)
+        self.assertEqual("ready", app.batch_statuses()["jobs"][0]["status"])
 
     def test_durable_batch_destination_is_ready_in_a_fresh_app(self):
         with TemporaryDirectory() as output:
@@ -813,6 +870,16 @@ class WebAppTests(unittest.TestCase):
     def test_item_batch_endpoint_dispatches_without_opening_the_item_view(self):
         app = Mock()
         app.start_batch.return_value = "batch-1"
+        started_status = {
+            "id": "batch-1",
+            "workspace_id": "test",
+            "item_id": "capture.dat",
+            "action": "report",
+            "action_label": "Build report",
+            "status": "running",
+            "status_url": "/batches/batch-1",
+        }
+        app.batch_status.return_value = started_status
         handler_type = _make_handler(app)
         handler = handler_type.__new__(handler_type)
         payload = json.dumps({"action": "report"}).encode("utf-8")
@@ -823,10 +890,30 @@ class WebAppTests(unittest.TestCase):
         handler.do_POST()
 
         app.start_batch.assert_called_once_with("test", "report", "capture.dat")
-        handler._write_json.assert_called_once_with(
-            202,
-            {"id": "batch-1", "status": "pending", "status_url": "/batches/batch-1"},
-        )
+        app.batch_status.assert_called_once_with("batch-1")
+        handler._write_json.assert_called_once_with(202, started_status)
+
+    def test_batch_catalog_endpoint_restores_background_notifications(self):
+        app = Mock()
+        payload = {
+            "jobs": [
+                {
+                    "id": "batch-1",
+                    "status": "running",
+                    "status_url": "/batches/batch-1",
+                }
+            ]
+        }
+        app.batch_statuses.return_value = payload
+        handler_type = _make_handler(app)
+        handler = handler_type.__new__(handler_type)
+        handler.path = "/batches"
+        handler._write_json = Mock()
+
+        handler.do_GET()
+
+        app.batch_statuses.assert_called_once_with()
+        handler._write_json.assert_called_once_with(200, payload)
 
     def test_html_batch_result_opens_inline(self):
         app = Mock()

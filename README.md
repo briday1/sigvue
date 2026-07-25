@@ -345,6 +345,10 @@ Workspace(
 
 These contracts are imported directly from `sigvue`. Format-specific readers
 and capabilities belong with the application or examples, not in Sigvue core.
+Batch actions run independently of the current browser route. The notification
+bell shows queued and running actions, follows them while the user browses other
+workspaces or views, and retains their completed outputs for opening or path
+copying. Reloading the page reconnects to jobs still owned by the server.
 
 ```mermaid
 flowchart TB
