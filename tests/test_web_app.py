@@ -537,6 +537,12 @@ class WebAppTests(unittest.TestCase):
             "max-height:100%; overflow:auto;",
             body,
         )
+        self.assertIn(
+            "[data-render-view] { width:100%; height:100%; min-width:0; "
+            "min-height:0; overflow:auto; overscroll-behavior:contain; "
+            "scrollbar-gutter:stable",
+            body,
+        )
         self.assertIn(".data-table th { position:sticky; top:0; z-index:1;", body)
         self.assertIn("gridTemplate(node.props.columns)", body)
         self.assertIn("function sizeDataStage()", body)
