@@ -55,6 +55,25 @@ from sigvue.rendering.dispatch import RenderKind, detect_render_kind
 
 
 _PLOTLY_JS = get_plotlyjs()
+_IMAGE_SUFFIXES = {
+    ".avif",
+    ".bmp",
+    ".gif",
+    ".jpeg",
+    ".jpg",
+    ".png",
+    ".svg",
+    ".webp",
+}
+_INLINE_SUFFIXES = _IMAGE_SUFFIXES | {
+    ".css",
+    ".htm",
+    ".html",
+    ".js",
+    ".json",
+    ".pdf",
+    ".txt",
+}
 
 
 _INDEX_HTML = r"""<!doctype html>
@@ -76,6 +95,7 @@ _INDEX_HTML = r"""<!doctype html>
     input[type=search] { flex:1 } button.primary { border:0; border-radius:7px; padding:10px 15px; color:white; background:var(--accent); font:600 14px inherit; cursor:pointer }
     .list { display:flex; flex-direction:column; gap:10px }
     .item-browser { overflow:hidden; border:1px solid var(--line); border-radius:8px; background:white } html[data-theme="dark"] .item-browser { background:#10252d } .item-browser table { width:100%; border-collapse:collapse; table-layout:fixed } .item-browser th { padding:8px 12px; color:var(--muted); background:var(--wash); border-bottom:1px solid var(--line); font-size:11px; text-align:left; text-transform:uppercase; letter-spacing:.04em } .item-browser th:first-child { width:28% } .item-browser th:last-child { width:18% } .item-browser th button { all:unset; display:flex; width:100%; gap:5px; align-items:center; cursor:pointer } .item-browser th button:hover { color:var(--accent) } .item-browser td { padding:11px 12px; border-bottom:1px solid var(--line); overflow-wrap:anywhere; vertical-align:middle } .item-browser tbody tr:last-child td { border-bottom:0 } .item-browser .item-row,.item-browser .folder-row { cursor:pointer } .item-browser .item-row:hover,.item-browser .folder-row:hover { background:color-mix(in srgb,var(--accent) 7%,transparent) } .item-name { display:flex; flex-direction:column; gap:2px } .item-name small { color:var(--muted) } .item-tags { display:flex; flex-wrap:wrap; gap:3px } .item-tags .tag { margin:0 } .discovery-null { color:var(--muted) }
+    .result-browser { display:grid; grid-template-columns:minmax(250px,34%) minmax(0,1fr); min-height:min(720px,calc(100vh - 230px)); overflow:hidden; border:1px solid var(--line); border-radius:9px; background:white } html[data-theme="dark"] .result-browser { background:#10252d } .result-browser-list { min-width:0; overflow:auto; border-right:1px solid var(--line) } .result-entry { display:grid; width:100%; grid-template-columns:24px minmax(0,1fr) auto; align-items:center; gap:7px; min-height:43px; padding:7px 10px; border:0; border-bottom:1px solid var(--line); color:var(--ink); background:transparent; text-align:left; cursor:pointer } .result-entry:hover,.result-entry.active { background:color-mix(in srgb,var(--accent) 8%,transparent) } .result-entry.active { box-shadow:inset 3px 0 var(--accent) } .result-entry-icon { color:var(--muted); text-align:center } .result-entry-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap } .result-entry-size { color:var(--muted); font:11px ui-monospace,monospace; white-space:nowrap } .result-preview { position:relative; display:flex; min-width:0; min-height:420px; flex-direction:column; align-items:stretch; background:color-mix(in srgb,var(--wash) 72%,transparent) } .result-preview-toolbar { display:flex; min-height:43px; align-items:center; gap:7px; padding:6px 9px; border-bottom:1px solid var(--line) } .result-preview-toolbar strong { min-width:0; flex:1; overflow:hidden; font-size:12px; text-overflow:ellipsis; white-space:nowrap } .result-preview-toolbar button,.result-preview-toolbar a,.result-file-actions a { min-height:29px; padding:4px 9px; border:1px solid var(--line); border-radius:5px; color:var(--ink); background:var(--wash); font:600 11px system-ui,sans-serif; text-decoration:none; cursor:pointer } .result-preview-toolbar button:hover,.result-preview-toolbar a:hover,.result-file-actions a:hover { border-color:var(--accent); color:var(--accent) } .result-image-stage { display:grid; min-height:0; flex:1; overflow:auto; padding:14px; place-items:center } .result-image-stage img { display:block; max-width:100%; max-height:calc(100vh - 255px); object-fit:contain; image-rendering:auto; box-shadow:0 3px 18px #071b2228 } .result-empty-preview,.result-file-preview { display:grid; min-height:0; flex:1; padding:28px; place-content:center; color:var(--muted); text-align:center } .result-file-preview strong { color:var(--ink); font-size:17px } .result-file-preview p { max-width:560px; overflow-wrap:anywhere } .result-file-actions { display:flex; flex-wrap:wrap; justify-content:center; gap:8px } @media(max-width:760px){.result-browser { grid-template-columns:1fr; min-height:0 }.result-browser-list { max-height:300px; border-right:0; border-bottom:1px solid var(--line) }.result-preview { min-height:420px }}
     .card { display:grid; grid-template-columns:minmax(180px,1fr) 2fr auto auto; align-items:center; gap:18px; border:1px solid var(--line); border-radius:8px; background:white; padding:16px 18px; box-shadow:0 2px 8px #17323c0b; cursor:pointer; transition:.15s }
     .card:hover { border-color:#8eb9bf; box-shadow:0 4px 14px #17323c14 } .card:not(:has(.batch-menu)) { grid-template-columns:minmax(180px,1fr) 2fr auto } .card h2 { font-size:17px; margin:4px 0 } .card p { margin:0 } .card-tags { text-align:right; min-width:130px }
     .muted { color:var(--muted) } .tag { display:inline-block; border-radius:999px; padding:3px 9px; margin:2px 4px 2px 0; font-size:12px; background:#e8f3f3; color:#17626a }
@@ -377,7 +397,7 @@ const batchState=action=>action?.status||'idle';
 const batchStatusGlyph=action=>({running:'●',pending:'●',cancelling:'●',ready:'✓',error:'!'})[batchState(action)]||'';
 const batchActionStateLabel=action=>batchState(action)==='ready'?'↻ rerun':`${batchStatusGlyph(action)} ${batchState(action)}`;
 const batchLauncherHtml=action=>`<span class="batch-play" aria-hidden="true">▶</span>`;
-function batchArtifactHtml(file){return `<div class="batch-artifact"><span class="batch-path" title="${esc(file.path)}">${esc(file.path)}</span>${file.open_url?`<a class="batch-open" href="${esc(file.open_url)}" target="_blank" rel="noopener">Open</a>`:''}<button class="copy-path" type="button" data-copy-path="${esc(file.path)}">Copy path</button></div>`}
+function batchArtifactHtml(file){const action=file.browse_url?`<a class="batch-open" href="${esc(file.browse_url)}">Browse</a>`:file.open_url?`<a class="batch-open" href="${esc(file.open_url)}" target="_blank" rel="noopener">Open</a>`:`<a class="batch-open" href="${esc(file.download_url||file.url)}">Download</a>`;return `<div class="batch-artifact"><span class="batch-path" title="${esc(file.path)}">${esc(file.path)}</span>${action}<button class="copy-path" type="button" data-copy-path="${esc(file.path)}">Copy path</button></div>`}
 function batchMenuHtml(batch,url,showArtifacts=true){if(!batch?.enabled)return '';const summary=batch.actions.find(action=>['running','pending','cancelling'].includes(batchState(action)))||batch.actions.find(action=>batchState(action)==='ready')||batch.actions.find(action=>batchState(action)==='error')||batch.actions[0];return `<details class="batch-menu ${esc(batchState(summary))}" data-batch-menu data-batch-url="${esc(url)}"><summary title="Run batch action" aria-label="Run batch action">${batchLauncherHtml(summary)}</summary><div class="batch-menu-popover">${batch.actions.map(action=>`<div class="batch-action-row"><button class="batch-action" type="button" title="${batchState(action)==='ready'?'Regenerate existing result':'Run batch action'}" data-batch-action="${esc(action.value)}" data-batch-status="${esc(batchState(action))}"><span>${esc(action.label)}</span><span class="batch-state ${esc(batchState(action))}">${esc(batchActionStateLabel(action))}</span></button>${showArtifacts&&action.files?.length?`<div class="batch-artifacts">${action.files.map(batchArtifactHtml).join('')}</div>`:''}</div>`).join('')}</div></details>`}
 async function copyText(value){if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(value);return}const input=document.createElement('textarea');input.value=value;input.style.position='fixed';input.style.opacity='0';document.body.append(input);input.select();const copied=document.execCommand('copy');input.remove();if(!copied)throw new Error('Clipboard access is unavailable')}
 function bindCopyPaths(root=document){root.querySelectorAll('[data-copy-path]').forEach(button=>button.onclick=async event=>{event.preventDefault();event.stopPropagation();const label=button.textContent;try{await copyText(button.dataset.copyPath);button.textContent='Copied'}catch(error){button.textContent='Copy failed'}finally{setTimeout(()=>button.textContent=label,1200)}})}
@@ -390,7 +410,7 @@ function batchNotificationTitle(status){const label=status.action_label||'Batch 
 function batchNotificationContext(status){return [status.workspace_name,status.item_title].filter(Boolean).join(' · ')}
 function batchProgressHtml(notification){const progress=notification.progress,total=Number(progress?.total||0);if(total<=0)return '';const completed=Math.max(0,Math.min(total,Number(progress.completed||0))),succeeded=Math.max(0,Math.min(total,Number(progress.succeeded||0))),failed=Math.max(0,Math.min(total-succeeded,Number(progress.failed||0))),successPercent=100*succeeded/total,failedPercent=100*failed/total,errors=(progress.items||[]).filter(item=>item.status==='error').map(item=>{const detail=item.detail||'',log=item.log||'';return `<div class="notification-progress-item error"><div class="notification-progress-row"><span class="notification-progress-state">Error</span><span class="notification-progress-name" title="${esc(item.title||item.id)}">${esc(item.title||item.id)}</span></div>${detail||log?`<details class="notification-progress-log"><summary>${esc(detail||'View error log')}</summary>${log?`<pre>${esc(log)}</pre>`:''}</details>`:''}</div>`}).join(''),active=activeBatchStatuses.has(notification.status);return `<div class="notification-progress">${errors?`<div class="notification-progress-errors">${errors}</div>`:''}<div class="notification-progress-head"><span>${completed} of ${total} processed${failed?` · ${failed} failed`:''}</span>${active?`<button class="notification-cancel" type="button" data-cancel-batch="${esc(notification.id)}" ${notification.status==='cancelling'?'disabled':''}>${notification.status==='cancelling'?'Cancelling…':'Cancel'}</button>`:''}</div><div class="notification-progress-track" role="progressbar" aria-label="Batch progress" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${completed}"><div class="notification-progress-success" style="width:${successPercent}%"></div><div class="notification-progress-failed" style="width:${failedPercent}%"></div></div></div>`}
 function batchErrorHtml(notification){if(notification.status!=='error'||!notification.log)return '';return `<details class="notification-progress-log notification-job-log"><summary>View error log</summary><pre>${esc(notification.log)}</pre></details>`}
-function batchOutputHtml(notification){if(!notification.files?.length)return '';if(notification.item_id)return `<div class="notification-files">${notification.files.map(batchArtifactHtml).join('')}</div>`;return `<div class="notification-files"><div class="batch-artifact"><span class="batch-path" title="${esc(notification.output_directory||'')}">${notification.files.length} output${notification.files.length===1?'':'s'}${notification.output_directory?` · ${esc(notification.output_directory)}`:''}</span>${notification.output_directory?`<button class="copy-path" type="button" data-copy-path="${esc(notification.output_directory)}">Copy folder</button>`:''}</div></div>`}
+function batchOutputHtml(notification){if(!notification.files?.length)return '';if(notification.item_id||notification.files.length===1)return `<div class="notification-files">${notification.files.map(batchArtifactHtml).join('')}</div>`;return `<div class="notification-files"><div class="batch-artifact"><span class="batch-path" title="${esc(notification.output_directory||'')}">${notification.files.length} outputs${notification.output_directory?` · ${esc(notification.output_directory)}`:''}</span>${notification.output_directory?`<button class="copy-path" type="button" data-copy-path="${esc(notification.output_directory)}">Copy folder</button>`:''}</div></div>`}
 function renderNotifications(){notificationBadge.hidden=!notifications.length;notificationBadge.textContent=String(notifications.length);notificationList.innerHTML=notifications.length?notifications.map(notification=>{const context=batchNotificationContext(notification),message=notification.summary||notification.detail||(!context?'Working in the background.':'');return `<article class="notification-item" data-notification="${esc(notification.notificationId)}"><div class="notification-title"><span class="notification-status ${esc(notification.status)}">${esc(notification.status)}</span><strong>${esc(batchNotificationTitle(notification))}</strong><button class="notification-dismiss" type="button" data-dismiss-notification="${esc(notification.notificationId)}" aria-label="Dismiss">×</button></div>${message?`<p class="notification-summary">${esc(message)}</p>`:''}${context?`<p class="notification-context">${esc(context)}</p>`:''}${batchErrorHtml(notification)}${batchOutputHtml(notification)}${batchProgressHtml(notification)}</article>`}).join(''):'<p class="notification-empty">No notifications yet.</p>';bindCopyPaths(notificationList);notificationList.querySelectorAll('[data-dismiss-notification]').forEach(button=>button.onclick=event=>{event.preventDefault();event.stopPropagation();const index=notifications.findIndex(item=>item.notificationId===button.dataset.dismissNotification);if(index>=0){const [removed]=notifications.splice(index,1);if(removed.id){dismissedBatchIds.add(removed.id);storeBatchIds(batchDismissedKey,dismissedBatchIds)}}renderNotifications()});notificationList.querySelectorAll('[data-cancel-batch]').forEach(button=>button.onclick=async event=>{event.preventDefault();event.stopPropagation();button.disabled=true;button.textContent='Cancelling…';try{monitorBatchJob(await apiPost(`/batches/${encodeURIComponent(button.dataset.cancelBatch)}/cancel`,{}))}catch(error){button.disabled=false;button.textContent='Cancel';alert(`Unable to cancel batch: ${error.message}`)}})}
 function showBatchToast(status){if(!status.id||alertedBatchIds.has(status.id)||dismissedBatchIds.has(status.id))return;alertedBatchIds.add(status.id);storeBatchIds(batchAlertedKey,alertedBatchIds);const toast=document.createElement('div');toast.className=`notification-toast ${status.status==='error'?'error':''}`;toast.innerHTML=`<strong>${esc(batchNotificationTitle(status))}</strong><span>${esc(status.summary||status.detail||batchNotificationContext(status))}</span>`;notificationToasts.append(toast);setTimeout(()=>toast.remove(),3000)}
 function batchNotificationIdentity(status){return `${status.workspace_id||''}\u0000${status.item_id||''}\u0000${status.action||''}`}
@@ -403,6 +423,36 @@ function closeBatchMenus(except=null){document.querySelectorAll('[data-batch-men
 headerNotifications.onclick=event=>{event.stopPropagation();closeBatchMenus()};
 document.addEventListener('click',()=>{closeBatchMenus();headerNotifications.open=false});
 function bindBatchMenus(){document.querySelectorAll('[data-batch-menu]').forEach(menu=>{menu.onclick=event=>{event.stopPropagation();headerNotifications.open=false;if(event.target.closest('summary'))closeBatchMenus(menu)};bindCopyPaths(menu);menu.querySelectorAll('[data-batch-action]').forEach(button=>button.onclick=async event=>{event.preventDefault();event.stopPropagation();button.dataset.batchStatus='running';const state=button.querySelector('.batch-state');state.className='batch-state running';state.textContent='● running';menu.className='batch-menu running';menu.querySelector('summary').innerHTML=batchLauncherHtml({status:'running'});menu.open=false;try{monitorBatchJob(await apiPost(menu.dataset.batchUrl,{action:button.dataset.batchAction}))}catch(error){button.dataset.batchStatus='error';state.className='batch-state error';state.textContent='! error';menu.className='batch-menu error';const failed={id:`client-${Date.now()}-${Math.random()}`,action:button.dataset.batchAction,action_label:button.querySelector('span')?.textContent||'Batch action',status:'error',detail:error.message};upsertBatchNotification(failed);showBatchToast(failed)}})})}
+function resultSize(value){const size=Number(value);if(!Number.isFinite(size)||size<0)return '';if(size<1024)return`${size} B`;const units=['KB','MB','GB','TB'];let amount=size/1024,index=0;while(amount>=1024&&index<units.length-1){amount/=1024;index++}return`${amount>=10?amount.toFixed(0):amount.toFixed(1)} ${units[index]}`}
+async function resultBrowser(scope,identifier,root,navigate=true,directory=[]){
+  stopPlayback();activeThemeRefresh=null;workspaceAdd.hidden=true;headerDetails.hidden=true;headerDownload.hidden=true;headerDownload.open=false;headerAnnotate.hidden=true;headerAnnotate.open=false;app.className='';
+  const route=`/results/${[scope,identifier,root,...directory].map(encodeURIComponent).join('/')}`;if(navigate)pushRoute(route);
+  try{
+    const query=new URLSearchParams({path:directory.join('/')}),listing=await api(`/batch-browser/${encodeURIComponent(scope)}/${encodeURIComponent(identifier)}/${encodeURIComponent(root)}?${query}`),entries=listing.entries||[],crumbs=directory.map((name,index)=>` / <button type="button" data-result-level="${index+1}">${esc(name)}</button>`).join('');
+    let selected=null;
+    app.innerHTML=`<div class="crumb"><button type="button" id="result-close">Batch results</button> / <button type="button" data-result-level="0">${esc(root)}</button>${crumbs}</div><h1>${esc(directory.at(-1)||root)}</h1><p class="lead">${entries.length} entr${entries.length===1?'y':'ies'} · Browse, search, and inspect generated files.</p><div class="toolbar"><input id="result-search" type="search" placeholder="Search this folder…"><button class="copy-path" type="button" data-copy-path="${esc(listing.path)}">Copy folder path</button></div><div class="result-browser"><div class="result-browser-list" id="result-browser-list"></div><div class="result-preview" id="result-preview"><div class="result-empty-preview">Select an image or file to inspect it.</div></div></div>`;
+    const list=document.querySelector('#result-browser-list'),preview=document.querySelector('#result-preview'),search=document.querySelector('#result-search');
+    const visible=()=>{const q=search.value.toLowerCase().trim();return entries.filter(entry=>!q||entry.name.toLowerCase().includes(q))};
+    const imageEntries=()=>visible().filter(entry=>entry.kind==='image');
+    const show=entry=>{
+      selected=entry;list.querySelectorAll('[data-result-entry]').forEach(row=>row.classList.toggle('active',row.dataset.resultEntry===entry.relative_path));
+      if(entry.kind==='image'){
+        const images=imageEntries(),index=images.findIndex(candidate=>candidate.relative_path===entry.relative_path),previous=images[(index-1+images.length)%images.length],next=images[(index+1)%images.length];
+        preview.innerHTML=`<div class="result-preview-toolbar"><button type="button" data-result-previous ${images.length<2?'disabled':''}>‹</button><button type="button" data-result-next ${images.length<2?'disabled':''}>›</button><strong title="${esc(entry.name)}">${esc(entry.name)}</strong><a href="${esc(entry.url)}" target="_blank" rel="noopener">Open</a><a href="${esc(entry.download_url)}">Download</a><button class="copy-path" type="button" data-copy-path="${esc(entry.path)}">Copy path</button></div><div class="result-image-stage"><img src="${esc(entry.url)}" alt="${esc(entry.name)}"></div>`;
+        preview.querySelector('[data-result-previous]').onclick=()=>show(previous);preview.querySelector('[data-result-next]').onclick=()=>show(next)
+      }else{
+        preview.innerHTML=`<div class="result-file-preview"><strong>${esc(entry.name)}</strong><p>${esc(entry.path)}</p><div class="result-file-actions">${entry.open_url?`<a href="${esc(entry.open_url)}" target="_blank" rel="noopener">Open</a>`:''}<a href="${esc(entry.download_url)}">Download</a><button class="copy-path" type="button" data-copy-path="${esc(entry.path)}">Copy path</button></div></div>`
+      }
+      bindCopyPaths(preview)
+    };
+    const draw=()=>{
+      const shown=visible();list.innerHTML=shown.length?shown.map(entry=>`<button class="result-entry ${selected?.relative_path===entry.relative_path?'active':''}" type="button" data-result-entry="${esc(entry.relative_path)}"><span class="result-entry-icon" aria-hidden="true">${entry.kind==='directory'?'▸':entry.kind==='image'?'▧':'•'}</span><span class="result-entry-name" title="${esc(entry.name)}">${esc(entry.name)}</span><span class="result-entry-size">${entry.kind==='directory'?'':esc(resultSize(entry.size))}</span></button>`).join(''):'<div class="empty">No matching entries.</div>';
+      list.querySelectorAll('[data-result-entry]').forEach(row=>{const entry=entries.find(candidate=>candidate.relative_path===row.dataset.resultEntry);row.onclick=()=>entry.kind==='directory'?resultBrowser(scope,identifier,root,true,[...directory,entry.name]):show(entry)});
+      const images=imageEntries();if(selected&&!shown.includes(selected)){selected=null;preview.innerHTML='<div class="result-empty-preview">Select an image or file to inspect it.</div>'}if(!selected&&images.length)show(images[0])
+    };
+    search.oninput=draw;draw();bindCopyPaths(app);document.querySelector('#result-close').onclick=()=>history.back();document.querySelectorAll('[data-result-level]').forEach(button=>button.onclick=()=>resultBrowser(scope,identifier,root,true,directory.slice(0,Number(button.dataset.resultLevel))))
+  }catch(error){fail(error)}
+}
 async function catalog(navigate=true){
   stopPlayback();activeThemeRefresh=null;workspaceAdd.hidden=true;headerDetails.hidden=true;headerDownload.hidden=true;headerDownload.open=false;headerAnnotate.hidden=true;headerAnnotate.open=false;app.className='';if(navigate)pushRoute('/');
   try{
@@ -438,7 +488,7 @@ async function openItem(wid,wname,iid,navigate=true,controlValues={},preservePla
     const settingsChanged=async()=>{redrawWindowOverview?.();if(isPlayback)clearInterval(playbackTimer);const applied=await refresh(true);if(isPlayback&&applied)startFrameworkPlayback(p.playback,refresh);else if(isWindowed&&applied)startFrameworkWindowed(p.playback,refresh,p.controls);else if(isSegmented&&applied)startFrameworkSegmented(p.playback,refresh)};
     bindLimitsPickers(settingsChanged);if(isPlayback)startFrameworkPlayback(p.playback,refresh);else if(isWindowed)startFrameworkWindowed(p.playback,refresh,p.controls);else if(isSegmented)startFrameworkSegmented(p.playback,refresh);else if(p.refresh.enabled)startFrameworkRefresh(p.refresh,refresh);document.querySelectorAll('[data-control]').forEach(x=>{if(x.closest('[data-limits-picker]'))return;x.onchange=settingsChanged;if(x.type==='color')x.oninput=()=>{const swatch=x.closest('[data-style-picker]')?.querySelector('[data-style-swatch]');if(swatch)swatch.style.background=x.value;updateAnnotationMarkerColor()}});document.querySelector('#home')?.addEventListener('click',()=>catalog());document.querySelector('#back').onclick=()=>items(wid,wname,true,data.item.navigation_path||[])
   }catch(e){fail(e)}}
-async function boot(reload=false){const parts=location.pathname.split('/').filter(Boolean).map(decodeURIComponent),workspaceUrl=reload?'/workspaces?reload=1':'/workspaces';if(parts[0]!=='workspace'){if(reload)await api(workspaceUrl);return catalog(false)}try{const {workspaces}=await api(workspaceUrl);singleWorkspaceMode=workspaces.length===1;const workspace=workspaces.find(w=>w.id===parts[1]);if(!workspace)return catalog(false);if(parts[2]==='item'&&parts[3])return openItem(workspace.id,workspace.name,parts[3],false);if(parts[2]==='browse')return items(workspace.id,workspace.name,false,parts.slice(3));return items(workspace.id,workspace.name,false)}catch(e){fail(e)}}
+async function boot(reload=false){const parts=location.pathname.split('/').filter(Boolean).map(decodeURIComponent),workspaceUrl=reload?'/workspaces?reload=1':'/workspaces';if(parts[0]==='results'&&parts[1]&&parts[2]&&parts[3])return resultBrowser(parts[1],parts[2],parts[3],false,parts.slice(4));if(parts[0]!=='workspace'){if(reload)await api(workspaceUrl);return catalog(false)}try{const {workspaces}=await api(workspaceUrl);singleWorkspaceMode=workspaces.length===1;const workspace=workspaces.find(w=>w.id===parts[1]);if(!workspace)return catalog(false);if(parts[2]==='item'&&parts[3])return openItem(workspace.id,workspace.name,parts[3],false);if(parts[2]==='browse')return items(workspace.id,workspace.name,false,parts.slice(3));return items(workspace.id,workspace.name,false)}catch(e){fail(e)}}
 appHome.onclick=()=>catalog();
 window.onpopstate=event=>{routeIndex=Number(event.state?.sigvueIndex??0);syncHeaderNavigation();boot()};syncHeaderNavigation();syncBatchNotifications();boot();
 </script></body></html>"""
@@ -985,20 +1035,32 @@ class SigvueApp:
         files = []
         for name in names:
             path = (directory / name).resolve()
+            kind = "directory" if path.is_dir() else "file"
             encoded_name = quote(name, safe="")
             if job_id:
                 url = f"/batches/{job_id}/{encoded_name}"
+                browse_url = f"/results/job/{job_id}/{encoded_name}"
             else:
                 token = uuid5(NAMESPACE_URL, str(path)).hex
                 with self._batch_lock:
                     self._batch_declared_files[(token, name)] = path
                     self._batch_declared_entries[token] = path
                 url = f"/batch-files/{token}/{encoded_name}"
+                browse_url = f"/results/saved/{token}/{encoded_name}"
             files.append({
                 "name": name,
                 "path": str(path),
                 "url": url,
-                "open_url": url if path.suffix.lower() in {".html", ".htm"} else None,
+                "kind": kind,
+                "browse_url": browse_url if kind == "directory" else None,
+                "open_url": (
+                    url
+                    if kind == "file"
+                    and path.suffix.lower()
+                    in _IMAGE_SUFFIXES | {".html", ".htm", ".pdf"}
+                    else None
+                ),
+                "download_url": f"{url}?download=1" if kind == "file" else None,
             })
         return files
 
@@ -1007,7 +1069,7 @@ class SigvueApp:
         if destination.directory is None or not destination.files:
             return {"status": "idle"}
         directory = destination.directory.expanduser().resolve()
-        if all((directory / name).is_file() for name in destination.files):
+        if all((directory / name).exists() for name in destination.files):
             return {
                 "status": "ready",
                 "summary": destination.summary,
@@ -1067,8 +1129,14 @@ class SigvueApp:
             files = []
             for value in result.files:
                 target = Path(value).resolve()
-                if target.parent != resolved_directory or not target.is_file():
-                    raise ValueError("Batch results must contain files created in their destination directory")
+                if (
+                    target.parent != resolved_directory
+                    or not (target.is_file() or target.is_dir())
+                ):
+                    raise ValueError(
+                        "Batch results must contain top-level files or "
+                        "directories created in their destination directory"
+                    )
                 if any(character in target.name for character in "\r\n\0"):
                     raise ValueError("Batch result filenames cannot contain control characters")
                 files.append(target.name)
@@ -1163,7 +1231,7 @@ class SigvueApp:
         missing = [
             name
             for name in (*result["files"], *result.get("assets", ()))
-            if not (job.directory / name).is_file()
+            if not (job.directory / name).exists()
         ]
         if missing:
             return {
@@ -1223,18 +1291,131 @@ class SigvueApp:
         if job is None or not job.future.done() or job.future.exception() is not None:
             raise KeyError(job_id)
         result = job.future.result()
-        allowed = {
-            *result["files"],
-            *result.get("assets", ()),
-        }
-        if filename not in allowed:
-            raise KeyError(filename)
         target = (job.directory / filename).resolve()
         try:
             target.relative_to(job.directory.resolve())
         except ValueError as exc:
             raise KeyError(filename) from exc
+        allowed = {
+            *result["files"],
+            *result.get("assets", ()),
+        }
+        if filename not in allowed:
+            inside_result_directory = False
+            for name in result["files"]:
+                root = (job.directory / name).resolve()
+                if not root.is_dir():
+                    continue
+                try:
+                    target.relative_to(root)
+                except ValueError:
+                    continue
+                inside_result_directory = True
+                break
+            if not inside_result_directory:
+                raise KeyError(filename)
+        if not target.exists():
+            raise KeyError(filename)
         return target
+
+    @staticmethod
+    def _directory_listing(
+        root: Path,
+        relative_path: str,
+        url_prefix: str,
+    ) -> dict[str, object]:
+        root = root.resolve()
+        requested = Path(relative_path)
+        if requested.is_absolute() or ".." in requested.parts:
+            raise KeyError(relative_path)
+        current = (root / requested).resolve()
+        try:
+            current.relative_to(root)
+        except ValueError as exc:
+            raise KeyError(relative_path) from exc
+        if not current.is_dir():
+            raise KeyError(relative_path)
+        entries = []
+        for entry in sorted(
+            current.iterdir(),
+            key=lambda value: (not value.is_dir(), value.name.casefold()),
+        ):
+            try:
+                resolved = entry.resolve()
+                relative = resolved.relative_to(root)
+            except (OSError, ValueError):
+                continue
+            if resolved.is_dir():
+                kind = "directory"
+                size = None
+            elif resolved.is_file():
+                kind = (
+                    "image"
+                    if resolved.suffix.lower() in _IMAGE_SUFFIXES
+                    else "file"
+                )
+                try:
+                    size = resolved.stat().st_size
+                except OSError:
+                    continue
+            else:
+                continue
+            encoded_path = "/".join(
+                quote(part, safe="") for part in relative.parts
+            )
+            url = f"{url_prefix}/{encoded_path}"
+            entries.append(
+                {
+                    "name": entry.name,
+                    "relative_path": relative.as_posix(),
+                    "path": str(entry.absolute()),
+                    "kind": kind,
+                    "size": size,
+                    "url": url if kind != "directory" else None,
+                    "open_url": (
+                        url
+                        if kind == "file"
+                        and resolved.suffix.lower()
+                        in _INLINE_SUFFIXES
+                        else None
+                    ),
+                    "download_url": (
+                        f"{url}?download=1"
+                        if kind != "directory"
+                        else None
+                    ),
+                }
+            )
+        return {
+            "name": root.name,
+            "path": str(current),
+            "relative_path": requested.as_posix()
+            if requested != Path(".")
+            else "",
+            "entries": entries,
+        }
+
+    def batch_directory(
+        self,
+        job_id: str,
+        root_name: str,
+        relative_path: str = "",
+    ) -> dict[str, object]:
+        """List a declared directory result without exposing unrelated outputs."""
+        with self._batch_lock:
+            job = self._batch_jobs.get(job_id)
+        if (
+            job is None
+            or not job.future.done()
+            or job.future.exception() is not None
+            or root_name not in job.future.result()["files"]
+        ):
+            raise KeyError(job_id)
+        root = (job.directory / root_name).resolve()
+        if not root.is_dir():
+            raise KeyError(root_name)
+        prefix = f"/batches/{job_id}/{quote(root_name, safe='')}"
+        return self._directory_listing(root, relative_path, prefix)
 
     def batch_assets(self, job_id: str) -> tuple[str, ...]:
         """Return relative support-file paths for a completed batch result."""
@@ -1252,7 +1433,16 @@ class SigvueApp:
         with self._batch_lock:
             target = self._batch_declared_files.get((token, filename))
             entry = self._batch_declared_entries.get(token)
-        if target is not None and target.is_file():
+        if target is not None and target.exists():
+            return target
+        if entry is not None and entry.is_dir():
+            target = (entry.parent / filename).resolve()
+            try:
+                target.relative_to(entry.resolve())
+            except ValueError as exc:
+                raise KeyError(filename) from exc
+            if not target.exists():
+                raise KeyError(filename)
             return target
         if (
             entry is None
@@ -1268,6 +1458,20 @@ class SigvueApp:
         if not target.is_file():
             raise KeyError(filename)
         return target
+
+    def declared_batch_directory(
+        self,
+        token: str,
+        root_name: str,
+        relative_path: str = "",
+    ) -> dict[str, object]:
+        """List a durable directory result rediscovered after a relaunch."""
+        with self._batch_lock:
+            root = self._batch_declared_entries.get(token)
+        if root is None or not root.is_dir() or root.name != root_name:
+            raise KeyError(token)
+        prefix = f"/batch-files/{token}/{quote(root_name, safe='')}"
+        return self._directory_listing(root, relative_path, prefix)
 
     def open_item(self, workspace_id: str, item_id: str, control_values: dict[str, object] | None = None) -> dict[str, Any]:
         request_started = time.perf_counter()
@@ -1665,7 +1869,11 @@ def _make_handler(app: SigvueApp) -> type[BaseHTTPRequestHandler]:
             if parsed.path == "/assets/plotly.min.js":
                 self._write_javascript(_PLOTLY_JS)
                 return
-            if parsed.path == "/" or parsed.path.startswith("/workspace/"):
+            if (
+                parsed.path == "/"
+                or parsed.path.startswith("/workspace/")
+                or parsed.path.startswith("/results/")
+            ):
                 if app.config_path is not None:
                     app.reload_browser_profile()
                 body = _INDEX_HTML.replace("__BROWSER_TITLE__", html_escape(app.title))
@@ -1704,6 +1912,24 @@ def _make_handler(app: SigvueApp) -> type[BaseHTTPRequestHandler]:
 
             parts = [unquote(segment) for segment in parsed.path.split("/") if segment]
             try:
+                if len(parts) == 4 and parts[0] == "batch-browser":
+                    relative_path = parse_qs(parsed.query).get("path", [""])[-1]
+                    if parts[1] == "job":
+                        listing = app.batch_directory(
+                            parts[2],
+                            parts[3],
+                            relative_path,
+                        )
+                    elif parts[1] == "saved":
+                        listing = app.declared_batch_directory(
+                            parts[2],
+                            parts[3],
+                            relative_path,
+                        )
+                    else:
+                        raise KeyError(parts[1])
+                    self._write_json(200, listing)
+                    return
                 if len(parts) == 2 and parts[0] == "exports":
                     self._write_json(200, app.export_status(parts[1]))
                     return
@@ -1713,41 +1939,27 @@ def _make_handler(app: SigvueApp) -> type[BaseHTTPRequestHandler]:
                 if len(parts) >= 3 and parts[0] == "batches":
                     filename = "/".join(parts[2:])
                     batch_path = app.batch_file(parts[1], filename)
+                    if batch_path.exists() and not batch_path.is_file():
+                        raise KeyError(filename)
                     self._write_export_file(
                         batch_path,
-                        inline=batch_path.suffix.lower()
-                        in {
-                            ".html",
-                            ".htm",
-                            ".png",
-                            ".jpg",
-                            ".jpeg",
-                            ".webp",
-                            ".svg",
-                            ".css",
-                            ".js",
-                            ".json",
-                        },
+                        inline=(
+                            "download" not in parse_qs(parsed.query)
+                            and batch_path.suffix.lower() in _INLINE_SUFFIXES
+                        ),
                     )
                     return
                 if len(parts) >= 3 and parts[0] == "batch-files":
                     filename = "/".join(parts[2:])
                     batch_path = app.declared_batch_file(parts[1], filename)
+                    if batch_path.exists() and not batch_path.is_file():
+                        raise KeyError(filename)
                     self._write_export_file(
                         batch_path,
-                        inline=batch_path.suffix.lower()
-                        in {
-                            ".html",
-                            ".htm",
-                            ".png",
-                            ".jpg",
-                            ".jpeg",
-                            ".webp",
-                            ".svg",
-                            ".css",
-                            ".js",
-                            ".json",
-                        },
+                        inline=(
+                            "download" not in parse_qs(parsed.query)
+                            and batch_path.suffix.lower() in _INLINE_SUFFIXES
+                        ),
                     )
                     return
                 if len(parts) == 3 and parts[0] == "exports":
@@ -1914,7 +2126,11 @@ def _run_batch_command(app: SigvueApp, args: argparse.Namespace) -> int:
     saved = []
     for artifact in status.get("files", []):
         destination = output / artifact["name"]
-        shutil.copy2(app.batch_file(job_id, artifact["name"]), destination)
+        source = app.batch_file(job_id, artifact["name"])
+        if source.is_dir():
+            shutil.copytree(source, destination, dirs_exist_ok=True)
+        else:
+            shutil.copy2(source, destination)
         saved.append(str(destination))
     saved_assets = []
     for name in app.batch_assets(job_id):

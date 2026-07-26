@@ -307,7 +307,7 @@ class BatchRequest:
 
 @dataclass(frozen=True)
 class BatchResult:
-    """Files and a concise completion message produced by a batch action."""
+    """Files or directories and a concise message produced by a batch action."""
 
     files: tuple[Path, ...] = ()
     summary: str = "Completed"
@@ -316,7 +316,7 @@ class BatchResult:
 
 @dataclass(frozen=True)
 class BatchDestination:
-    """Workspace-action output location and optional completion contract."""
+    """Workspace-action output location and optional entry completion contract."""
 
     directory: Path | None = None
     files: tuple[str, ...] = ()

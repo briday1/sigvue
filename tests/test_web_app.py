@@ -1024,6 +1024,116 @@ class WebAppTests(unittest.TestCase):
             )
             self.assertIn("saved:", stream.getvalue())
 
+    def test_batch_directory_results_are_browseable_searchable_and_copyable(self):
+        class DirectoryBatch(Batch):
+            item_actions = (CapabilityChoice("render", "Render gallery"),)
+
+            def run_item(
+                self,
+                resource,
+                source_data,
+                request: BatchRequest,
+                directory,
+            ):
+                gallery = directory / "gallery"
+                (gallery / "frames").mkdir(parents=True)
+                (gallery / "frames" / "storm 01.png").write_bytes(b"png")
+                (gallery / "notes.txt").write_text(
+                    "frame notes",
+                    encoding="utf-8",
+                )
+                image = directory / "preview.png"
+                image.write_bytes(b"png")
+                archive = directory / "frames.zip"
+                archive.write_bytes(b"zip")
+                return BatchResult(
+                    (gallery, image, archive),
+                    "Gallery rendered",
+                )
+
+        base = self.create_example_app().registry.get("test-workspace")
+        workspace = Workspace._from_runtime_components(
+            identifier="directory-batch-workspace",
+            name="Directory batch workspace",
+            description="Directory results",
+            source=base._legacy_runtime.source,
+            delivery=base._legacy_runtime.delivery,
+            analysis=base._legacy_runtime.analysis,
+            presentation=base._legacy_runtime.presentation,
+            batch=DirectoryBatch(),
+        )
+        app = SigvueApp()
+        app.register_workspace(workspace)
+
+        job_id = app.start_batch(
+            "directory-batch-workspace",
+            "render",
+            "recording",
+        )
+        app._batch_jobs[job_id].future.result(timeout=10)
+        status = app.batch_status(job_id)
+        self.assertEqual("ready", status["status"])
+        artifacts = {artifact["name"]: artifact for artifact in status["files"]}
+        self.assertEqual("directory", artifacts["gallery"]["kind"])
+        self.assertEqual(
+            f"/results/job/{job_id}/gallery",
+            artifacts["gallery"]["browse_url"],
+        )
+        self.assertIsNone(artifacts["gallery"]["open_url"])
+        self.assertEqual(
+            f"/batches/{job_id}/preview.png",
+            artifacts["preview.png"]["open_url"],
+        )
+        self.assertIsNone(artifacts["frames.zip"]["open_url"])
+        self.assertEqual(
+            f"/batches/{job_id}/frames.zip?download=1",
+            artifacts["frames.zip"]["download_url"],
+        )
+        nested = app.batch_file(job_id, "gallery/frames/storm 01.png")
+        self.assertEqual(b"png", nested.read_bytes())
+        with self.assertRaises(KeyError):
+            app.batch_file(job_id, "gallery/../../preview.png")
+
+        listing = app.batch_directory(
+            job_id,
+            "gallery",
+            "frames",
+        )
+        self.assertEqual(
+            ["storm 01.png"],
+            [entry["name"] for entry in listing["entries"]],
+        )
+        self.assertEqual("image", listing["entries"][0]["kind"])
+        self.assertEqual(
+            f"/batches/{job_id}/gallery/frames/storm%2001.png",
+            listing["entries"][0]["url"],
+        )
+        with self.assertRaises(KeyError):
+            app.batch_directory(job_id, "gallery", "../../")
+
+        with TemporaryDirectory() as output:
+            result = _run_batch_command(
+                app,
+                Namespace(
+                    list_batch=False,
+                    workspace="directory-batch-workspace",
+                    item="recording",
+                    action="render",
+                    output=Path(output),
+                    json=True,
+                ),
+            )
+            self.assertEqual(0, result)
+            self.assertEqual(
+                b"png",
+                (
+                    Path(output)
+                    / "gallery"
+                    / "frames"
+                    / "storm 01.png"
+                ).read_bytes(),
+            )
+
     def test_workspace_batch_reports_progress_and_continues_after_item_error(self):
         second_started = Event()
         release_second = Event()
@@ -1311,6 +1421,88 @@ class WebAppTests(unittest.TestCase):
             encoded = relaunched._batch_files(None, output_path, ("report #1.html",))[0]
             self.assertIn("report%20%231.html", encoded["open_url"])
 
+    def test_durable_batch_directory_is_browseable_after_relaunch(self):
+        with TemporaryDirectory() as output:
+            output_path = Path(output)
+
+            class DurableDirectoryBatch(Batch):
+                item_actions = (CapabilityChoice("gallery", "Build gallery"),)
+
+                def item_destination(self, resource, request):
+                    return BatchDestination(
+                        output_path,
+                        (f"{resource.identifier}-gallery",),
+                        "Gallery already exists",
+                    )
+
+                def run_item(
+                    self,
+                    resource,
+                    source_data,
+                    request,
+                    directory,
+                ):
+                    gallery = directory / f"{resource.identifier}-gallery"
+                    gallery.mkdir(parents=True, exist_ok=True)
+                    (gallery / "frame.png").write_bytes(b"frame")
+                    return BatchResult((gallery,), "Gallery generated")
+
+            base = self.create_example_app().registry.get("test-workspace")
+
+            def make_app():
+                workspace = Workspace._from_runtime_components(
+                    identifier="durable-directory-workspace",
+                    name="Durable directory workspace",
+                    description="Persistent directory results",
+                    source=base._legacy_runtime.source,
+                    delivery=base._legacy_runtime.delivery,
+                    analysis=base._legacy_runtime.analysis,
+                    presentation=base._legacy_runtime.presentation,
+                    batch=DurableDirectoryBatch(),
+                )
+                result = SigvueApp()
+                result.register_workspace(workspace)
+                return result
+
+            first = make_app()
+            job_id = first.start_batch(
+                "durable-directory-workspace",
+                "gallery",
+                "recording",
+            )
+            first._batch_jobs[job_id].future.result(timeout=10)
+
+            relaunched = make_app()
+            action = relaunched.browse_items(
+                "durable-directory-workspace",
+                {},
+            )["items"][0]["batch"]["actions"][0]
+            self.assertEqual("ready", action["status"])
+            artifact = action["files"][0]
+            self.assertEqual("directory", artifact["kind"])
+            _, _, _, token, filename = artifact["browse_url"].split("/")
+            self.assertEqual(
+                (output_path / "recording-gallery").resolve(),
+                relaunched.declared_batch_file(token, filename),
+            )
+            self.assertEqual(
+                b"frame",
+                relaunched.declared_batch_file(
+                    token,
+                    "recording-gallery/frame.png",
+                ).read_bytes(),
+            )
+            with self.assertRaises(KeyError):
+                relaunched.declared_batch_file(
+                    token,
+                    "recording-gallery/../outside.png",
+                )
+            listing = relaunched.declared_batch_directory(
+                token,
+                "recording-gallery",
+            )
+            self.assertEqual("frame.png", listing["entries"][0]["name"])
+
     def test_export_endpoint_routes_capability_scope_and_format(self):
         app = Mock()
         app.start_export.return_value = "job-1"
@@ -1423,6 +1615,28 @@ class WebAppTests(unittest.TestCase):
             tile,
             inline=True,
         )
+
+    def test_batch_result_directory_listing_endpoint(self):
+        app = Mock()
+        listing = {
+            "name": "gallery",
+            "path": "/tmp/gallery",
+            "entries": [{"name": "frame.png", "kind": "image"}],
+        }
+        app.batch_directory.return_value = listing
+        handler_type = _make_handler(app)
+        handler = handler_type.__new__(handler_type)
+        handler.path = "/batch-browser/job/batch-1/gallery?path=frames"
+        handler._write_json = Mock()
+
+        handler.do_GET()
+
+        app.batch_directory.assert_called_once_with(
+            "batch-1",
+            "gallery",
+            "frames",
+        )
+        handler._write_json.assert_called_once_with(200, listing)
 
     def test_batch_catalog_endpoint_restores_background_notifications(self):
         app = Mock()
