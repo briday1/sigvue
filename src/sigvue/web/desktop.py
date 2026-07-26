@@ -162,11 +162,14 @@ def main() -> None:
             height=max(args.height, 600),
             min_size=(900, 600),
             js_api=desktop_api,
+            easy_drag=False,
+            text_select=True,
+            zoomable=True,
         )
         desktop_api.bind(window)
         window.events.loaded += _install_native_fullscreen
         window.events.restored += desktop_api.restored
-        webview.start(debug=args.debug)
+        webview.start(debug=args.debug, private_mode=False)
     finally:
         server.shutdown()
         server.server_close()

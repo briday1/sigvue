@@ -93,6 +93,9 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(1200, result["options"]["width"])
         self.assertEqual(700, result["options"]["height"])
         self.assertEqual((900, 600), result["options"]["min_size"])
+        self.assertFalse(result["options"]["easy_drag"])
+        self.assertTrue(result["options"]["text_select"])
+        self.assertTrue(result["options"]["zoomable"])
         bridge = result["options"]["js_api"]
         self.assertEqual("/tmp/scientific-data", bridge.choose_directory())
         self.assertEqual(20, window.dialog_type)
@@ -109,7 +112,10 @@ class DesktopTests(unittest.TestCase):
             "window.__sigvueSetNativeFullscreen?.(false)",
             window.scripts[1],
         )
-        self.assertEqual({"debug": False}, result["start_options"])
+        self.assertEqual(
+            {"debug": False, "private_mode": False},
+            result["start_options"],
+        )
 
 
 if __name__ == "__main__":
