@@ -41,12 +41,18 @@ sigvue --config browser.toml
 
 Open <http://127.0.0.1:8000>.
 
-Application packages that provide a native pywebview window can install the
-shared desktop toolchain from a source checkout:
+For the same application in a native desktop window, install Sigvue's desktop
+extra and run the core desktop host:
 
 ```bash
 python -m pip install -e ".[desktop]"
+sigvue-desktop --config browser.toml
 ```
+
+`sigvue-desktop` accepts the same workspace profile as the browser server.
+It owns the local server and pywebview window, including native fullscreen and
+the workspace wizard's folder picker. Workspace packages only provide readers,
+views, and batch actions; they do not need their own desktop launcher.
 
 ## The API
 

@@ -1,4 +1,4 @@
-"""Build the standalone executable from package-installed support files."""
+"""Build the shared native desktop host from installed support files."""
 
 from __future__ import annotations
 
@@ -10,7 +10,9 @@ def main() -> None:
     try:
         from PyInstaller.__main__ import run
     except ImportError as exc:  # pragma: no cover - depends on optional build extra
-        raise SystemExit('Install build support first: pip install "sigvue[build]"') from exc
+        raise SystemExit(
+            'Install build support first: pip install "sigvue[build]"'
+        ) from exc
 
     arguments = sys.argv[1:] or ["--clean", "--noconfirm"]
     resource = files("sigvue._packaging").joinpath("sigvue.spec")

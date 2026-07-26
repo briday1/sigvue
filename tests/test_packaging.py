@@ -35,11 +35,11 @@ class PackagingTests(unittest.TestCase):
         )
         extras = project["optional-dependencies"]
         self.assertEqual(
-            {"certifi", "pyinstaller"},
+            {"certifi", "pyinstaller", "pywebview"},
             self.dependency_names(extras["build"]),
         )
         self.assertEqual(
-            {"pyinstaller", "pywebview"},
+            {"pywebview"},
             self.dependency_names(extras["desktop"]),
         )
         self.assertEqual(
@@ -80,6 +80,21 @@ class PackagingTests(unittest.TestCase):
     def test_standalone_build_support_is_installed_as_package_data(self):
         resources = files("sigvue._packaging")
         self.assertTrue(resources.joinpath("sigvue.spec").is_file())
+
+    def test_core_owns_the_browser_and_desktop_commands(self):
+        project = tomllib.loads(
+            (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(
+                encoding="utf-8"
+            )
+        )["project"]
+        self.assertEqual(
+            "sigvue.web.application:main",
+            project["scripts"]["sigvue"],
+        )
+        self.assertEqual(
+            "sigvue.web.desktop:main",
+            project["scripts"]["sigvue-desktop"],
+        )
 
 
 if __name__ == "__main__":
