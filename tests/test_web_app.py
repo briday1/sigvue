@@ -888,7 +888,14 @@ class WebAppTests(unittest.TestCase):
                 )
                 report = directory / "report.html"
                 report.write_text("<h1>Item report</h1>", encoding="utf-8")
-                return BatchResult((target, report), "Item summarized")
+                tile = directory / "report.assets" / "0" / "0_0.png"
+                tile.parent.mkdir(parents=True)
+                tile.write_bytes(b"tile")
+                return BatchResult(
+                    (target, report),
+                    "Item summarized",
+                    (tile,),
+                )
 
             def run_workspace(
                 self, resources, open_resource, request: BatchRequest, directory
@@ -945,6 +952,19 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(
             "recording:10.0", app.batch_file(item_job, "item.txt").read_text()
         )
+        self.assertEqual(
+            b"tile",
+            app.batch_file(
+                item_job,
+                "report.assets/0/0_0.png",
+            ).read_bytes(),
+        )
+        self.assertEqual(
+            ("report.assets/0/0_0.png",),
+            app.batch_assets(item_job),
+        )
+        with self.assertRaises(KeyError):
+            app.batch_file(item_job, "../report.assets/0/0_0.png")
         refreshed = app.browse_items("batch-workspace", {})
         item_action = refreshed["items"][0]["batch"]["actions"][0]
         self.assertEqual("ready", item_action["status"])
@@ -993,6 +1013,15 @@ class WebAppTests(unittest.TestCase):
                 )
             self.assertEqual(0, result)
             self.assertEqual("recording:10.0", (Path(output) / "item.txt").read_text())
+            self.assertEqual(
+                b"tile",
+                (
+                    Path(output)
+                    / "report.assets"
+                    / "0"
+                    / "0_0.png"
+                ).read_bytes(),
+            )
             self.assertIn("saved:", stream.getvalue())
 
     def test_workspace_batch_reports_progress_and_continues_after_item_error(self):
@@ -1205,7 +1234,19 @@ class WebAppTests(unittest.TestCase):
                         f"<h1>Report {len(runs)}</h1>",
                         encoding="utf-8",
                     )
-                    return BatchResult((target,), "Report generated")
+                    tile = (
+                        directory
+                        / f"{resource.identifier}.assets"
+                        / "4"
+                        / "2_0.png"
+                    )
+                    tile.parent.mkdir(parents=True, exist_ok=True)
+                    tile.write_bytes(b"tile")
+                    return BatchResult(
+                        (target,),
+                        "Report generated",
+                        (tile,),
+                    )
 
             base = self.create_example_app().registry.get("test-workspace")
 
@@ -1242,6 +1283,19 @@ class WebAppTests(unittest.TestCase):
             self.assertEqual(
                 expected.resolve(), relaunched.declared_batch_file(token, filename)
             )
+            tile = output_path / "recording.assets" / "4" / "2_0.png"
+            self.assertEqual(
+                tile.resolve(),
+                relaunched.declared_batch_file(
+                    token,
+                    "recording.assets/4/2_0.png",
+                ),
+            )
+            with self.assertRaises(KeyError):
+                relaunched.declared_batch_file(
+                    token,
+                    "../recording.assets/4/2_0.png",
+                )
 
             rerun_id = relaunched.start_batch(
                 "durable-workspace",
@@ -1329,6 +1383,46 @@ class WebAppTests(unittest.TestCase):
 
         app.cancel_batch.assert_called_once_with("batch-1")
         handler._write_json.assert_called_once_with(200, cancelled_status)
+
+    def test_nested_batch_asset_is_served_inline(self):
+        app = Mock()
+        tile = Path("/tmp/report.assets/4/2_0.png")
+        app.batch_file.return_value = tile
+        handler_type = _make_handler(app)
+        handler = handler_type.__new__(handler_type)
+        handler.path = "/batches/batch-1/report.assets/4/2_0.png"
+        handler._write_export_file = Mock()
+
+        handler.do_GET()
+
+        app.batch_file.assert_called_once_with(
+            "batch-1",
+            "report.assets/4/2_0.png",
+        )
+        handler._write_export_file.assert_called_once_with(
+            tile,
+            inline=True,
+        )
+
+    def test_nested_declared_batch_asset_is_served_inline(self):
+        app = Mock()
+        tile = Path("/tmp/report.assets/4/2_0.png")
+        app.declared_batch_file.return_value = tile
+        handler_type = _make_handler(app)
+        handler = handler_type.__new__(handler_type)
+        handler.path = "/batch-files/token/report.assets/4/2_0.png"
+        handler._write_export_file = Mock()
+
+        handler.do_GET()
+
+        app.declared_batch_file.assert_called_once_with(
+            "token",
+            "report.assets/4/2_0.png",
+        )
+        handler._write_export_file.assert_called_once_with(
+            tile,
+            inline=True,
+        )
 
     def test_batch_catalog_endpoint_restores_background_notifications(self):
         app = Mock()

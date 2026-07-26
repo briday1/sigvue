@@ -582,6 +582,11 @@ class SigvueApp:
     _batch_jobs: dict[str, BatchJob] = field(default_factory=dict, init=False, repr=False)
     _batch_latest: dict[tuple[str, str | None, str], str] = field(default_factory=dict, init=False, repr=False)
     _batch_declared_files: dict[tuple[str, str], Path] = field(default_factory=dict, init=False, repr=False)
+    _batch_declared_entries: dict[str, Path] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+    )
     _batch_executor: ThreadPoolExecutor = field(
         default_factory=lambda: ThreadPoolExecutor(max_workers=4, thread_name_prefix="workspace-batch"),
         init=False,
@@ -987,6 +992,7 @@ class SigvueApp:
                 token = uuid5(NAMESPACE_URL, str(path)).hex
                 with self._batch_lock:
                     self._batch_declared_files[(token, name)] = path
+                    self._batch_declared_entries[token] = path
                 url = f"/batch-files/{token}/{encoded_name}"
             files.append({
                 "name": name,
@@ -1066,11 +1072,30 @@ class SigvueApp:
                 if any(character in target.name for character in "\r\n\0"):
                     raise ValueError("Batch result filenames cannot contain control characters")
                 files.append(target.name)
+            assets = []
+            for value in result.assets:
+                target = Path(value).resolve()
+                try:
+                    relative = target.relative_to(resolved_directory)
+                except ValueError as exc:
+                    raise ValueError(
+                        "Batch assets must be created inside their destination directory"
+                    ) from exc
+                if not target.is_file():
+                    raise ValueError("Batch assets must be files")
+                relative_name = relative.as_posix()
+                if any(character in relative_name for character in "\r\n\0"):
+                    raise ValueError("Batch asset paths cannot contain control characters")
+                assets.append(relative_name)
             missing_declared = [name for name in destination.files if name not in files]
             progress_snapshot = progress.snapshot() or {}
             if missing_declared and not progress_snapshot.get("failed"):
                 raise ValueError(f"Batch result omitted declared files: {', '.join(missing_declared)}")
-            return {"files": files, "summary": result.summary}
+            return {
+                "files": files,
+                "assets": assets,
+                "summary": result.summary,
+            }
 
         future = self._batch_executor.submit(build)
         job = BatchJob(
@@ -1135,7 +1160,11 @@ class SigvueApp:
                 "detail": str(exc) or type(exc).__name__,
                 "log": "".join(format_exception(exc)),
             }
-        missing = [name for name in result["files"] if not (job.directory / name).is_file()]
+        missing = [
+            name
+            for name in (*result["files"], *result.get("assets", ()))
+            if not (job.directory / name).is_file()
+        ]
         if missing:
             return {
                 **base,
@@ -1193,15 +1222,50 @@ class SigvueApp:
             job = self._batch_jobs.get(job_id)
         if job is None or not job.future.done() or job.future.exception() is not None:
             raise KeyError(job_id)
-        allowed = set(job.future.result()["files"])
+        result = job.future.result()
+        allowed = {
+            *result["files"],
+            *result.get("assets", ()),
+        }
         if filename not in allowed:
             raise KeyError(filename)
-        return job.directory / filename
+        target = (job.directory / filename).resolve()
+        try:
+            target.relative_to(job.directory.resolve())
+        except ValueError as exc:
+            raise KeyError(filename) from exc
+        return target
+
+    def batch_assets(self, job_id: str) -> tuple[str, ...]:
+        """Return relative support-file paths for a completed batch result."""
+        with self._batch_lock:
+            job = self._batch_jobs.get(job_id)
+        if (
+            job is None
+            or not job.future.done()
+            or job.future.exception() is not None
+        ):
+            raise KeyError(job_id)
+        return tuple(job.future.result().get("assets", ()))
 
     def declared_batch_file(self, token: str, filename: str) -> Path:
         with self._batch_lock:
             target = self._batch_declared_files.get((token, filename))
-        if target is None or not target.is_file():
+            entry = self._batch_declared_entries.get(token)
+        if target is not None and target.is_file():
+            return target
+        if (
+            entry is None
+            or entry.suffix.lower() not in {".html", ".htm"}
+        ):
+            raise KeyError(filename)
+        asset_root = entry.with_name(f"{entry.stem}.assets").resolve()
+        target = (entry.parent / filename).resolve()
+        try:
+            target.relative_to(asset_root)
+        except ValueError as exc:
+            raise KeyError(filename) from exc
+        if not target.is_file():
             raise KeyError(filename)
         return target
 
@@ -1646,18 +1710,44 @@ def _make_handler(app: SigvueApp) -> type[BaseHTTPRequestHandler]:
                 if len(parts) == 2 and parts[0] == "batches":
                     self._write_json(200, app.batch_status(parts[1]))
                     return
-                if len(parts) == 3 and parts[0] == "batches":
-                    batch_path = app.batch_file(parts[1], parts[2])
+                if len(parts) >= 3 and parts[0] == "batches":
+                    filename = "/".join(parts[2:])
+                    batch_path = app.batch_file(parts[1], filename)
                     self._write_export_file(
                         batch_path,
-                        inline=batch_path.suffix.lower() in {".html", ".htm"},
+                        inline=batch_path.suffix.lower()
+                        in {
+                            ".html",
+                            ".htm",
+                            ".png",
+                            ".jpg",
+                            ".jpeg",
+                            ".webp",
+                            ".svg",
+                            ".css",
+                            ".js",
+                            ".json",
+                        },
                     )
                     return
-                if len(parts) == 3 and parts[0] == "batch-files":
-                    batch_path = app.declared_batch_file(parts[1], parts[2])
+                if len(parts) >= 3 and parts[0] == "batch-files":
+                    filename = "/".join(parts[2:])
+                    batch_path = app.declared_batch_file(parts[1], filename)
                     self._write_export_file(
                         batch_path,
-                        inline=batch_path.suffix.lower() in {".html", ".htm"},
+                        inline=batch_path.suffix.lower()
+                        in {
+                            ".html",
+                            ".htm",
+                            ".png",
+                            ".jpg",
+                            ".jpeg",
+                            ".webp",
+                            ".svg",
+                            ".css",
+                            ".js",
+                            ".json",
+                        },
                     )
                     return
                 if len(parts) == 3 and parts[0] == "exports":
@@ -1826,7 +1916,17 @@ def _run_batch_command(app: SigvueApp, args: argparse.Namespace) -> int:
         destination = output / artifact["name"]
         shutil.copy2(app.batch_file(job_id, artifact["name"]), destination)
         saved.append(str(destination))
-    result = {**status, "saved": saved}
+    saved_assets = []
+    for name in app.batch_assets(job_id):
+        destination = output / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(app.batch_file(job_id, name), destination)
+        saved_assets.append(str(destination))
+    result = {
+        **status,
+        "saved": saved,
+        "saved_assets": saved_assets,
+    }
     if args.json:
         print(json.dumps(result))
     else:

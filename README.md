@@ -397,6 +397,10 @@ successful results. Long-running render functions can call
 `request.raise_if_cancelled()` at safe boundaries; the same cancellation hook is
 available to item actions.
 
+`BatchResult.assets` can list nested support files for a primary HTML result,
+such as image tiles. Sigvue serves those files to the report without adding
+thousands of support paths to the notification UI.
+
 ```mermaid
 flowchart TB
     Workspace --> Reader

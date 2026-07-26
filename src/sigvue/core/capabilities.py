@@ -311,6 +311,7 @@ class BatchResult:
 
     files: tuple[Path, ...] = ()
     summary: str = "Completed"
+    assets: tuple[Path, ...] = ()
 
 
 @dataclass(frozen=True)
