@@ -410,7 +410,7 @@ function batchNotificationTitle(status){const label=status.action_label||'Batch 
 function batchNotificationContext(status){return [status.workspace_name,status.item_title].filter(Boolean).join(' · ')}
 function batchProgressHtml(notification){const progress=notification.progress,total=Number(progress?.total||0);if(total<=0)return '';const completed=Math.max(0,Math.min(total,Number(progress.completed||0))),succeeded=Math.max(0,Math.min(total,Number(progress.succeeded||0))),failed=Math.max(0,Math.min(total-succeeded,Number(progress.failed||0))),successPercent=100*succeeded/total,failedPercent=100*failed/total,errors=(progress.items||[]).filter(item=>item.status==='error').map(item=>{const detail=item.detail||'',log=item.log||'';return `<div class="notification-progress-item error"><div class="notification-progress-row"><span class="notification-progress-state">Error</span><span class="notification-progress-name" title="${esc(item.title||item.id)}">${esc(item.title||item.id)}</span></div>${detail||log?`<details class="notification-progress-log"><summary>${esc(detail||'View error log')}</summary>${log?`<pre>${esc(log)}</pre>`:''}</details>`:''}</div>`}).join(''),active=activeBatchStatuses.has(notification.status);return `<div class="notification-progress">${errors?`<div class="notification-progress-errors">${errors}</div>`:''}<div class="notification-progress-head"><span>${completed} of ${total} processed${failed?` · ${failed} failed`:''}</span>${active?`<button class="notification-cancel" type="button" data-cancel-batch="${esc(notification.id)}" ${notification.status==='cancelling'?'disabled':''}>${notification.status==='cancelling'?'Cancelling…':'Cancel'}</button>`:''}</div><div class="notification-progress-track" role="progressbar" aria-label="Batch progress" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${completed}"><div class="notification-progress-success" style="width:${successPercent}%"></div><div class="notification-progress-failed" style="width:${failedPercent}%"></div></div></div>`}
 function batchErrorHtml(notification){if(notification.status!=='error'||!notification.log)return '';return `<details class="notification-progress-log notification-job-log"><summary>View error log</summary><pre>${esc(notification.log)}</pre></details>`}
-function batchOutputHtml(notification){if(!notification.files?.length)return '';if(notification.item_id||notification.files.length===1)return `<div class="notification-files">${notification.files.map(batchArtifactHtml).join('')}</div>`;return `<div class="notification-files"><div class="batch-artifact"><span class="batch-path" title="${esc(notification.output_directory||'')}">${notification.files.length} outputs${notification.output_directory?` · ${esc(notification.output_directory)}`:''}</span>${notification.output_directory?`<button class="copy-path" type="button" data-copy-path="${esc(notification.output_directory)}">Copy folder</button>`:''}</div></div>`}
+function batchOutputHtml(notification){if(!notification.files?.length)return '';if(notification.item_id||notification.files.length===1)return `<div class="notification-files">${notification.files.map(batchArtifactHtml).join('')}</div>`;return `<div class="notification-files"><div class="batch-artifact"><span class="batch-path" title="${esc(notification.output_directory||'')}">${notification.files.length} outputs${notification.output_directory?` · ${esc(notification.output_directory)}`:''}</span>${notification.result_browser_url?`<a class="batch-open" href="${esc(notification.result_browser_url)}">Browse results</a>`:''}${notification.output_directory?`<button class="copy-path" type="button" data-copy-path="${esc(notification.output_directory)}">Copy folder</button>`:''}</div></div>`}
 function renderNotifications(){notificationBadge.hidden=!notifications.length;notificationBadge.textContent=String(notifications.length);notificationList.innerHTML=notifications.length?notifications.map(notification=>{const context=batchNotificationContext(notification),message=notification.summary||notification.detail||(!context?'Working in the background.':'');return `<article class="notification-item" data-notification="${esc(notification.notificationId)}"><div class="notification-title"><span class="notification-status ${esc(notification.status)}">${esc(notification.status)}</span><strong>${esc(batchNotificationTitle(notification))}</strong><button class="notification-dismiss" type="button" data-dismiss-notification="${esc(notification.notificationId)}" aria-label="Dismiss">×</button></div>${message?`<p class="notification-summary">${esc(message)}</p>`:''}${context?`<p class="notification-context">${esc(context)}</p>`:''}${batchErrorHtml(notification)}${batchOutputHtml(notification)}${batchProgressHtml(notification)}</article>`}).join(''):'<p class="notification-empty">No notifications yet.</p>';bindCopyPaths(notificationList);notificationList.querySelectorAll('[data-dismiss-notification]').forEach(button=>button.onclick=event=>{event.preventDefault();event.stopPropagation();const index=notifications.findIndex(item=>item.notificationId===button.dataset.dismissNotification);if(index>=0){const [removed]=notifications.splice(index,1);if(removed.id){dismissedBatchIds.add(removed.id);storeBatchIds(batchDismissedKey,dismissedBatchIds)}}renderNotifications()});notificationList.querySelectorAll('[data-cancel-batch]').forEach(button=>button.onclick=async event=>{event.preventDefault();event.stopPropagation();button.disabled=true;button.textContent='Cancelling…';try{monitorBatchJob(await apiPost(`/batches/${encodeURIComponent(button.dataset.cancelBatch)}/cancel`,{}))}catch(error){button.disabled=false;button.textContent='Cancel';alert(`Unable to cancel batch: ${error.message}`)}})}
 function showBatchToast(status){if(!status.id||alertedBatchIds.has(status.id)||dismissedBatchIds.has(status.id))return;alertedBatchIds.add(status.id);storeBatchIds(batchAlertedKey,alertedBatchIds);const toast=document.createElement('div');toast.className=`notification-toast ${status.status==='error'?'error':''}`;toast.innerHTML=`<strong>${esc(batchNotificationTitle(status))}</strong><span>${esc(status.summary||status.detail||batchNotificationContext(status))}</span>`;notificationToasts.append(toast);setTimeout(()=>toast.remove(),3000)}
 function batchNotificationIdentity(status){return `${status.workspace_id||''}\u0000${status.item_id||''}\u0000${status.action||''}`}
@@ -426,11 +426,11 @@ function bindBatchMenus(){document.querySelectorAll('[data-batch-menu]').forEach
 function resultSize(value){const size=Number(value);if(!Number.isFinite(size)||size<0)return '';if(size<1024)return`${size} B`;const units=['KB','MB','GB','TB'];let amount=size/1024,index=0;while(amount>=1024&&index<units.length-1){amount/=1024;index++}return`${amount>=10?amount.toFixed(0):amount.toFixed(1)} ${units[index]}`}
 async function resultBrowser(scope,identifier,root,navigate=true,directory=[]){
   stopPlayback();activeThemeRefresh=null;workspaceAdd.hidden=true;headerDetails.hidden=true;headerDownload.hidden=true;headerDownload.open=false;headerAnnotate.hidden=true;headerAnnotate.open=false;app.className='';
-  const route=`/results/${[scope,identifier,root,...directory].map(encodeURIComponent).join('/')}`;if(navigate)pushRoute(route);
+  const route=root?`/results/${[scope,identifier,root,...directory].map(encodeURIComponent).join('/')}`:`/results/${[scope,identifier].map(encodeURIComponent).join('/')}${directory.length?`?${new URLSearchParams({path:directory.join('/')})}`:''}`;if(navigate)pushRoute(route);
   try{
-    const query=new URLSearchParams({path:directory.join('/')}),listing=await api(`/batch-browser/${encodeURIComponent(scope)}/${encodeURIComponent(identifier)}/${encodeURIComponent(root)}?${query}`),entries=listing.entries||[],crumbs=directory.map((name,index)=>` / <button type="button" data-result-level="${index+1}">${esc(name)}</button>`).join('');
+    const query=new URLSearchParams({path:directory.join('/')}),browserParts=[scope,identifier,...(root?[root]:[])],listing=await api(`/batch-browser/${browserParts.map(encodeURIComponent).join('/')}?${query}`),entries=listing.entries||[],crumbs=directory.map((name,index)=>` / <button type="button" data-result-level="${index+1}">${esc(name)}</button>`).join(''),rootLabel=root||'Batch results';
     let selected=null;
-    app.innerHTML=`<div class="crumb"><button type="button" id="result-close">Batch results</button> / <button type="button" data-result-level="0">${esc(root)}</button>${crumbs}</div><h1>${esc(directory.at(-1)||root)}</h1><p class="lead">${entries.length} entr${entries.length===1?'y':'ies'} · Browse, search, and inspect generated files.</p><div class="toolbar"><input id="result-search" type="search" placeholder="Search this folder…"><button class="copy-path" type="button" data-copy-path="${esc(listing.path)}">Copy folder path</button></div><div class="result-browser"><div class="result-browser-list" id="result-browser-list"></div><div class="result-preview" id="result-preview"><div class="result-empty-preview">Select an image or file to inspect it.</div></div></div>`;
+    app.innerHTML=`<div class="crumb"><button type="button" id="result-close">Back</button> / <button type="button" data-result-level="0">${esc(rootLabel)}</button>${crumbs}</div><h1>${esc(directory.at(-1)||rootLabel)}</h1><p class="lead">${entries.length} entr${entries.length===1?'y':'ies'} · Browse, search, and inspect generated files.</p><div class="toolbar"><input id="result-search" type="search" placeholder="Search this folder…"><button class="copy-path" type="button" data-copy-path="${esc(listing.path)}">Copy folder path</button></div><div class="result-browser"><div class="result-browser-list" id="result-browser-list"></div><div class="result-preview" id="result-preview"><div class="result-empty-preview">Select an image or file to inspect it.</div></div></div>`;
     const list=document.querySelector('#result-browser-list'),preview=document.querySelector('#result-preview'),search=document.querySelector('#result-search');
     const visible=()=>{const q=search.value.toLowerCase().trim();return entries.filter(entry=>!q||entry.name.toLowerCase().includes(q))};
     const imageEntries=()=>visible().filter(entry=>entry.kind==='image');
@@ -488,7 +488,7 @@ async function openItem(wid,wname,iid,navigate=true,controlValues={},preservePla
     const settingsChanged=async()=>{redrawWindowOverview?.();if(isPlayback)clearInterval(playbackTimer);const applied=await refresh(true);if(isPlayback&&applied)startFrameworkPlayback(p.playback,refresh);else if(isWindowed&&applied)startFrameworkWindowed(p.playback,refresh,p.controls);else if(isSegmented&&applied)startFrameworkSegmented(p.playback,refresh)};
     bindLimitsPickers(settingsChanged);if(isPlayback)startFrameworkPlayback(p.playback,refresh);else if(isWindowed)startFrameworkWindowed(p.playback,refresh,p.controls);else if(isSegmented)startFrameworkSegmented(p.playback,refresh);else if(p.refresh.enabled)startFrameworkRefresh(p.refresh,refresh);document.querySelectorAll('[data-control]').forEach(x=>{if(x.closest('[data-limits-picker]'))return;x.onchange=settingsChanged;if(x.type==='color')x.oninput=()=>{const swatch=x.closest('[data-style-picker]')?.querySelector('[data-style-swatch]');if(swatch)swatch.style.background=x.value;updateAnnotationMarkerColor()}});document.querySelector('#home')?.addEventListener('click',()=>catalog());document.querySelector('#back').onclick=()=>items(wid,wname,true,data.item.navigation_path||[])
   }catch(e){fail(e)}}
-async function boot(reload=false){const parts=location.pathname.split('/').filter(Boolean).map(decodeURIComponent),workspaceUrl=reload?'/workspaces?reload=1':'/workspaces';if(parts[0]==='results'&&parts[1]&&parts[2]&&parts[3])return resultBrowser(parts[1],parts[2],parts[3],false,parts.slice(4));if(parts[0]!=='workspace'){if(reload)await api(workspaceUrl);return catalog(false)}try{const {workspaces}=await api(workspaceUrl);singleWorkspaceMode=workspaces.length===1;const workspace=workspaces.find(w=>w.id===parts[1]);if(!workspace)return catalog(false);if(parts[2]==='item'&&parts[3])return openItem(workspace.id,workspace.name,parts[3],false);if(parts[2]==='browse')return items(workspace.id,workspace.name,false,parts.slice(3));return items(workspace.id,workspace.name,false)}catch(e){fail(e)}}
+async function boot(reload=false){const parts=location.pathname.split('/').filter(Boolean).map(decodeURIComponent),workspaceUrl=reload?'/workspaces?reload=1':'/workspaces';if(parts[0]==='results'&&parts[1]==='job'&&parts[2]&&!parts[3]){const path=new URLSearchParams(location.search).get('path')||'',directory=path.split('/').filter(Boolean);return resultBrowser(parts[1],parts[2],null,false,directory)}if(parts[0]==='results'&&parts[1]&&parts[2]&&parts[3])return resultBrowser(parts[1],parts[2],parts[3],false,parts.slice(4));if(parts[0]!=='workspace'){if(reload)await api(workspaceUrl);return catalog(false)}try{const {workspaces}=await api(workspaceUrl);singleWorkspaceMode=workspaces.length===1;const workspace=workspaces.find(w=>w.id===parts[1]);if(!workspace)return catalog(false);if(parts[2]==='item'&&parts[3])return openItem(workspace.id,workspace.name,parts[3],false);if(parts[2]==='browse')return items(workspace.id,workspace.name,false,parts.slice(3));return items(workspace.id,workspace.name,false)}catch(e){fail(e)}}
 appHome.onclick=()=>catalog();
 window.onpopstate=event=>{routeIndex=Number(event.state?.sigvueIndex??0);syncHeaderNavigation();boot()};syncHeaderNavigation();syncBatchNotifications();boot();
 </script></body></html>"""
@@ -1204,6 +1204,7 @@ class SigvueApp:
             "action_label": job.action_label,
             "started_at": job.started_at,
             "status_url": f"/batches/{job_id}",
+            "result_browser_url": f"/results/job/{job_id}",
             "output_directory": str(job.directory),
         }
         progress = job.progress.snapshot()
@@ -1416,6 +1417,83 @@ class SigvueApp:
             raise KeyError(root_name)
         prefix = f"/batches/{job_id}/{quote(root_name, safe='')}"
         return self._directory_listing(root, relative_path, prefix)
+
+    def batch_outputs(
+        self,
+        job_id: str,
+        relative_path: str = "",
+    ) -> dict[str, object]:
+        """List all declared primary outputs for one completed batch job."""
+        with self._batch_lock:
+            job = self._batch_jobs.get(job_id)
+        if (
+            job is None
+            or not job.future.done()
+            or job.future.exception() is not None
+        ):
+            raise KeyError(job_id)
+        result = job.future.result()
+        requested = Path(relative_path)
+        if requested.is_absolute() or ".." in requested.parts:
+            raise KeyError(relative_path)
+        parts = () if requested == Path(".") else requested.parts
+        if parts:
+            root_name, *children = parts
+            if root_name not in result["files"]:
+                raise KeyError(root_name)
+            root = (job.directory / root_name).resolve()
+            if not root.is_dir():
+                raise KeyError(root_name)
+            prefix = f"/batches/{job_id}/{quote(root_name, safe='')}"
+            return self._directory_listing(
+                root,
+                Path(*children).as_posix() if children else "",
+                prefix,
+            )
+
+        entries = []
+        for name in result["files"]:
+            target = (job.directory / name).resolve()
+            if target.is_dir():
+                kind = "directory"
+                size = None
+            elif target.is_file():
+                kind = (
+                    "image"
+                    if target.suffix.lower() in _IMAGE_SUFFIXES
+                    else "file"
+                )
+                size = target.stat().st_size
+            else:
+                continue
+            url = f"/batches/{job_id}/{quote(name, safe='')}"
+            entries.append(
+                {
+                    "name": name,
+                    "relative_path": name,
+                    "path": str(target),
+                    "kind": kind,
+                    "size": size,
+                    "url": url if kind != "directory" else None,
+                    "open_url": (
+                        url
+                        if kind == "file"
+                        and target.suffix.lower() in _INLINE_SUFFIXES
+                        else None
+                    ),
+                    "download_url": (
+                        f"{url}?download=1"
+                        if kind != "directory"
+                        else None
+                    ),
+                }
+            )
+        return {
+            "name": "Batch results",
+            "path": str(job.directory),
+            "relative_path": "",
+            "entries": entries,
+        }
 
     def batch_assets(self, job_id: str) -> tuple[str, ...]:
         """Return relative support-file paths for a completed batch result."""
@@ -1912,6 +1990,17 @@ def _make_handler(app: SigvueApp) -> type[BaseHTTPRequestHandler]:
 
             parts = [unquote(segment) for segment in parsed.path.split("/") if segment]
             try:
+                if (
+                    len(parts) == 3
+                    and parts[0] == "batch-browser"
+                    and parts[1] == "job"
+                ):
+                    relative_path = parse_qs(parsed.query).get("path", [""])[-1]
+                    self._write_json(
+                        200,
+                        app.batch_outputs(parts[2], relative_path),
+                    )
+                    return
                 if len(parts) == 4 and parts[0] == "batch-browser":
                     relative_path = parse_qs(parsed.query).get("path", [""])[-1]
                     if parts[1] == "job":

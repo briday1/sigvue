@@ -1073,6 +1073,10 @@ class WebAppTests(unittest.TestCase):
         app._batch_jobs[job_id].future.result(timeout=10)
         status = app.batch_status(job_id)
         self.assertEqual("ready", status["status"])
+        self.assertEqual(
+            f"/results/job/{job_id}",
+            status["result_browser_url"],
+        )
         artifacts = {artifact["name"]: artifact for artifact in status["files"]}
         self.assertEqual("directory", artifacts["gallery"]["kind"])
         self.assertEqual(
@@ -1110,6 +1114,23 @@ class WebAppTests(unittest.TestCase):
         )
         with self.assertRaises(KeyError):
             app.batch_directory(job_id, "gallery", "../../")
+        output_listing = app.batch_outputs(job_id)
+        self.assertEqual(
+            {"gallery", "preview.png", "frames.zip"},
+            {entry["name"] for entry in output_listing["entries"]},
+        )
+        self.assertEqual(
+            ["storm 01.png"],
+            [
+                entry["name"]
+                for entry in app.batch_outputs(
+                    job_id,
+                    "gallery/frames",
+                )["entries"]
+            ],
+        )
+        with self.assertRaises(KeyError):
+            app.batch_outputs(job_id, "../")
 
         with TemporaryDirectory() as output:
             result = _run_batch_command(
@@ -1635,6 +1656,27 @@ class WebAppTests(unittest.TestCase):
             "batch-1",
             "gallery",
             "frames",
+        )
+        handler._write_json.assert_called_once_with(200, listing)
+
+    def test_batch_output_collection_listing_endpoint(self):
+        app = Mock()
+        listing = {
+            "name": "Batch results",
+            "path": "/tmp/outputs",
+            "entries": [{"name": "frame.png", "kind": "image"}],
+        }
+        app.batch_outputs.return_value = listing
+        handler_type = _make_handler(app)
+        handler = handler_type.__new__(handler_type)
+        handler.path = "/batch-browser/job/batch-1?path=gallery"
+        handler._write_json = Mock()
+
+        handler.do_GET()
+
+        app.batch_outputs.assert_called_once_with(
+            "batch-1",
+            "gallery",
         )
         handler._write_json.assert_called_once_with(200, listing)
 
