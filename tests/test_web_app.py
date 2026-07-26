@@ -419,6 +419,11 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("document.addEventListener('click',()=>{closeBatchMenus()", body)
         self.assertIn("closeBatchMenus(menu)", body)
         self.assertIn("data-batch-action", body)
+        self.assertIn(
+            "batchState(action)==='ready'?'↻ rerun':",
+            body,
+        )
+        self.assertIn("Regenerate existing result", body)
         self.assertIn("function batchNotificationTitle", body)
         self.assertIn('id="header-notifications"', body)
         self.assertIn('id="notification-list"', body)
@@ -998,6 +1003,7 @@ class WebAppTests(unittest.TestCase):
     def test_durable_batch_destination_is_ready_in_a_fresh_app(self):
         with TemporaryDirectory() as output:
             output_path = Path(output)
+            runs = []
 
             class DurableBatch(Batch):
                 item_actions = (CapabilityChoice("report", "Build report"),)
@@ -1010,8 +1016,12 @@ class WebAppTests(unittest.TestCase):
                     )
 
                 def run_item(self, resource, source_data, request, directory):
+                    runs.append(resource.identifier)
                     target = directory / f"{resource.identifier}.html"
-                    target.write_text("<h1>Report</h1>", encoding="utf-8")
+                    target.write_text(
+                        f"<h1>Report {len(runs)}</h1>",
+                        encoding="utf-8",
+                    )
                     return BatchResult((target,), "Report generated")
 
             base = self.create_example_app().registry.get("test-workspace")
@@ -1036,6 +1046,7 @@ class WebAppTests(unittest.TestCase):
             first._batch_jobs[job_id].future.result(timeout=10)
             expected = output_path / "recording.html"
             self.assertTrue(expected.is_file())
+            self.assertEqual("<h1>Report 1</h1>", expected.read_text())
 
             relaunched = make_app()
             action = relaunched.browse_items("durable-workspace", {})["items"][0][
@@ -1047,6 +1058,18 @@ class WebAppTests(unittest.TestCase):
             _, _, token, filename = action["files"][0]["open_url"].split("/")
             self.assertEqual(
                 expected.resolve(), relaunched.declared_batch_file(token, filename)
+            )
+
+            rerun_id = relaunched.start_batch(
+                "durable-workspace",
+                "report",
+                "recording",
+            )
+            relaunched._batch_jobs[rerun_id].future.result(timeout=10)
+            self.assertEqual("<h1>Report 2</h1>", expected.read_text())
+            self.assertEqual(
+                "ready",
+                relaunched.batch_status(rerun_id)["status"],
             )
             encoded = relaunched._batch_files(None, output_path, ("report #1.html",))[0]
             self.assertIn("report%20%231.html", encoded["open_url"])
