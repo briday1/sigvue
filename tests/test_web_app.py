@@ -512,6 +512,11 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("updateGenericViews(p.rendered_views)", body)
         self.assertIn("data-matplotlib-view", body)
         self.assertIn("node.kind==='control_slot'", body)
+        self.assertIn(
+            "['colormap','limits'].includes(control.control_type)"
+            "?customControlHtml(control,values)",
+            body,
+        )
         self.assertIn('class="parameter-group"', body)
         self.assertIn('class="data-stage"', body)
         self.assertIn('class="workspace-sidebar"', body)
