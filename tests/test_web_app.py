@@ -442,6 +442,15 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("notification-progress-success", body)
         self.assertIn("notification-progress-failed", body)
         self.assertIn("Copy folder", body)
+        self.assertIn(
+            "header .home-title { all:unset; display:block; min-width:0;",
+            body,
+        )
+        self.assertIn(
+            "header #app-subtitle { min-width:0; flex:0 1 auto; "
+            "overflow:hidden;",
+            body,
+        )
         self.assertIn(".batch-menu[open] { z-index:35 }", body)
         self.assertIn(
             "batchMenuHtml(listing.batch,"
