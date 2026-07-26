@@ -1,5 +1,6 @@
 from io import BytesIO
 from argparse import Namespace
+from concurrent.futures import CancelledError
 from contextlib import redirect_stdout
 from io import StringIO
 import json
@@ -15,8 +16,10 @@ from unittest.mock import Mock
 
 from sigvue.core.workspace import (
     Analysis,
+    DataResource,
     DirectorySource,
     Presentation,
+    Source,
     Workspace,
 )
 from sigvue import (
@@ -434,6 +437,17 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("notificationToasts.append(toast)", body)
         self.assertIn("setTimeout(()=>toast.remove(),3000)", body)
         self.assertIn("function monitorBatchJob", body)
+        self.assertIn("function batchProgressHtml", body)
+        self.assertIn("data-cancel-batch", body)
+        self.assertIn("notification-progress-success", body)
+        self.assertIn("notification-progress-failed", body)
+        self.assertIn("Copy folder", body)
+        self.assertIn(".batch-menu[open] { z-index:35 }", body)
+        self.assertIn(
+            "batchMenuHtml(listing.batch,"
+            "`/workspaces/${encodeURIComponent(id)}/batch`,false)",
+            body,
+        )
         self.assertIn("function syncBatchNotifications", body)
         self.assertIn("syncBatchNotifications();boot()", body)
         self.assertIn("data-batch-status", body)
@@ -881,7 +895,14 @@ class WebAppTests(unittest.TestCase):
             ):
                 target = directory / "workspace.txt"
                 target.write_text(
-                    str(sum(sum(open_resource(resource)) for resource in resources)),
+                    str(
+                        sum(
+                            request.each(
+                                resources,
+                                lambda resource: sum(open_resource(resource)),
+                            )
+                        )
+                    ),
                     encoding="utf-8",
                 )
                 return BatchResult((target,), "Workspace compiled")
@@ -934,6 +955,18 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(
             "Workspace compiled", app.batch_status(workspace_job)["summary"]
         )
+        self.assertEqual(
+            {
+                "completed": 1,
+                "succeeded": 1,
+                "failed": 0,
+                "total": 1,
+            },
+            {
+                key: app.batch_status(workspace_job)["progress"][key]
+                for key in ("completed", "succeeded", "failed", "total")
+            },
+        )
         recent_jobs = app.batch_statuses()["jobs"]
         self.assertEqual([workspace_job, item_job], [job["id"] for job in recent_jobs])
         workspace_action = app.list_workspaces()[0]["batch"]["actions"][0]
@@ -961,6 +994,151 @@ class WebAppTests(unittest.TestCase):
             self.assertEqual(0, result)
             self.assertEqual("recording:10.0", (Path(output) / "item.txt").read_text())
             self.assertIn("saved:", stream.getvalue())
+
+    def test_workspace_batch_reports_progress_and_continues_after_item_error(self):
+        second_started = Event()
+        release_second = Event()
+
+        class MultipleSource(Source):
+            def discover(self):
+                return [
+                    DataResource(
+                        f"item-{index}",
+                        f"Item {index}",
+                        source=(float(index),),
+                    )
+                    for index in range(3)
+                ]
+
+            def open(self, resource):
+                return resource.source
+
+        class ProgressBatch(Batch):
+            workspace_actions = (CapabilityChoice("render", "Render workspace"),)
+
+            def __init__(self, output):
+                self.output = output
+
+            def workspace_destination(self, resources, request):
+                return BatchDestination(
+                    self.output,
+                    tuple(f"{resource.identifier}.txt" for resource in resources),
+                    "Workspace outputs are ready",
+                )
+
+            def run_workspace(
+                self,
+                resources,
+                open_resource,
+                request: BatchRequest,
+                directory,
+            ):
+                def render(resource):
+                    if resource.identifier == "item-1":
+                        second_started.set()
+                        if not release_second.wait(timeout=10):
+                            raise TimeoutError("Test batch was not released")
+                        raise RuntimeError("bad radar file")
+                    target = directory / f"{resource.identifier}.txt"
+                    target.write_text(
+                        str(sum(open_resource(resource))),
+                        encoding="utf-8",
+                    )
+                    return target
+
+                outputs = request.each(resources, render)
+                return BatchResult(outputs, f"Rendered {len(outputs)} outputs")
+
+        base = self.create_example_app().registry.get("test-workspace")
+        with TemporaryDirectory() as output:
+            workspace = Workspace._from_runtime_components(
+                identifier="progress-workspace",
+                name="Progress workspace",
+                description="Progress fixture",
+                source=MultipleSource(),
+                delivery=base._legacy_runtime.delivery,
+                analysis=base._legacy_runtime.analysis,
+                presentation=base._legacy_runtime.presentation,
+                batch=ProgressBatch(Path(output)),
+            )
+            app = SigvueApp()
+            app.register_workspace(workspace)
+
+            job_id = app.start_batch("progress-workspace", "render")
+            self.assertTrue(second_started.wait(timeout=2))
+            running = app.batch_status(job_id)
+            self.assertEqual("running", running["status"])
+            self.assertEqual(1, running["progress"]["completed"])
+            self.assertEqual(1, running["progress"]["succeeded"])
+            self.assertEqual(
+                ["ready", "running", "pending"],
+                [item["status"] for item in running["progress"]["items"]],
+            )
+
+            release_second.set()
+            app._batch_jobs[job_id].future.result(timeout=10)
+            completed = app.batch_status(job_id)
+            self.assertEqual("ready", completed["status"])
+            self.assertEqual(3, completed["progress"]["completed"])
+            self.assertEqual(2, completed["progress"]["succeeded"])
+            self.assertEqual(1, completed["progress"]["failed"])
+            self.assertEqual(
+                ["ready", "error", "ready"],
+                [item["status"] for item in completed["progress"]["items"]],
+            )
+            self.assertIn(
+                "RuntimeError: bad radar file",
+                completed["progress"]["items"][1]["log"],
+            )
+            self.assertIn("1 of 3 items failed", completed["summary"])
+            self.assertEqual(
+                {"item-0.txt", "item-2.txt"},
+                {file["name"] for file in completed["files"]},
+            )
+            self.assertEqual(str(Path(output).resolve()), completed["output_directory"])
+
+    def test_running_item_batch_can_be_cancelled_and_returns_to_idle(self):
+        started = Event()
+
+        class CancellableBatch(Batch):
+            item_actions = (CapabilityChoice("wait", "Wait"),)
+
+            def run_item(self, resource, source_data, request, directory):
+                started.set()
+                while not request.cancelled:
+                    request.raise_if_cancelled()
+                    Event().wait(0.01)
+                request.raise_if_cancelled()
+
+        base = self.create_example_app().registry.get("test-workspace")
+        workspace = Workspace._from_runtime_components(
+            identifier="cancel-workspace",
+            name="Cancel workspace",
+            description="Cancellation fixture",
+            source=base._legacy_runtime.source,
+            delivery=base._legacy_runtime.delivery,
+            analysis=base._legacy_runtime.analysis,
+            presentation=base._legacy_runtime.presentation,
+            batch=CancellableBatch(),
+        )
+        app = SigvueApp()
+        app.register_workspace(workspace)
+
+        job_id = app.start_batch(
+            "cancel-workspace",
+            "wait",
+            "recording",
+        )
+        self.assertTrue(started.wait(timeout=2))
+        cancelling = app.cancel_batch(job_id)
+        self.assertIn(cancelling["status"], {"cancelling", "cancelled"})
+        with self.assertRaises(CancelledError):
+            app._batch_jobs[job_id].future.result(timeout=10)
+        self.assertEqual("cancelled", app.batch_status(job_id)["status"])
+        action = app.browse_items("cancel-workspace", {})["items"][0]["batch"][
+            "actions"
+        ][0]
+        self.assertEqual("idle", action["status"])
 
     def test_running_batch_is_available_to_page_independent_notifications(self):
         started = Event()
@@ -1130,6 +1308,27 @@ class WebAppTests(unittest.TestCase):
         app.start_batch.assert_called_once_with("test", "report", "capture.dat")
         app.batch_status.assert_called_once_with("batch-1")
         handler._write_json.assert_called_once_with(202, started_status)
+
+    def test_batch_cancel_endpoint_requests_cooperative_cancellation(self):
+        app = Mock()
+        cancelled_status = {
+            "id": "batch-1",
+            "status": "cancelling",
+            "status_url": "/batches/batch-1",
+        }
+        app.cancel_batch.return_value = cancelled_status
+        handler_type = _make_handler(app)
+        handler = handler_type.__new__(handler_type)
+        payload = b"{}"
+        handler.path = "/batches/batch-1/cancel"
+        handler.headers = {"Content-Length": str(len(payload))}
+        handler.rfile = BytesIO(payload)
+        handler._write_json = Mock()
+
+        handler.do_POST()
+
+        app.cancel_batch.assert_called_once_with("batch-1")
+        handler._write_json.assert_called_once_with(200, cancelled_status)
 
     def test_batch_catalog_endpoint_restores_background_notifications(self):
         app = Mock()

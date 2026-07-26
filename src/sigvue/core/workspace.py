@@ -1918,7 +1918,14 @@ class Workspace:
         self._resource_cache: dict[str, DataResource] | None = None
         self._cache_lock = RLock()
 
-    def run_item_batch(self, item_id: str, action: str, directory: Path) -> BatchResult:
+    def run_item_batch(
+        self,
+        item_id: str,
+        action: str,
+        directory: Path,
+        *,
+        _cancelled_callback: Callable[[], bool] | None = None,
+    ) -> BatchResult:
         if self.batch is None:
             raise ValueError("This workspace does not provide batch support")
         if action not in {choice.value for choice in self.batch.item_actions}:
@@ -1930,7 +1937,10 @@ class Workspace:
         return self.batch.run_item(
             resource,
             self._open_resource(resource),
-            BatchRequest(action),
+            BatchRequest(
+                action,
+                _cancelled_callback=_cancelled_callback,
+            ),
             directory,
         )
 
@@ -1944,7 +1954,14 @@ class Workspace:
             raise KeyError(item_id)
         return self.batch.item_destination(resources[item_id], BatchRequest(action))
 
-    def run_workspace_batch(self, action: str, directory: Path) -> BatchResult:
+    def run_workspace_batch(
+        self,
+        action: str,
+        directory: Path,
+        *,
+        _progress_callback: Callable[[dict[str, object]], None] | None = None,
+        _cancelled_callback: Callable[[], bool] | None = None,
+    ) -> BatchResult:
         if self.batch is None:
             raise ValueError("This workspace does not provide batch support")
         if action not in {choice.value for choice in self.batch.workspace_actions}:
@@ -1953,7 +1970,11 @@ class Workspace:
         return self.batch.run_workspace(
             resources,
             self._open_resource,
-            BatchRequest(action),
+            BatchRequest(
+                action,
+                _progress_callback,
+                _cancelled_callback,
+            ),
             directory,
         )
 

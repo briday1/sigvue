@@ -17,7 +17,7 @@ if (
     raise SystemExit
 
 import argparse
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import CancelledError, Future, ThreadPoolExecutor
 from html import escape as html_escape
 import importlib
 import inspect
@@ -27,11 +27,12 @@ import shutil
 import sys
 from tempfile import mkdtemp
 import time
+from traceback import format_exception
 from uuid import NAMESPACE_URL, uuid4, uuid5
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from threading import RLock
+from threading import Event, RLock
 from typing import Any
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
@@ -79,7 +80,8 @@ _INDEX_HTML = r"""<!doctype html>
     .card:hover { border-color:#8eb9bf; box-shadow:0 4px 14px #17323c14 } .card:not(:has(.batch-menu)) { grid-template-columns:minmax(180px,1fr) 2fr auto } .card h2 { font-size:17px; margin:4px 0 } .card p { margin:0 } .card-tags { text-align:right; min-width:130px }
     .muted { color:var(--muted) } .tag { display:inline-block; border-radius:999px; padding:3px 9px; margin:2px 4px 2px 0; font-size:12px; background:#e8f3f3; color:#17626a }
     .batch-menu { position:relative; z-index:5 } .toolbar>.batch-menu { order:2 } .batch-menu summary { position:relative; display:grid; width:34px; height:34px; place-items:center; border:1px solid var(--line); border-radius:50%; color:var(--accent); background:var(--wash); cursor:pointer; list-style:none } .batch-menu summary::-webkit-details-marker { display:none } .batch-menu[open] summary { border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 14%,transparent) } .batch-play { margin-left:2px; font-size:15px; line-height:1 } .batch-menu-popover { position:absolute; z-index:30; top:40px; right:0; width:320px; padding:8px; border:1px solid var(--line); border-radius:8px; background:#fbfcfc; box-shadow:0 12px 28px #102f3a30 } html[data-theme="dark"] .batch-menu-popover { background:#193741 } .batch-action-row+.batch-action-row { border-top:1px solid var(--line) } .batch-action { display:grid; width:100%; grid-template-columns:1fr auto; gap:8px; padding:9px; border:0; border-radius:6px; color:var(--ink); background:transparent; text-align:left; cursor:pointer } .batch-action:hover { background:var(--wash) } .batch-artifacts { display:grid; gap:5px; padding:0 9px 8px; font-size:12px } .batch-artifact { display:flex; min-width:0; align-items:center; gap:6px } .batch-path { min-width:0; flex:1; overflow:hidden; color:var(--muted); text-overflow:ellipsis; white-space:nowrap } .batch-open { color:var(--accent) } .copy-path { flex:none; padding:3px 7px; border:1px solid var(--line); border-radius:5px; color:var(--ink); background:var(--wash); font:600 11px system-ui,sans-serif; cursor:pointer } .copy-path:hover { border-color:var(--accent); color:var(--accent) } .batch-state { color:var(--muted); font-size:12px } .batch-state.running,.batch-state.pending { color:#b7791f } .batch-state.ready { color:#16803c } .batch-state.error { color:#b42318 } .item-browser th.tags-column { width:18% } .item-browser th.batch-cell,.item-browser td.batch-cell { width:52px; padding-right:8px!important; text-align:right }
-    .notification-center { position:relative } .notification-center>summary { display:flex; min-width:34px; min-height:30px; align-items:center; justify-content:center; gap:5px; padding:4px 7px; border:1px solid #b9d0d54d; border-radius:6px; color:#e7f1f3; background:#193741; cursor:pointer; list-style:none } .notification-center>summary::-webkit-details-marker { display:none } .notification-center>summary svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round } .notification-center[open]>summary { border-color:#8ed0d7 } .notification-badge { display:grid; min-width:18px; height:18px; padding:0 5px; place-items:center; border-radius:999px; color:#102f3a; background:#8ed0d7; font-size:10px } .notification-popover { position:absolute; z-index:80; top:38px; right:0; width:min(440px,calc(100vw - 24px)); overflow:hidden; border:1px solid var(--line); border-radius:9px; color:var(--ink); background:#fbfcfc; box-shadow:0 14px 32px #071b2240 } html[data-theme="dark"] .notification-popover { background:#193741 } .notification-head { display:flex; align-items:center; justify-content:space-between; padding:11px 13px; border-bottom:1px solid var(--line) } .notification-head strong { font-size:13px } #notification-list { max-height:min(330px,calc(100vh - 120px)); overflow-y:auto; overscroll-behavior:contain } .notification-empty { margin:0; padding:18px; color:var(--muted); font-size:12px; text-align:center } .notification-item { padding:12px 13px; border-bottom:1px solid var(--line) } .notification-item:last-child { border-bottom:0 } .notification-title { display:flex; align-items:start; gap:8px } .notification-title strong { flex:1; color:var(--ink); font-size:13px } .notification-status { flex:none; font-size:11px; font-weight:700; text-transform:uppercase } .notification-status.pending,.notification-status.running { color:#b7791f } .notification-status.ready { color:#16803c } .notification-status.error { color:#b42318 } .notification-dismiss { flex:none; padding:0 4px; border:0; color:var(--muted); background:transparent; font-size:18px; line-height:18px; cursor:pointer } .notification-summary,.notification-context { margin:4px 0 0; color:var(--muted); font-size:12px } .notification-context { font-size:11px } .notification-files { display:grid; gap:6px; margin-top:9px }
+    .notification-center { position:relative } .notification-center>summary { display:flex; min-width:34px; min-height:30px; align-items:center; justify-content:center; gap:5px; padding:4px 7px; border:1px solid #b9d0d54d; border-radius:6px; color:#e7f1f3; background:#193741; cursor:pointer; list-style:none } .notification-center>summary::-webkit-details-marker { display:none } .notification-center>summary svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round } .notification-center[open]>summary { border-color:#8ed0d7 } .notification-badge { display:grid; min-width:18px; height:18px; padding:0 5px; place-items:center; border-radius:999px; color:#102f3a; background:#8ed0d7; font-size:10px } .notification-popover { position:absolute; z-index:80; top:38px; right:0; width:min(440px,calc(100vw - 24px)); overflow:hidden; border:1px solid var(--line); border-radius:9px; color:var(--ink); background:#fbfcfc; box-shadow:0 14px 32px #071b2240 } html[data-theme="dark"] .notification-popover { background:#193741 } .notification-head { display:flex; align-items:center; justify-content:space-between; padding:11px 13px; border-bottom:1px solid var(--line) } .notification-head strong { font-size:13px } #notification-list { max-height:min(330px,calc(100vh - 120px)); overflow-y:auto; overscroll-behavior:contain } .notification-empty { margin:0; padding:18px; color:var(--muted); font-size:12px; text-align:center } .notification-item { padding:12px 13px; border-bottom:1px solid var(--line) } .notification-item:last-child { border-bottom:0 } .notification-title { display:flex; align-items:start; gap:8px } .notification-title strong { flex:1; color:var(--ink); font-size:13px } .notification-status { flex:none; font-size:11px; font-weight:700; text-transform:uppercase } .notification-status.pending,.notification-status.running,.notification-status.cancelling { color:#b7791f } .notification-status.ready { color:#16803c } .notification-status.error { color:#b42318 } .notification-status.cancelled { color:var(--muted) } .notification-dismiss { flex:none; padding:0 4px; border:0; color:var(--muted); background:transparent; font-size:18px; line-height:18px; cursor:pointer } .notification-summary,.notification-context { margin:4px 0 0; color:var(--muted); font-size:12px } .notification-context { font-size:11px } .notification-files { display:grid; gap:6px; margin-top:9px }
+    .notification-progress { margin-top:9px } .notification-progress-errors { display:grid; gap:4px; max-height:112px; overflow-y:auto; padding-right:3px } .notification-progress-item { padding:4px 6px; border-radius:5px; color:#b42318; background:color-mix(in srgb,#b42318 7%,var(--wash)); font-size:11px } .notification-progress-row { display:flex; min-width:0; align-items:center; gap:7px } .notification-progress-state { width:42px; flex:none; color:#b42318; font-size:10px; font-weight:750; text-transform:uppercase } .notification-progress-name { min-width:0; overflow:hidden; flex:1; text-overflow:ellipsis; white-space:nowrap } .notification-progress-log { margin:4px 0 0 49px; color:#b42318 } .notification-progress-log summary { cursor:pointer; font-size:10px } .notification-progress-log pre { max-height:130px; margin:5px 0 0; overflow:auto; padding:6px; border:1px solid color-mix(in srgb,#b42318 30%,var(--line)); border-radius:4px; color:var(--ink); background:var(--wash); font:10px/1.35 ui-monospace,monospace; white-space:pre-wrap; user-select:text } .notification-progress-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:7px; color:var(--muted); font-size:10px } .notification-cancel { min-height:25px; padding:3px 8px; border:1px solid var(--line); border-radius:5px; color:#b42318; background:var(--wash); font:650 10px system-ui,sans-serif; cursor:pointer } .notification-cancel:disabled { color:var(--muted); cursor:wait } .notification-progress-track { display:flex; height:5px; margin-top:5px; overflow:hidden; border-radius:999px; background:var(--line) } .notification-progress-success { height:100%; background:#20a957; transition:width .2s ease } .notification-progress-failed { height:100%; background:#d13c32; transition:width .2s ease }
     .notification-toasts { position:fixed; z-index:90; top:60px; right:12px; display:flex; width:min(360px,calc(100vw - 24px)); flex-direction:column; gap:8px; pointer-events:none } .notification-toast { padding:10px 12px; border:1px solid color-mix(in srgb,#16803c 45%,var(--line)); border-radius:8px; color:var(--ink); background:color-mix(in srgb,#16803c 8%,#fbfcfc); box-shadow:0 10px 26px #071b2238; animation:notification-toast-life 3s ease forwards } .notification-toast.error { border-color:color-mix(in srgb,#b42318 45%,var(--line)); background:color-mix(in srgb,#b42318 8%,#fbfcfc) } html[data-theme="dark"] .notification-toast { background:color-mix(in srgb,#16803c 12%,#193741) } html[data-theme="dark"] .notification-toast.error { background:color-mix(in srgb,#b42318 12%,#193741) } .notification-toast strong { display:block; font-size:13px } .notification-toast span { display:block; margin-top:2px; color:var(--muted); font-size:12px } @keyframes notification-toast-life { 0% { opacity:0; transform:translateY(-6px) } 8%,78% { opacity:1; transform:translateY(0) } 100% { opacity:0; transform:translateY(-4px) } }
     .data-toolbar { position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:10px; min-height:46px; margin:0 -12px 4px; padding:6px 16px; background:#fbfcfcf2; border-bottom:1px solid var(--line); backdrop-filter:blur(8px) } .data-toolbar-spacer { flex:1 }
     .playback-bar { display:flex; align-items:center; gap:10px; flex:1; min-width:240px } .playback-bar .primary { padding:6px 10px; min-width:72px } .playback-track { position:relative; display:flex; flex:1; align-items:center; min-width:80px } .playback-track input[type=range] { position:relative; z-index:2; width:100%; min-height:0; padding:0 } .annotation-markers { position:absolute; z-index:0; inset:0 8px; pointer-events:none } .annotation-marker { position:absolute; top:0; bottom:0; width:1px; margin:0; padding:0; border:0; border-radius:0; background:var(--annotation-marker-color,#ffffff); box-shadow:none; opacity:.35; pointer-events:none } .annotation-marker.clustered { width:1px; margin:0; border:0; opacity:.55 } .playback-bar #current-time { flex:none; width:98px; min-height:30px; padding:4px 7px; text-align:right; font:12px ui-monospace,monospace } .playback-bar #counter { width:82px; color:var(--muted); font:12px ui-monospace,monospace; white-space:nowrap }
@@ -98,7 +100,10 @@ _INDEX_HTML = r"""<!doctype html>
     .layout-column > .view-switcher { flex:1 }
     .live-toggle { border:1px solid var(--line); border-radius:6px; padding:5px 9px; background:white; color:var(--muted); font:600 12px inherit; cursor:pointer } .live-toggle.active { border-color:#b42318; color:#b42318; background:#fff1f0 } html[data-theme="dark"] .live-toggle { background:#193741; color:var(--muted) } html[data-theme="dark"] .live-toggle.active { border-color:#ff7b72; color:#ff9b94; background:#4a2020 }
     .item-browser:has(.batch-menu) { overflow:visible }
-    .batch-menu.pending summary,.batch-menu.running summary { color:#d69e2e; border-color:#d69e2e; background:color-mix(in srgb,#d69e2e 10%,var(--wash)) }
+    .batch-menu[open] { z-index:35 }
+    .batch-state.cancelling { color:#b7791f }
+    .notification-job-log { margin-left:0 }
+    .batch-menu.pending summary,.batch-menu.running summary,.batch-menu.cancelling summary { color:#d69e2e; border-color:#d69e2e; background:color-mix(in srgb,#d69e2e 10%,var(--wash)) }
     .batch-menu.ready summary { color:#16803c; border-color:#20a957; background:color-mix(in srgb,#20a957 10%,var(--wash)) }
     .batch-menu.error summary { color:#b42318; border-color:#d13c32; background:color-mix(in srgb,#d13c32 10%,var(--wash)) }
     .workspace-add-toggle { min-height:30px; padding:4px 10px; border:1px solid #b9d0d54d; border-radius:6px; color:#e7f1f3; background:#193741; font:600 12px system-ui,sans-serif; cursor:pointer } .workspace-add-toggle:hover { border-color:#8ed0d7; background:#214752 } .workspace-wizard { width:min(720px,calc(100vw - 28px)); max-height:calc(100vh - 36px); padding:0; overflow:hidden; border:1px solid var(--line); border-radius:12px; color:var(--ink); background:#fbfcfc; box-shadow:0 24px 70px #071b2260 } .workspace-wizard::backdrop { background:#071b2273; backdrop-filter:blur(3px) } html[data-theme="dark"] .workspace-wizard { background:#10252d } .workspace-wizard-form { display:flex; max-height:calc(100vh - 38px); flex-direction:column } .workspace-wizard-head { display:flex; align-items:start; gap:18px; padding:20px 22px 16px; border-bottom:1px solid var(--line) } .workspace-wizard-head>div { flex:1 } .workspace-wizard-head h1 { margin:0; font-size:22px } .workspace-wizard-head p { margin:4px 0 0; color:var(--muted); font-size:13px } .workspace-wizard-close { padding:0 5px; border:0; color:var(--muted); background:transparent; font-size:24px; line-height:1; cursor:pointer } .workspace-wizard-body { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:13px 14px; padding:18px 22px; overflow-y:auto } .workspace-wizard-body label,.workspace-wizard-field { display:flex; min-width:0; flex-direction:column; gap:4px; color:var(--muted); font-size:11px; font-weight:600 } .workspace-wizard-body input,.workspace-wizard-body select,.workspace-wizard-body textarea { width:100%; min-height:38px; padding:7px 9px; color:var(--ink); background:white; border:1px solid var(--line); border-radius:6px; font:13px system-ui,sans-serif } html[data-theme="dark"] .workspace-wizard-body input,html[data-theme="dark"] .workspace-wizard-body select,html[data-theme="dark"] .workspace-wizard-body textarea { background:#193741 } .workspace-wizard-wide { grid-column:1/-1 } .workspace-path-field { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:7px } .workspace-path-field button,.workspace-discover { min-height:38px; padding:6px 10px; border:1px solid var(--line); border-radius:6px; color:var(--ink); background:var(--wash); font:600 12px system-ui,sans-serif; cursor:pointer } .workspace-source-field { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:7px } .workspace-config-details { grid-column:1/-1; border:1px solid var(--line); border-radius:7px; background:var(--wash) } .workspace-config-details summary { padding:9px 11px; color:var(--muted); font-size:12px; font-weight:650; cursor:pointer } .workspace-config-details label { padding:0 11px 11px } .workspace-config-details textarea { min-height:84px; resize:vertical; font:12px ui-monospace,monospace } .workspace-persist { grid-column:1/-1; display:grid!important; grid-template-columns:auto 1fr; align-items:center; gap:0 9px!important; padding:10px 11px; border:1px solid var(--line); border-radius:7px; background:var(--wash) } .workspace-persist input { width:17px; min-height:17px; grid-row:1/3; margin:0 } .workspace-persist strong { color:var(--ink); font-size:12px } .workspace-persist span { font-weight:400 } .workspace-wizard-error { grid-column:1/-1; margin:0; padding:9px 11px; border:1px solid #d13c32; border-radius:6px; color:#8c2e2e; background:#fff7f7; font-size:12px } html[data-theme="dark"] .workspace-wizard-error { color:#ff9b94; background:#4a2020 } .workspace-wizard-actions { display:flex; justify-content:flex-end; gap:8px; padding:13px 22px; border-top:1px solid var(--line); background:var(--wash) } .workspace-wizard-actions button { min-height:36px; padding:7px 13px; border:1px solid var(--line); border-radius:6px; color:var(--ink); background:white; font:600 13px system-ui,sans-serif; cursor:pointer } .workspace-wizard-actions .primary { color:white; background:var(--accent); border-color:var(--accent) } .workspace-wizard-actions button:disabled { opacity:.55; cursor:wait } .workspace-empty-action { margin-top:12px }
@@ -369,26 +374,30 @@ function sidebarHtml(workspaceName,page){const details=page.controls.filter(cont
 function updateStatistics(statistics,runtimeStatistics){const viewTarget=document.querySelector('#view-stats'),runtimeTarget=document.querySelector('#runtime-stats');if(viewTarget)viewTarget.innerHTML=statisticsRows(statistics);if(runtimeTarget)runtimeTarget.innerHTML=runtimeRows(runtimeStatistics)}
 function bindSidebar(){const sidebar=document.querySelector('[data-workspace-sidebar]'),backdrop=document.querySelector('[data-sidebar-backdrop]'),toggle=document.querySelector('[data-sidebar-toggle]');if(!sidebar||!backdrop||!toggle)return;const setOpen=open=>{sidebar.classList.toggle('open',open);backdrop.classList.toggle('open',open);toggle.setAttribute('aria-expanded',String(open))};toggle.onclick=()=>setOpen(!sidebar.classList.contains('open'));backdrop.onclick=()=>setOpen(false);sidebar.querySelector('[data-sidebar-close]').onclick=()=>setOpen(false)}
 const batchState=action=>action?.status||'idle';
-const batchStatusGlyph=action=>({running:'●',pending:'●',ready:'✓',error:'!'})[batchState(action)]||'';
+const batchStatusGlyph=action=>({running:'●',pending:'●',cancelling:'●',ready:'✓',error:'!'})[batchState(action)]||'';
 const batchActionStateLabel=action=>batchState(action)==='ready'?'↻ rerun':`${batchStatusGlyph(action)} ${batchState(action)}`;
 const batchLauncherHtml=action=>`<span class="batch-play" aria-hidden="true">▶</span>`;
 function batchArtifactHtml(file){return `<div class="batch-artifact"><span class="batch-path" title="${esc(file.path)}">${esc(file.path)}</span>${file.open_url?`<a class="batch-open" href="${esc(file.open_url)}" target="_blank" rel="noopener">Open</a>`:''}<button class="copy-path" type="button" data-copy-path="${esc(file.path)}">Copy path</button></div>`}
-function batchMenuHtml(batch,url){if(!batch?.enabled)return '';const summary=batch.actions.find(action=>['running','pending'].includes(batchState(action)))||batch.actions.find(action=>batchState(action)==='ready')||batch.actions.find(action=>batchState(action)==='error')||batch.actions[0];return `<details class="batch-menu ${esc(batchState(summary))}" data-batch-menu data-batch-url="${esc(url)}"><summary title="Run batch action" aria-label="Run batch action">${batchLauncherHtml(summary)}</summary><div class="batch-menu-popover">${batch.actions.map(action=>`<div class="batch-action-row"><button class="batch-action" type="button" title="${batchState(action)==='ready'?'Regenerate existing result':'Run batch action'}" data-batch-action="${esc(action.value)}" data-batch-status="${esc(batchState(action))}"><span>${esc(action.label)}</span><span class="batch-state ${esc(batchState(action))}">${esc(batchActionStateLabel(action))}</span></button>${action.files?.length?`<div class="batch-artifacts">${action.files.map(batchArtifactHtml).join('')}</div>`:''}</div>`).join('')}</div></details>`}
+function batchMenuHtml(batch,url,showArtifacts=true){if(!batch?.enabled)return '';const summary=batch.actions.find(action=>['running','pending','cancelling'].includes(batchState(action)))||batch.actions.find(action=>batchState(action)==='ready')||batch.actions.find(action=>batchState(action)==='error')||batch.actions[0];return `<details class="batch-menu ${esc(batchState(summary))}" data-batch-menu data-batch-url="${esc(url)}"><summary title="Run batch action" aria-label="Run batch action">${batchLauncherHtml(summary)}</summary><div class="batch-menu-popover">${batch.actions.map(action=>`<div class="batch-action-row"><button class="batch-action" type="button" title="${batchState(action)==='ready'?'Regenerate existing result':'Run batch action'}" data-batch-action="${esc(action.value)}" data-batch-status="${esc(batchState(action))}"><span>${esc(action.label)}</span><span class="batch-state ${esc(batchState(action))}">${esc(batchActionStateLabel(action))}</span></button>${showArtifacts&&action.files?.length?`<div class="batch-artifacts">${action.files.map(batchArtifactHtml).join('')}</div>`:''}</div>`).join('')}</div></details>`}
 async function copyText(value){if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(value);return}const input=document.createElement('textarea');input.value=value;input.style.position='fixed';input.style.opacity='0';document.body.append(input);input.select();const copied=document.execCommand('copy');input.remove();if(!copied)throw new Error('Clipboard access is unavailable')}
 function bindCopyPaths(root=document){root.querySelectorAll('[data-copy-path]').forEach(button=>button.onclick=async event=>{event.preventDefault();event.stopPropagation();const label=button.textContent;try{await copyText(button.dataset.copyPath);button.textContent='Copied'}catch(error){button.textContent='Copy failed'}finally{setTimeout(()=>button.textContent=label,1200)}})}
 const notifications=[],batchPollers=new Map(),batchDismissedKey='sigvue-dismissed-batches',batchAlertedKey='sigvue-alerted-batches';
 function storedBatchIds(key){try{return new Set(JSON.parse(sessionStorage.getItem(key)||'[]'))}catch(error){return new Set()}}
 const dismissedBatchIds=storedBatchIds(batchDismissedKey),alertedBatchIds=storedBatchIds(batchAlertedKey);
 function storeBatchIds(key,values){try{sessionStorage.setItem(key,JSON.stringify([...values]))}catch(error){}}
-function batchNotificationTitle(status){const label=status.action_label||'Batch action';return `${label} ${{pending:'queued',running:'running',ready:'complete',error:'failed'}[status.status]||status.status}`}
+const activeBatchStatuses=new Set(['pending','running','cancelling']);
+function batchNotificationTitle(status){const label=status.action_label||'Batch action';return `${label} ${{pending:'queued',running:'running',cancelling:'cancelling',cancelled:'cancelled',ready:'complete',error:'failed'}[status.status]||status.status}`}
 function batchNotificationContext(status){return [status.workspace_name,status.item_title].filter(Boolean).join(' · ')}
-function renderNotifications(){notificationBadge.hidden=!notifications.length;notificationBadge.textContent=String(notifications.length);notificationList.innerHTML=notifications.length?notifications.map(notification=>{const context=batchNotificationContext(notification),message=notification.summary||notification.detail||(!context?'Working in the background.':'');return `<article class="notification-item" data-notification="${esc(notification.notificationId)}"><div class="notification-title"><span class="notification-status ${esc(notification.status)}">${esc(notification.status)}</span><strong>${esc(batchNotificationTitle(notification))}</strong><button class="notification-dismiss" type="button" data-dismiss-notification="${esc(notification.notificationId)}" aria-label="Dismiss">×</button></div>${message?`<p class="notification-summary">${esc(message)}</p>`:''}${context?`<p class="notification-context">${esc(context)}</p>`:''}${notification.files?.length?`<div class="notification-files">${notification.files.map(batchArtifactHtml).join('')}</div>`:''}</article>`}).join(''):'<p class="notification-empty">No notifications yet.</p>';bindCopyPaths(notificationList);notificationList.querySelectorAll('[data-dismiss-notification]').forEach(button=>button.onclick=event=>{event.preventDefault();event.stopPropagation();const index=notifications.findIndex(item=>item.notificationId===button.dataset.dismissNotification);if(index>=0){const [removed]=notifications.splice(index,1);if(removed.id){dismissedBatchIds.add(removed.id);storeBatchIds(batchDismissedKey,dismissedBatchIds)}}renderNotifications()})}
+function batchProgressHtml(notification){const progress=notification.progress,total=Number(progress?.total||0);if(total<=0)return '';const completed=Math.max(0,Math.min(total,Number(progress.completed||0))),succeeded=Math.max(0,Math.min(total,Number(progress.succeeded||0))),failed=Math.max(0,Math.min(total-succeeded,Number(progress.failed||0))),successPercent=100*succeeded/total,failedPercent=100*failed/total,errors=(progress.items||[]).filter(item=>item.status==='error').map(item=>{const detail=item.detail||'',log=item.log||'';return `<div class="notification-progress-item error"><div class="notification-progress-row"><span class="notification-progress-state">Error</span><span class="notification-progress-name" title="${esc(item.title||item.id)}">${esc(item.title||item.id)}</span></div>${detail||log?`<details class="notification-progress-log"><summary>${esc(detail||'View error log')}</summary>${log?`<pre>${esc(log)}</pre>`:''}</details>`:''}</div>`}).join(''),active=activeBatchStatuses.has(notification.status);return `<div class="notification-progress">${errors?`<div class="notification-progress-errors">${errors}</div>`:''}<div class="notification-progress-head"><span>${completed} of ${total} processed${failed?` · ${failed} failed`:''}</span>${active?`<button class="notification-cancel" type="button" data-cancel-batch="${esc(notification.id)}" ${notification.status==='cancelling'?'disabled':''}>${notification.status==='cancelling'?'Cancelling…':'Cancel'}</button>`:''}</div><div class="notification-progress-track" role="progressbar" aria-label="Batch progress" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${completed}"><div class="notification-progress-success" style="width:${successPercent}%"></div><div class="notification-progress-failed" style="width:${failedPercent}%"></div></div></div>`}
+function batchErrorHtml(notification){if(notification.status!=='error'||!notification.log)return '';return `<details class="notification-progress-log notification-job-log"><summary>View error log</summary><pre>${esc(notification.log)}</pre></details>`}
+function batchOutputHtml(notification){if(!notification.files?.length)return '';if(notification.item_id)return `<div class="notification-files">${notification.files.map(batchArtifactHtml).join('')}</div>`;return `<div class="notification-files"><div class="batch-artifact"><span class="batch-path" title="${esc(notification.output_directory||'')}">${notification.files.length} output${notification.files.length===1?'':'s'}${notification.output_directory?` · ${esc(notification.output_directory)}`:''}</span>${notification.output_directory?`<button class="copy-path" type="button" data-copy-path="${esc(notification.output_directory)}">Copy folder</button>`:''}</div></div>`}
+function renderNotifications(){notificationBadge.hidden=!notifications.length;notificationBadge.textContent=String(notifications.length);notificationList.innerHTML=notifications.length?notifications.map(notification=>{const context=batchNotificationContext(notification),message=notification.summary||notification.detail||(!context?'Working in the background.':'');return `<article class="notification-item" data-notification="${esc(notification.notificationId)}"><div class="notification-title"><span class="notification-status ${esc(notification.status)}">${esc(notification.status)}</span><strong>${esc(batchNotificationTitle(notification))}</strong><button class="notification-dismiss" type="button" data-dismiss-notification="${esc(notification.notificationId)}" aria-label="Dismiss">×</button></div>${message?`<p class="notification-summary">${esc(message)}</p>`:''}${context?`<p class="notification-context">${esc(context)}</p>`:''}${batchErrorHtml(notification)}${batchOutputHtml(notification)}${batchProgressHtml(notification)}</article>`}).join(''):'<p class="notification-empty">No notifications yet.</p>';bindCopyPaths(notificationList);notificationList.querySelectorAll('[data-dismiss-notification]').forEach(button=>button.onclick=event=>{event.preventDefault();event.stopPropagation();const index=notifications.findIndex(item=>item.notificationId===button.dataset.dismissNotification);if(index>=0){const [removed]=notifications.splice(index,1);if(removed.id){dismissedBatchIds.add(removed.id);storeBatchIds(batchDismissedKey,dismissedBatchIds)}}renderNotifications()});notificationList.querySelectorAll('[data-cancel-batch]').forEach(button=>button.onclick=async event=>{event.preventDefault();event.stopPropagation();button.disabled=true;button.textContent='Cancelling…';try{monitorBatchJob(await apiPost(`/batches/${encodeURIComponent(button.dataset.cancelBatch)}/cancel`,{}))}catch(error){button.disabled=false;button.textContent='Cancel';alert(`Unable to cancel batch: ${error.message}`)}})}
 function showBatchToast(status){if(!status.id||alertedBatchIds.has(status.id)||dismissedBatchIds.has(status.id))return;alertedBatchIds.add(status.id);storeBatchIds(batchAlertedKey,alertedBatchIds);const toast=document.createElement('div');toast.className=`notification-toast ${status.status==='error'?'error':''}`;toast.innerHTML=`<strong>${esc(batchNotificationTitle(status))}</strong><span>${esc(status.summary||status.detail||batchNotificationContext(status))}</span>`;notificationToasts.append(toast);setTimeout(()=>toast.remove(),3000)}
 function batchNotificationIdentity(status){return `${status.workspace_id||''}\u0000${status.item_id||''}\u0000${status.action||''}`}
 function upsertBatchNotification(status){if(!status?.id||dismissedBatchIds.has(status.id))return;const notificationId=`batch-${status.id}`,identity=batchNotificationIdentity(status),index=notifications.findIndex(item=>item.notificationId===notificationId),replaced=index<0?notifications.findIndex(item=>batchNotificationIdentity(item)===identity):-1;if(index>=0){const previous=notifications[index],entry={...previous,...status,notificationId};notifications[index]=entry;if(previous.status!==entry.status){notifications.splice(index,1);notifications.unshift(entry)}}else{if(replaced>=0)notifications.splice(replaced,1);notifications.unshift({...status,notificationId})}renderNotifications()}
 function batchStatusUrl(status){return status.item_id?`/workspaces/${encodeURIComponent(status.workspace_id)}/items/${encodeURIComponent(status.item_id)}/batch`:`/workspaces/${encodeURIComponent(status.workspace_id)}/batch`}
-function applyVisibleBatchStatus(status){if(!status.workspace_id)return;const url=batchStatusUrl(status);document.querySelectorAll('[data-batch-menu]').forEach(menu=>{if(menu.dataset.batchUrl!==url)return;const button=[...menu.querySelectorAll('[data-batch-action]')].find(candidate=>candidate.dataset.batchAction===status.action);if(!button)return;button.dataset.batchStatus=status.status;button.title=status.status==='ready'?'Regenerate existing result':'Run batch action';const state=button.querySelector('.batch-state');state.className=`batch-state ${status.status}`;state.textContent=batchActionStateLabel(status);const buttons=[...menu.querySelectorAll('[data-batch-action]')],summary=buttons.find(candidate=>['running','pending'].includes(candidate.dataset.batchStatus))||buttons.find(candidate=>candidate.dataset.batchStatus==='ready')||buttons.find(candidate=>candidate.dataset.batchStatus==='error')||buttons[0],menuStatus=summary?.dataset.batchStatus||'idle';menu.className=`batch-menu ${menuStatus}`;menu.querySelector('summary').innerHTML=batchLauncherHtml({status:menuStatus})})}
-function monitorBatchJob(started){if(!started?.id)return;upsertBatchNotification(started);applyVisibleBatchStatus(started);if(!['pending','running'].includes(started.status)){showBatchToast(started);return}if(batchPollers.has(started.id))return;const poll=async()=>{try{const status=await api(started.status_url||`/batches/${encodeURIComponent(started.id)}`);upsertBatchNotification(status);applyVisibleBatchStatus(status);if(['pending','running'].includes(status.status)){batchPollers.set(status.id,setTimeout(poll,500));return}batchPollers.delete(status.id);showBatchToast(status)}catch(error){batchPollers.delete(started.id);const failed={...started,status:'error',detail:error.message};upsertBatchNotification(failed);applyVisibleBatchStatus(failed);showBatchToast(failed)}};batchPollers.set(started.id,setTimeout(poll,500))}
+function applyVisibleBatchStatus(status){if(!status.workspace_id)return;const url=batchStatusUrl(status);document.querySelectorAll('[data-batch-menu]').forEach(menu=>{if(menu.dataset.batchUrl!==url)return;const button=[...menu.querySelectorAll('[data-batch-action]')].find(candidate=>candidate.dataset.batchAction===status.action);if(!button)return;const visibleStatus=status.status==='cancelled'?'idle':status.status;button.dataset.batchStatus=visibleStatus;button.title=visibleStatus==='ready'?'Regenerate existing result':'Run batch action';const state=button.querySelector('.batch-state');state.className=`batch-state ${visibleStatus}`;state.textContent=batchActionStateLabel({status:visibleStatus});const buttons=[...menu.querySelectorAll('[data-batch-action]')],summary=buttons.find(candidate=>['running','pending','cancelling'].includes(candidate.dataset.batchStatus))||buttons.find(candidate=>candidate.dataset.batchStatus==='ready')||buttons.find(candidate=>candidate.dataset.batchStatus==='error')||buttons[0],menuStatus=summary?.dataset.batchStatus||'idle';menu.className=`batch-menu ${menuStatus}`;menu.querySelector('summary').innerHTML=batchLauncherHtml({status:menuStatus})})}
+function monitorBatchJob(started){if(!started?.id)return;upsertBatchNotification(started);applyVisibleBatchStatus(started);if(!activeBatchStatuses.has(started.status)){showBatchToast(started);return}if(batchPollers.has(started.id))return;const poll=async()=>{try{const status=await api(started.status_url||`/batches/${encodeURIComponent(started.id)}`);upsertBatchNotification(status);applyVisibleBatchStatus(status);if(activeBatchStatuses.has(status.status)){batchPollers.set(status.id,setTimeout(poll,500));return}batchPollers.delete(status.id);showBatchToast(status)}catch(error){batchPollers.delete(started.id);const failed={...started,status:'error',detail:error.message};upsertBatchNotification(failed);applyVisibleBatchStatus(failed);showBatchToast(failed)}};batchPollers.set(started.id,setTimeout(poll,500))}
 async function syncBatchNotifications(){try{const response=await api('/batches');for(const status of [...(response.jobs||[])].reverse())monitorBatchJob(status)}catch(error){console.error('Unable to restore batch notifications',error)}}
 function closeBatchMenus(except=null){document.querySelectorAll('[data-batch-menu][open]').forEach(menu=>{if(menu!==except)menu.open=false})}
 headerNotifications.onclick=event=>{event.stopPropagation();closeBatchMenus()};
@@ -404,7 +413,7 @@ async function catalog(navigate=true){
     app.innerHTML=`<h1>Workspaces</h1><p class="lead">Choose a workspace, or run one of its batch actions in the background.</p><div class="toolbar"><input id="workspace-search" type="search" placeholder="Search workspaces…" aria-label="Search workspaces"></div><div class="list" id="workspaces"></div>`;
     const draw=()=>{
       const q=document.querySelector('#workspace-search').value.toLowerCase().trim(),shown=workspaces.filter(w=>!q||`${w.name} ${w.description||''} ${w.category||''} ${(w.tags||[]).join(' ')} ${w.id}`.toLowerCase().includes(q)),empty=!workspaces.length&&!q?'<div class="empty">No workspaces are open.<br><button class="primary workspace-empty-action" id="workspace-empty-add" type="button">Add a workspace</button></div>':'<div class="empty">No matching workspaces.</div>';
-      document.querySelector('#workspaces').innerHTML=shown.length?shown.map(w=>`<article class="card" data-id="${esc(w.id)}"><div><span class="tag">${esc(w.category||'workspace')}</span><h2>${esc(w.name)}</h2></div><p class="muted">${esc(w.description)}</p><div class="card-tags">${w.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>${batchMenuHtml(w.batch,`/workspaces/${encodeURIComponent(w.id)}/batch`)}</article>`).join(''):empty;
+      document.querySelector('#workspaces').innerHTML=shown.length?shown.map(w=>`<article class="card" data-id="${esc(w.id)}"><div><span class="tag">${esc(w.category||'workspace')}</span><h2>${esc(w.name)}</h2></div><p class="muted">${esc(w.description)}</p><div class="card-tags">${w.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>${batchMenuHtml(w.batch,`/workspaces/${encodeURIComponent(w.id)}/batch`,false)}</article>`).join(''):empty;
       document.querySelectorAll('[data-id]').forEach(x=>x.onclick=()=>items(x.dataset.id,workspaces.find(w=>w.id===x.dataset.id).name));document.querySelector('#workspace-empty-add')?.addEventListener('click',openWorkspaceWizard);bindBatchMenus()
     };
     draw();document.querySelector('#workspace-search').oninput=draw
@@ -413,7 +422,7 @@ async function catalog(navigate=true){
 function siDiscoveryValue(value,unit){const number=Number(value);if(!Number.isFinite(number))return String(value);const magnitude=Math.abs(number),prefixes=[[1e12,'T'],[1e9,'G'],[1e6,'M'],[1e3,'k'],[1,''],[1e-3,'m'],[1e-6,'µ'],[1e-9,'n']];const [scale,prefix]=prefixes.find(([scale])=>magnitude>=scale)||[1,''];return `${Number((number/scale).toPrecision(4))} ${prefix}${unit||''}`.trim()}
 function discoveryValue(value,column){if(value==null||value==='')return '<span class="discovery-null">—</span>';if(column.kind==='datetime'){const date=new Date(value);return esc(Number.isNaN(date.valueOf())?value:date.toLocaleString())}if(column.kind==='si')return esc(siDiscoveryValue(value,column.unit));return esc(value)}
 function discoverySortValue(item,key,kind){const value=key==='title'?item.title:item.summary_fields?.[key];if(value==null||value==='')return null;if(['number','si'].includes(kind))return Number(value);if(kind==='datetime')return new Date(value).valueOf();return String(value).toLocaleLowerCase()}
-async function items(id,name,navigate=true,directory=[]){stopPlayback();activeThemeRefresh=null;workspaceAdd.hidden=true;headerDetails.hidden=true;headerDownload.hidden=true;headerDownload.open=false;headerAnnotate.hidden=true;headerAnnotate.open=false;app.className='';const route=directory.length?`/workspace/${encodeURIComponent(id)}/browse/${directory.map(encodeURIComponent).join('/')}`:(singleWorkspaceMode?'/':`/workspace/${encodeURIComponent(id)}`);if(navigate)history.pushState(null,'',route);try{const params=new URLSearchParams();directory.forEach(segment=>params.append('directory',segment));const listing=await api(`/workspaces/${encodeURIComponent(id)}/items?${params}`),list=listing.items,folders=listing.directories,columns=listing.columns||[],crumbs=directory.map((segment,index)=>` / <button data-directory-level="${index+1}">${esc(segment)}</button>`).join(''),rootCrumb=singleWorkspaceMode?`<button id="workspace-root">${esc(name)}</button>`:`<button id="home">Workspaces</button> / <button id="workspace-root">${esc(name)}</button>`;let sortKey='title',sortDescending=false;app.innerHTML=`<div class="crumb">${rootCrumb}${crumbs}</div><h1>${esc(directory.at(-1)||name)}</h1><p class="lead">Browse items or dispatch their batch actions without opening them.</p><div class="toolbar">${batchMenuHtml(listing.batch,`/workspaces/${encodeURIComponent(id)}/batch`)}<input id="search" type="search" placeholder="Search this folder…"></div><div id="items"></div>`;const draw=()=>{const q=document.querySelector('#search').value.toLowerCase().trim(),shownFolders=folders.filter(folder=>!q||folder.name.toLowerCase().includes(q)),matching=list.filter(item=>!q||`${item.title} ${item.subtitle||''} ${(item.tags||[]).join(' ')} ${item.source_reference||''} ${Object.values(item.summary_fields||{}).filter(value=>value!=null).join(' ')}`.toLowerCase().includes(q)),sortColumn=columns.find(column=>column.key===sortKey),kind=sortColumn?.kind||'text',shown=[...matching].sort((left,right)=>{const a=discoverySortValue(left,sortKey,kind),b=discoverySortValue(right,sortKey,kind);if(a==null)return b==null?0:1;if(b==null)return-1;const result=typeof a==='number'&&typeof b==='number'?a-b:String(a).localeCompare(String(b));return sortDescending?-result:result}),columnCount=columns.length+3,header=(key,label)=>`<th><button type="button" data-sort="${esc(key)}">${esc(label)}${sortKey===key?` <span aria-hidden="true">${sortDescending?'▼':'▲'}</span>`:''}</button></th>`,folderRows=shownFolders.map(folder=>`<tr class="folder-row" data-folder="${folders.indexOf(folder)}"><td colspan="${columnCount}"><span class="tag">folder</span> <strong>${esc(folder.name)}</strong></td></tr>`).join(''),itemRows=shown.map(item=>`<tr class="item-row" data-item="${esc(item.id)}"><td><div class="item-name"><strong>${esc(item.title)}</strong>${item.subtitle?`<small>${esc(item.subtitle)}</small>`:''}</div></td>${columns.map(column=>`<td>${discoveryValue(item.summary_fields?.[column.key],column)}</td>`).join('')}<td><div class="item-tags">${(item.tags||[]).map(tag=>`<span class="tag">${esc(tag)}</span>`).join('')}</div></td><td class="batch-cell">${batchMenuHtml(item.batch,`/workspaces/${encodeURIComponent(id)}/items/${encodeURIComponent(item.id)}/batch`)}</td></tr>`).join('');document.querySelector('#items').innerHTML=folderRows||itemRows?`<div class="item-browser"><table><thead><tr>${header('title','Name')}${columns.map(column=>header(column.key,column.label)).join('')}<th class="tags-column">Tags</th><th class="batch-cell">Run</th></tr></thead><tbody>${folderRows}${itemRows}</tbody></table></div>`:'<div class="empty">No matching items.</div>';document.querySelectorAll('[data-sort]').forEach(button=>button.onclick=()=>{const key=button.dataset.sort;if(sortKey===key)sortDescending=!sortDescending;else{sortKey=key;sortDescending=false}draw()});document.querySelectorAll('[data-folder]').forEach(element=>element.onclick=()=>items(id,name,true,folders[Number(element.dataset.folder)].path));document.querySelectorAll('[data-item]').forEach(element=>element.onclick=()=>openItem(id,name,element.dataset.item));bindBatchMenus()};draw();bindBatchMenus();document.querySelector('#home')?.addEventListener('click',()=>catalog());document.querySelector('#workspace-root').onclick=()=>items(id,name,true,[]);document.querySelectorAll('[data-directory-level]').forEach(element=>element.onclick=()=>items(id,name,true,directory.slice(0,Number(element.dataset.directoryLevel))));document.querySelector('#search').oninput=draw}catch(e){fail(e)}}
+async function items(id,name,navigate=true,directory=[]){stopPlayback();activeThemeRefresh=null;workspaceAdd.hidden=true;headerDetails.hidden=true;headerDownload.hidden=true;headerDownload.open=false;headerAnnotate.hidden=true;headerAnnotate.open=false;app.className='';const route=directory.length?`/workspace/${encodeURIComponent(id)}/browse/${directory.map(encodeURIComponent).join('/')}`:(singleWorkspaceMode?'/':`/workspace/${encodeURIComponent(id)}`);if(navigate)history.pushState(null,'',route);try{const params=new URLSearchParams();directory.forEach(segment=>params.append('directory',segment));const listing=await api(`/workspaces/${encodeURIComponent(id)}/items?${params}`),list=listing.items,folders=listing.directories,columns=listing.columns||[],crumbs=directory.map((segment,index)=>` / <button data-directory-level="${index+1}">${esc(segment)}</button>`).join(''),rootCrumb=singleWorkspaceMode?`<button id="workspace-root">${esc(name)}</button>`:`<button id="home">Workspaces</button> / <button id="workspace-root">${esc(name)}</button>`;let sortKey='title',sortDescending=false;app.innerHTML=`<div class="crumb">${rootCrumb}${crumbs}</div><h1>${esc(directory.at(-1)||name)}</h1><p class="lead">Browse items or dispatch their batch actions without opening them.</p><div class="toolbar">${batchMenuHtml(listing.batch,`/workspaces/${encodeURIComponent(id)}/batch`,false)}<input id="search" type="search" placeholder="Search this folder…"></div><div id="items"></div>`;const draw=()=>{const q=document.querySelector('#search').value.toLowerCase().trim(),shownFolders=folders.filter(folder=>!q||folder.name.toLowerCase().includes(q)),matching=list.filter(item=>!q||`${item.title} ${item.subtitle||''} ${(item.tags||[]).join(' ')} ${item.source_reference||''} ${Object.values(item.summary_fields||{}).filter(value=>value!=null).join(' ')}`.toLowerCase().includes(q)),sortColumn=columns.find(column=>column.key===sortKey),kind=sortColumn?.kind||'text',shown=[...matching].sort((left,right)=>{const a=discoverySortValue(left,sortKey,kind),b=discoverySortValue(right,sortKey,kind);if(a==null)return b==null?0:1;if(b==null)return-1;const result=typeof a==='number'&&typeof b==='number'?a-b:String(a).localeCompare(String(b));return sortDescending?-result:result}),columnCount=columns.length+3,header=(key,label)=>`<th><button type="button" data-sort="${esc(key)}">${esc(label)}${sortKey===key?` <span aria-hidden="true">${sortDescending?'▼':'▲'}</span>`:''}</button></th>`,folderRows=shownFolders.map(folder=>`<tr class="folder-row" data-folder="${folders.indexOf(folder)}"><td colspan="${columnCount}"><span class="tag">folder</span> <strong>${esc(folder.name)}</strong></td></tr>`).join(''),itemRows=shown.map(item=>`<tr class="item-row" data-item="${esc(item.id)}"><td><div class="item-name"><strong>${esc(item.title)}</strong>${item.subtitle?`<small>${esc(item.subtitle)}</small>`:''}</div></td>${columns.map(column=>`<td>${discoveryValue(item.summary_fields?.[column.key],column)}</td>`).join('')}<td><div class="item-tags">${(item.tags||[]).map(tag=>`<span class="tag">${esc(tag)}</span>`).join('')}</div></td><td class="batch-cell">${batchMenuHtml(item.batch,`/workspaces/${encodeURIComponent(id)}/items/${encodeURIComponent(item.id)}/batch`)}</td></tr>`).join('');document.querySelector('#items').innerHTML=folderRows||itemRows?`<div class="item-browser"><table><thead><tr>${header('title','Name')}${columns.map(column=>header(column.key,column.label)).join('')}<th class="tags-column">Tags</th><th class="batch-cell">Run</th></tr></thead><tbody>${folderRows}${itemRows}</tbody></table></div>`:'<div class="empty">No matching items.</div>';document.querySelectorAll('[data-sort]').forEach(button=>button.onclick=()=>{const key=button.dataset.sort;if(sortKey===key)sortDescending=!sortDescending;else{sortKey=key;sortDescending=false}draw()});document.querySelectorAll('[data-folder]').forEach(element=>element.onclick=()=>items(id,name,true,folders[Number(element.dataset.folder)].path));document.querySelectorAll('[data-item]').forEach(element=>element.onclick=()=>openItem(id,name,element.dataset.item));bindBatchMenus()};draw();bindBatchMenus();document.querySelector('#home')?.addEventListener('click',()=>catalog());document.querySelector('#workspace-root').onclick=()=>items(id,name,true,[]);document.querySelectorAll('[data-directory-level]').forEach(element=>element.onclick=()=>items(id,name,true,directory.slice(0,Number(element.dataset.directoryLevel))));document.querySelector('#search').oninput=draw}catch(e){fail(e)}}
 async function openItem(wid,wname,iid,navigate=true,controlValues={},preservePlayback=false){
   stopPlayback();app.innerHTML='<div class="empty">Opening item…</div>';app.className='item-page';activeThemeRefresh=null;workspaceAdd.hidden=true;headerDetails.hidden=true;headerDownload.hidden=true;headerDownload.open=false;headerAnnotate.hidden=true;headerAnnotate.open=false;if(!preservePlayback){playbackPosition=0;playbackPaused=false;playbackFollowLive=false;windowStart=0;windowEnd=null;segmentId=null;Object.keys(viewSelections).forEach(key=>delete viewSelections[key])}if(navigate)history.pushState(null,'',`/workspace/${encodeURIComponent(wid)}/item/${encodeURIComponent(iid)}`);
   try{const request=async values=>api(`/workspaces/${encodeURIComponent(wid)}/items/${encodeURIComponent(iid)}?${new URLSearchParams(values)}`),windowValues=()=>windowEnd==null?{}:{__window_start_seconds:windowStart,__window_end_seconds:windowEnd},segmentValues=()=>segmentId==null?{}:{__segment_id:segmentId};let data=await request({...controlValues,...windowValues(),...segmentValues(),__theme:resolvedTheme(),__playback_time_seconds:playbackPosition});let p=data.page,requestGeneration=0;const isPlayback=['seek','live'].includes(p.playback.mode),isWindowed=p.playback.mode==='windowed',isSegmented=p.playback.mode==='segmented';annotations=p.annotation?.entries||[];
@@ -483,6 +492,36 @@ class ExportJob:
 
 
 @dataclass
+class BatchProgress:
+    _snapshot: dict[str, object] | None = None
+    _lock: RLock = field(default_factory=RLock, repr=False)
+
+    def update(self, snapshot: dict[str, object]) -> None:
+        with self._lock:
+            self._snapshot = {
+                **snapshot,
+                "items": [
+                    dict(item)
+                    for item in snapshot.get("items", [])
+                    if isinstance(item, dict)
+                ],
+            }
+
+    def snapshot(self) -> dict[str, object] | None:
+        with self._lock:
+            if self._snapshot is None:
+                return None
+            return {
+                **self._snapshot,
+                "items": [
+                    dict(item)
+                    for item in self._snapshot.get("items", [])
+                    if isinstance(item, dict)
+                ],
+            }
+
+
+@dataclass
 class BatchJob:
     workspace_id: str
     workspace_name: str
@@ -494,6 +533,8 @@ class BatchJob:
     future: Future[dict[str, object]]
     started_at: float
     temporary: bool = True
+    progress: BatchProgress = field(default_factory=BatchProgress)
+    cancel_event: Event = field(default_factory=Event, repr=False)
 
 
 def _item_payload(item: Any) -> dict[str, Any]:
@@ -919,6 +960,8 @@ class SigvueApp:
                     choice.value,
                     item_id,
                 )
+                if status.get("status") == "cancelled":
+                    status = {"status": "idle"}
                 actions.append({**choice.__dict__, **status})
         return {"enabled": bool(actions), "actions": actions}
 
@@ -991,13 +1034,27 @@ class SigvueApp:
             else destination.directory.expanduser().resolve()
         )
         directory.mkdir(parents=True, exist_ok=True)
+        progress = BatchProgress()
+        cancel_event = Event()
 
         def build() -> dict[str, object]:
             result = (
-                workspace.run_item_batch(item_id, action, directory)
+                workspace.run_item_batch(
+                    item_id,
+                    action,
+                    directory,
+                    _cancelled_callback=cancel_event.is_set,
+                )
                 if item_id is not None
-                else workspace.run_workspace_batch(action, directory)
+                else workspace.run_workspace_batch(
+                    action,
+                    directory,
+                    _progress_callback=progress.update,
+                    _cancelled_callback=cancel_event.is_set,
+                )
             )
+            if cancel_event.is_set():
+                raise CancelledError("Batch cancelled")
             if not isinstance(result, BatchResult):
                 raise TypeError("Batch actions must return BatchResult")
             resolved_directory = directory.resolve()
@@ -1010,7 +1067,8 @@ class SigvueApp:
                     raise ValueError("Batch result filenames cannot contain control characters")
                 files.append(target.name)
             missing_declared = [name for name in destination.files if name not in files]
-            if missing_declared:
+            progress_snapshot = progress.snapshot() or {}
+            if missing_declared and not progress_snapshot.get("failed"):
                 raise ValueError(f"Batch result omitted declared files: {', '.join(missing_declared)}")
             return {"files": files, "summary": result.summary}
 
@@ -1026,6 +1084,8 @@ class SigvueApp:
             future=future,
             started_at=time.time(),
             temporary=temporary,
+            progress=progress,
+            cancel_event=cancel_event,
         )
         with self._batch_lock:
             if previous_id is not None:
@@ -1051,13 +1111,30 @@ class SigvueApp:
             "action_label": job.action_label,
             "started_at": job.started_at,
             "status_url": f"/batches/{job_id}",
+            "output_directory": str(job.directory),
         }
+        progress = job.progress.snapshot()
+        if progress is not None:
+            base["progress"] = progress
         if not job.future.done():
+            if job.cancel_event.is_set():
+                return {**base, "status": "cancelling"}
             return {**base, "status": "running" if job.future.running() else "pending"}
         try:
             result = job.future.result()
+        except CancelledError:
+            return {
+                **base,
+                "status": "cancelled",
+                "summary": "Batch cancelled",
+            }
         except Exception as exc:
-            return {**base, "status": "error", "detail": str(exc)}
+            return {
+                **base,
+                "status": "error",
+                "detail": str(exc) or type(exc).__name__,
+                "log": "".join(format_exception(exc)),
+            }
         missing = [name for name in result["files"] if not (job.directory / name).is_file()]
         if missing:
             return {
@@ -1065,12 +1142,39 @@ class SigvueApp:
                 "status": "error",
                 "detail": f"Batch output is missing: {', '.join(missing)}",
             }
+        summary = result["summary"]
+        if progress is not None and progress.get("failed"):
+            failed = int(progress["failed"])
+            total = int(progress.get("total", failed))
+            summary = f"{summary} · {failed} of {total} items failed"
+            if total and failed == total:
+                return {
+                    **base,
+                    "status": "error",
+                    "detail": summary,
+                    "files": self._batch_files(
+                        job_id,
+                        job.directory,
+                        result["files"],
+                    ),
+                }
         return {
             **base,
             "status": "ready",
-            "summary": result["summary"],
+            "summary": summary,
             "files": self._batch_files(job_id, job.directory, result["files"]),
         }
+
+    def cancel_batch(self, job_id: str) -> dict[str, object]:
+        """Request cancellation of a queued or running batch job."""
+        with self._batch_lock:
+            job = self._batch_jobs.get(job_id)
+        if job is None:
+            raise KeyError(job_id)
+        if not job.future.done():
+            job.cancel_event.set()
+            job.future.cancel()
+        return self.batch_status(job_id)
 
     def batch_statuses(self) -> dict[str, list[dict[str, object]]]:
         """Return recent jobs so browser-level notifications survive navigation."""
@@ -1636,6 +1740,9 @@ def _make_handler(app: SigvueApp) -> type[BaseHTTPRequestHandler]:
                         str(payload.get("scope", "")), str(payload.get("format", "")),
                     )
                     self._write_json(202, {"id": job_id, "status": "pending", "status_url": f"/exports/{job_id}"})
+                    return
+                if len(parts) == 3 and parts[0] == "batches" and parts[2] == "cancel":
+                    self._write_json(200, app.cancel_batch(parts[1]))
                     return
                 if len(parts) == 3 and parts[0] == "workspaces" and parts[2] == "batch":
                     payload = self._read_json()

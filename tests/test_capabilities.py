@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from sigvue import (
     Annotation,
@@ -7,6 +8,7 @@ from sigvue import (
     AnnotationPlotBinding,
     AnnotationRequest,
     BatchDestination,
+    BatchRequest,
 )
 
 
@@ -20,6 +22,36 @@ class CapabilityTests(unittest.TestCase):
             BatchDestination(Path("reports"), ("nested/report.html",))
         with self.assertRaisesRegex(ValueError, "plain filenames"):
             BatchDestination(Path("reports"), ("report\nInjected: header.html",))
+
+    def test_batch_request_runs_all_resources_and_reports_each_failure(self):
+        snapshots = []
+        resources = tuple(
+            SimpleNamespace(identifier=f"item-{index}", title=f"Item {index}")
+            for index in range(3)
+        )
+
+        def process(resource):
+            if resource.identifier == "item-1":
+                raise RuntimeError("broken input")
+            return resource.identifier
+
+        results = BatchRequest("render", snapshots.append).each(
+            resources,
+            process,
+        )
+
+        self.assertEqual(("item-0", "item-2"), results)
+        final = snapshots[-1]
+        self.assertEqual(
+            {"completed": 3, "succeeded": 2, "failed": 1, "total": 3},
+            {key: final[key] for key in ("completed", "succeeded", "failed", "total")},
+        )
+        self.assertEqual(
+            ["ready", "error", "ready"],
+            [item["status"] for item in final["items"]],
+        )
+        self.assertEqual("broken input", final["items"][1]["detail"])
+        self.assertIn("RuntimeError: broken input", final["items"][1]["log"])
 
     def test_plot_bound_number_field_validates_and_retains_transform(self):
         binding = AnnotationPlotBinding("waterfall", "xaxis2", "lower", scale=1e6)

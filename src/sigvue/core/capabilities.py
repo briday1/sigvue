@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from concurrent.futures import CancelledError
 from dataclasses import dataclass, field
 from math import isfinite
 from pathlib import Path
+from traceback import format_exc
 from types import MappingProxyType
 from typing import Any, Callable, Generic, Iterable, Literal, Mapping, TypeVar
 
 
 SourceData_contra = TypeVar("SourceData_contra", contravariant=True)
 DeliveredData_contra = TypeVar("DeliveredData_contra", contravariant=True)
+BatchItemResult = TypeVar("BatchItemResult")
 
 
 @dataclass(frozen=True)
@@ -202,10 +205,104 @@ class BatchRequest:
     """One workspace-defined action dispatched without opening an item view."""
 
     action: str
+    _progress_callback: Callable[[dict[str, object]], None] | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
+    _cancelled_callback: Callable[[], bool] | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         if not self.action:
             raise ValueError("Batch requests require an action")
+
+    @property
+    def cancelled(self) -> bool:
+        """Whether the user has requested cancellation."""
+        return bool(
+            self._cancelled_callback is not None
+            and self._cancelled_callback()
+        )
+
+    def raise_if_cancelled(self) -> None:
+        """Stop cooperatively at a safe boundary after cancellation."""
+        if self.cancelled:
+            raise CancelledError("Batch cancelled")
+
+    def each(
+        self,
+        resources: Iterable[Any],
+        callback: Callable[[Any], BatchItemResult],
+    ) -> tuple[BatchItemResult, ...]:
+        """Run one callback per resource, reporting failures without stopping."""
+        values = tuple(resources)
+        items = [
+            {
+                "id": str(getattr(resource, "identifier", index + 1)),
+                "title": str(
+                    getattr(
+                        resource,
+                        "title",
+                        getattr(resource, "identifier", index + 1),
+                    )
+                ),
+                "status": "pending",
+            }
+            for index, resource in enumerate(values)
+        ]
+        completed = 0
+        succeeded = 0
+        failed = 0
+
+        def report() -> None:
+            if self._progress_callback is not None:
+                self._progress_callback(
+                    {
+                        "completed": completed,
+                        "succeeded": succeeded,
+                        "failed": failed,
+                        "total": len(values),
+                        "items": [dict(item) for item in items],
+                    }
+                )
+
+        report()
+        results = []
+        for index, resource in enumerate(values):
+            if self.cancelled:
+                for item in items[index:]:
+                    if item["status"] == "pending":
+                        item["status"] = "cancelled"
+                report()
+                raise CancelledError("Batch cancelled")
+            items[index]["status"] = "running"
+            report()
+            try:
+                result = callback(resource)
+            except CancelledError:
+                items[index]["status"] = "cancelled"
+                for item in items[index + 1 :]:
+                    item["status"] = "cancelled"
+                report()
+                raise
+            except Exception as exc:
+                items[index]["status"] = "error"
+                items[index]["detail"] = str(exc) or type(exc).__name__
+                items[index]["log"] = format_exc()
+                failed += 1
+                completed += 1
+                report()
+            else:
+                items[index]["status"] = "ready"
+                succeeded += 1
+                results.append(result)
+                completed += 1
+                report()
+        return tuple(results)
 
 
 @dataclass(frozen=True)

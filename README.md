@@ -390,6 +390,13 @@ bell shows queued and running actions, follows them while the user browses other
 workspaces or views, and retains their completed outputs for opening or path
 copying. Reloading the page reconnects to jobs still owned by the server.
 
+Workspace actions should use `request.each(resources, render_one)` when they
+apply the same operation to discovered items. Sigvue then reports aggregate
+progress, isolates an item failure so later items still run, and returns the
+successful results. Long-running render functions can call
+`request.raise_if_cancelled()` at safe boundaries; the same cancellation hook is
+available to item actions.
+
 ```mermaid
 flowchart TB
     Workspace --> Reader
