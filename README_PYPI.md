@@ -58,7 +58,7 @@ views, and batch actions; they do not need their own desktop launcher.
 
 ## The API
 
-![The API diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.58/docs/pypi-diagrams/01-the-api.svg)
+![The API diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.59/docs/pypi-diagrams/01-the-api.svg)
 
 There is one application object:
 
@@ -315,7 +315,7 @@ Tabs, weighted grids, nested groups, multidimensional switchers, display
 controls, inline processing controls, tables, text, and deferred plots all stay
 in the one nested `ui` API.
 
-![Exact complex layouts diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.58/docs/pypi-diagrams/02-exact-complex-layouts.svg)
+![Exact complex layouts diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.59/docs/pypi-diagrams/02-exact-complex-layouts.svg)
 
 ## Custom discovery metadata
 
@@ -366,7 +366,23 @@ bell shows queued and running actions, follows them while the user browses other
 workspaces or views, and retains their completed outputs for opening or path
 copying. Reloading the page reconnects to jobs still owned by the server.
 
-![Optional capabilities diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.58/docs/pypi-diagrams/03-optional-capabilities.svg)
+Workspace actions should use `request.each(resources, render_one)` when they
+apply the same operation to discovered items. Sigvue then reports aggregate
+progress, isolates an item failure so later items still run, and returns the
+successful results. Long-running render functions can call
+`request.raise_if_cancelled()` at safe boundaries; the same cancellation hook is
+available to item actions.
+
+`BatchResult.assets` can list nested support files for a primary HTML result,
+such as image tiles. Sigvue serves those files to the report without adding
+thousands of support paths to the notification UI.
+
+Top-level `BatchResult.files` entries may also be directories. Sigvue opens
+those results in a bounded searchable file/image browser, opens individual
+images and HTML reports directly, and offers other file types as downloads
+alongside their local copyable paths.
+
+![Optional capabilities diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.59/docs/pypi-diagrams/03-optional-capabilities.svg)
 
 ## Configuration
 
