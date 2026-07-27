@@ -442,6 +442,12 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("notification-progress-success", body)
         self.assertIn("notification-progress-failed", body)
         self.assertIn("Copy folder", body)
+        self.assertIn("Browse live results", body)
+        self.assertIn("No finished results yet.", body)
+        self.assertIn("resultBrowserTimer=setTimeout(refresh,750)", body)
+        self.assertIn("generation!==resultBrowserGeneration", body)
+        self.assertIn("selectedVersion=null", body)
+        self.assertIn("This image is still being finalized.", body)
         self.assertIn(
             "header .home-title { all:unset; display:block; min-width:0;",
             body,
@@ -453,10 +459,13 @@ class WebAppTests(unittest.TestCase):
         )
         self.assertIn(".batch-menu[open] { z-index:35 }", body)
         self.assertIn(
-            "batchMenuHtml(listing.batch,"
-            "`/workspaces/${encodeURIComponent(id)}/batch`,false)",
+            "batchControlsHtml(listing.batch,workspaceBatchUrl)",
             body,
         )
+        self.assertIn('class="item-action-rail"', body)
+        self.assertIn("function bindItemActionRail", body)
+        self.assertIn("data-batch-folder", body)
+        self.assertIn("batchFolderIcon", body)
         self.assertIn("function syncBatchNotifications", body)
         self.assertIn("syncBatchNotifications();boot()", body)
         self.assertIn("data-batch-status", body)
@@ -469,11 +478,12 @@ class WebAppTests(unittest.TestCase):
         self.assertNotIn('class="batch-indicator', body)
         self.assertIn("Copy path", body)
         self.assertIn('target="_blank"', body)
-        self.assertIn(
-            '<th class="tags-column">Tags</th><th class="batch-cell">Run</th>', body
-        )
-        self.assertIn(".toolbar>.batch-menu { order:2 }", body)
-        self.assertIn(".item-browser:has(.batch-menu) { overflow:visible }", body)
+        self.assertIn('<th class="tags-column">Tags</th>', body)
+        self.assertNotIn('<th class="batch-cell">Run</th>', body)
+        self.assertNotIn('<td class="batch-cell">', body)
+        self.assertIn(".item-toolbar { display:grid;", body)
+        self.assertIn(".item-browser-layout { display:grid;", body)
+        self.assertIn('class="batch-controls"', body)
         self.assertIn(".batch-menu.ready summary { color:#16803c;", body)
         self.assertIn("${w.name} ${w.description||''} ${w.category||''}", body)
         self.assertNotIn('id="reload-config"', body)
@@ -1220,6 +1230,10 @@ class WebAppTests(unittest.TestCase):
 
         base = self.create_example_app().registry.get("test-workspace")
         with TemporaryDirectory() as output:
+            (Path(output) / "item-2.txt").write_text(
+                "stale result from an earlier run",
+                encoding="utf-8",
+            )
             workspace = Workspace._from_runtime_components(
                 identifier="progress-workspace",
                 name="Progress workspace",
@@ -1237,12 +1251,35 @@ class WebAppTests(unittest.TestCase):
             self.assertTrue(second_started.wait(timeout=2))
             running = app.batch_status(job_id)
             self.assertEqual("running", running["status"])
+            self.assertEqual(
+                f"/results/job/{job_id}",
+                running["result_browser_url"],
+            )
             self.assertEqual(1, running["progress"]["completed"])
             self.assertEqual(1, running["progress"]["succeeded"])
             self.assertEqual(
                 ["ready", "running", "pending"],
                 [item["status"] for item in running["progress"]["items"]],
             )
+            self.assertEqual(
+                ["item-0.txt"],
+                [file["name"] for file in running["files"]],
+            )
+            live_listing = app.batch_outputs(job_id)
+            self.assertEqual("running", live_listing["status"])
+            self.assertFalse(live_listing["complete"])
+            self.assertEqual(
+                ["item-0.txt"],
+                [entry["name"] for entry in live_listing["entries"]],
+            )
+            self.assertEqual(
+                "0.0",
+                app.batch_file(job_id, "item-0.txt").read_text(
+                    encoding="utf-8"
+                ),
+            )
+            with self.assertRaises(KeyError):
+                app.batch_file(job_id, "item-2.txt")
 
             release_second.set()
             app._batch_jobs[job_id].future.result(timeout=10)
@@ -1263,6 +1300,13 @@ class WebAppTests(unittest.TestCase):
             self.assertEqual(
                 {"item-0.txt", "item-2.txt"},
                 {file["name"] for file in completed["files"]},
+            )
+            final_listing = app.batch_outputs(job_id)
+            self.assertEqual("ready", final_listing["status"])
+            self.assertTrue(final_listing["complete"])
+            self.assertEqual(
+                {"item-0.txt", "item-2.txt"},
+                {entry["name"] for entry in final_listing["entries"]},
             )
             self.assertEqual(str(Path(output).resolve()), completed["output_directory"])
 
@@ -1418,7 +1462,32 @@ class WebAppTests(unittest.TestCase):
             ]["actions"][0]
             self.assertEqual("ready", action["status"])
             self.assertEqual(str(expected.resolve()), action["files"][0]["path"])
+            _, _, collection_scope, collection_token = action[
+                "result_browser_url"
+            ].split("/")
+            self.assertEqual("saved", collection_scope)
+            collection = relaunched.declared_batch_outputs(collection_token)
+            self.assertEqual("ready", collection["status"])
+            self.assertTrue(collection["complete"])
+            self.assertEqual(
+                ["recording.html"],
+                [entry["name"] for entry in collection["entries"]],
+            )
+            self.assertEqual(
+                expected.resolve(),
+                relaunched.declared_batch_file(
+                    collection_token,
+                    "recording.html",
+                ),
+            )
             self.assertTrue(action["files"][0]["open_url"].startswith("/batch-files/"))
+            _, _, _, collection_token = action["result_browser_url"].split("/")
+            collection = relaunched.declared_batch_outputs(collection_token)
+            self.assertTrue(collection["complete"])
+            self.assertEqual(
+                ["recording.html"],
+                [entry["name"] for entry in collection["entries"]],
+            )
             _, _, token, filename = action["files"][0]["open_url"].split("/")
             self.assertEqual(
                 expected.resolve(), relaunched.declared_batch_file(token, filename)
@@ -1510,6 +1579,20 @@ class WebAppTests(unittest.TestCase):
             self.assertEqual("ready", action["status"])
             artifact = action["files"][0]
             self.assertEqual("directory", artifact["kind"])
+            _, _, _, collection_token = action["result_browser_url"].split("/")
+            collection = relaunched.declared_batch_outputs(collection_token)
+            self.assertEqual(
+                ["recording-gallery"],
+                [entry["name"] for entry in collection["entries"]],
+            )
+            collection_listing = relaunched.declared_batch_outputs(
+                collection_token,
+                "recording-gallery",
+            )
+            self.assertEqual(
+                ["frame.png"],
+                [entry["name"] for entry in collection_listing["entries"]],
+            )
             _, _, _, token, filename = artifact["browse_url"].split("/")
             self.assertEqual(
                 (output_path / "recording-gallery").resolve(),
@@ -1685,6 +1768,27 @@ class WebAppTests(unittest.TestCase):
 
         app.batch_outputs.assert_called_once_with(
             "batch-1",
+            "gallery",
+        )
+        handler._write_json.assert_called_once_with(200, listing)
+
+    def test_saved_batch_output_collection_listing_endpoint(self):
+        app = Mock()
+        listing = {
+            "name": "Batch results",
+            "path": "/tmp/outputs",
+            "entries": [{"name": "frame.png", "kind": "image"}],
+        }
+        app.declared_batch_outputs.return_value = listing
+        handler_type = _make_handler(app)
+        handler = handler_type.__new__(handler_type)
+        handler.path = "/batch-browser/saved/token-1?path=gallery"
+        handler._write_json = Mock()
+
+        handler.do_GET()
+
+        app.declared_batch_outputs.assert_called_once_with(
+            "token-1",
             "gallery",
         )
         handler._write_json.assert_called_once_with(200, listing)
