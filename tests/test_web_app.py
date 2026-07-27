@@ -419,7 +419,21 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("function bindBatchMenus", body)
         self.assertIn("headerNotifications.open=false", body)
         self.assertIn("headerNotifications.onclick=event=>", body)
-        self.assertIn("document.addEventListener('click',()=>{closeBatchMenus()", body)
+        self.assertIn("function followInternalResultLink(event)", body)
+        self.assertIn(
+            "!target.pathname.startsWith('/results/')",
+            body,
+        )
+        self.assertIn(
+            "pushRoute(`${target.pathname}${target.search}${target.hash}`);"
+            "void boot()",
+            body,
+        )
+        self.assertIn(
+            "document.addEventListener('click',event=>{closeBatchMenus();"
+            "headerNotifications.open=false;followInternalResultLink(event)});",
+            body,
+        )
         self.assertIn("closeBatchMenus(menu)", body)
         self.assertIn("data-batch-action", body)
         self.assertIn(
