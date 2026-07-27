@@ -36,17 +36,26 @@ workflows:
 
 ```bash
 python -m pip install sigvue
-sigvue --config browser.toml
+sigvue
 ```
 
 Open <http://127.0.0.1:8000>.
+Run `sigvue --config /path/to/browser.toml` to open an existing profile
+directly.
 
 For the same application in a native desktop window, install Sigvue's desktop
 extra and run the core desktop host:
 
 ```bash
+python -m pip install "sigvue[desktop]"
+sigvue-desktop --config /path/to/browser.toml
+```
+
+From a Sigvue source checkout, the equivalent editable installation is:
+
+```bash
 python -m pip install -e ".[desktop]"
-sigvue-desktop --config browser.toml
+sigvue-desktop --config examples/browser.toml
 ```
 
 `sigvue-desktop` accepts the same workspace profile as the browser server.
@@ -505,7 +514,9 @@ identical in both cases.
 
 ## Runnable examples
 
-Small examples live under [`examples/`](examples/README.md). The standalone examples
+Small examples live in the
+[`examples/` directory](https://github.com/briday1/sigvue/tree/main/examples).
+The standalone examples
 distribution covers communications, LTE waterfalls, calibrated multi-channel
 radar, annotated ECG, weather radar, passive acoustics, seismology, stored
 events, and native planetary data.
@@ -529,8 +540,8 @@ python scripts/build_pypi_readme.py --ref "v$VERSION"
 ## Development
 
 ```bash
-python -m pip install -e ".[test,release]"
-python -m pytest -q
+python -m pip install -e ".[test,release,examples]"
+python -m pytest -q tests examples/tests
 python -m build
 python -m twine check dist/*
 ```

@@ -7,8 +7,11 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: publish-pypi
-  cancel-in-progress: false
+  # A newer source push supersedes an older build. Version-bump commits use a
+  # unique group so their skipped workflow cannot cancel the publish job that
+  # created them.
+  group: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[skip ci]') && format('publish-pypi-skip-{0}', github.run_id) || 'publish-pypi' }}
+  cancel-in-progress: true
 
 jobs:
   compatibility:
@@ -20,7 +23,7 @@ jobs:
       - name: Check out main
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
 
       - name: Set up Python 3.10
         uses: actions/setup-python@v5
@@ -50,7 +53,7 @@ jobs:
       - name: Check out main
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 

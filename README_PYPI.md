@@ -47,6 +47,13 @@ For the same application in a native desktop window, install Sigvue's desktop
 extra and run the core desktop host:
 
 ```bash
+python -m pip install "sigvue[desktop]"
+sigvue-desktop --config browser.toml
+```
+
+From a Sigvue source checkout, the equivalent editable installation is:
+
+```bash
 python -m pip install -e ".[desktop]"
 sigvue-desktop --config browser.toml
 ```
@@ -58,7 +65,7 @@ views, and batch actions; they do not need their own desktop launcher.
 
 ## The API
 
-![The API diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.71/docs/pypi-diagrams/01-the-api.svg)
+![The API diagram](https://raw.githubusercontent.com/briday1/sigvue/main/docs/pypi-diagrams/01-the-api.svg)
 
 There is one application object:
 
@@ -315,7 +322,7 @@ Tabs, weighted grids, nested groups, multidimensional switchers, display
 controls, inline processing controls, tables, text, and deferred plots all stay
 in the one nested `ui` API.
 
-![Exact complex layouts diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.71/docs/pypi-diagrams/02-exact-complex-layouts.svg)
+![Exact complex layouts diagram](https://raw.githubusercontent.com/briday1/sigvue/main/docs/pypi-diagrams/02-exact-complex-layouts.svg)
 
 ## Custom discovery metadata
 
@@ -391,7 +398,7 @@ to the most recently run action. A particular notification still links to its
 individual job, while **All batch results** shows finished outputs from every
 action sharing the same destination directory.
 
-![Optional capabilities diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.71/docs/pypi-diagrams/03-optional-capabilities.svg)
+![Optional capabilities diagram](https://raw.githubusercontent.com/briday1/sigvue/main/docs/pypi-diagrams/03-optional-capabilities.svg)
 
 ## Configuration
 
@@ -468,7 +475,9 @@ identical in both cases.
 
 ## Runnable examples
 
-Small examples live under [`examples/`](examples/README.md). The standalone examples
+Small examples live in the
+[`examples/` directory](https://github.com/briday1/sigvue/tree/main/examples).
+The standalone examples
 distribution covers communications, LTE waterfalls, calibrated multi-channel
 radar, annotated ECG, weather radar, passive acoustics, seismology, stored
 events, and native planetary data.
@@ -492,8 +501,8 @@ python scripts/build_pypi_readme.py --ref "v$VERSION"
 ## Development
 
 ```bash
-python -m pip install -e ".[test,release]"
-python -m pytest -q
+python -m pip install -e ".[test,release,examples]"
+python -m pytest -q tests examples/tests
 python -m build
 python -m twine check dist/*
 ```
