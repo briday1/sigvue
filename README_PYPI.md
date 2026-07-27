@@ -58,7 +58,7 @@ views, and batch actions; they do not need their own desktop launcher.
 
 ## The API
 
-![The API diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.70/docs/pypi-diagrams/01-the-api.svg)
+![The API diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.71/docs/pypi-diagrams/01-the-api.svg)
 
 There is one application object:
 
@@ -315,7 +315,7 @@ Tabs, weighted grids, nested groups, multidimensional switchers, display
 controls, inline processing controls, tables, text, and deferred plots all stay
 in the one nested `ui` API.
 
-![Exact complex layouts diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.70/docs/pypi-diagrams/02-exact-complex-layouts.svg)
+![Exact complex layouts diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.71/docs/pypi-diagrams/02-exact-complex-layouts.svg)
 
 ## Custom discovery metadata
 
@@ -391,7 +391,7 @@ to the most recently run action. A particular notification still links to its
 individual job, while **All batch results** shows finished outputs from every
 action sharing the same destination directory.
 
-![Optional capabilities diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.70/docs/pypi-diagrams/03-optional-capabilities.svg)
+![Optional capabilities diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.71/docs/pypi-diagrams/03-optional-capabilities.svg)
 
 ## Configuration
 
