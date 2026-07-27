@@ -1458,6 +1458,9 @@ class WebAppTests(unittest.TestCase):
             self.assertEqual(str(Path(output).resolve()), completed["output_directory"])
 
     def test_batch_browse_collection_includes_every_declared_action_output(self):
+        action_started = Event()
+        release_action = Event()
+
         class MultiActionBatch(Batch):
             item_actions = (
                 CapabilityChoice("image", "Render image"),
@@ -1488,6 +1491,26 @@ class WebAppTests(unittest.TestCase):
                         for resource in resources
                     ),
                     "Workspace outputs are ready",
+                )
+
+            def run_item(
+                self,
+                resource,
+                source_data,
+                request,
+                directory,
+            ):
+                action_started.set()
+                if not release_action.wait(timeout=10):
+                    raise TimeoutError("Test batch was not released")
+                target = directory / self._filename(
+                    resource,
+                    request.action,
+                )
+                target.write_bytes(request.action.encode("utf-8"))
+                return BatchResult(
+                    (target,),
+                    "Item output is ready",
                 )
 
         base = self.create_example_app().registry.get("test-workspace")
@@ -1589,6 +1612,29 @@ class WebAppTests(unittest.TestCase):
                     for action in empty_batch["actions"]
                 )
             )
+            image_token = empty_batch["actions"][0][
+                "collection_browser_url"
+            ].rsplit("/", 1)[-1]
+            animation_token = empty_batch["actions"][1][
+                "collection_browser_url"
+            ].rsplit("/", 1)[-1]
+            job_id = app.start_batch(
+                "multi-action-workspace",
+                "image",
+                "recording",
+            )
+            self.assertTrue(action_started.wait(timeout=2))
+            self.assertEqual(
+                "running",
+                app.declared_batch_outputs(image_token)["status"],
+            )
+            other_action = app.declared_batch_outputs(
+                animation_token,
+            )
+            self.assertEqual("ready", other_action["status"])
+            self.assertTrue(other_action["complete"])
+            release_action.set()
+            app._batch_jobs[job_id].future.result(timeout=10)
 
     def test_running_item_batch_can_be_cancelled_and_returns_to_idle(self):
         started = Event()

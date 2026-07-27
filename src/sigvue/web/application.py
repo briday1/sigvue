@@ -674,7 +674,13 @@ class SigvueApp:
     )
     _batch_declared_collections: dict[
         str,
-        tuple[Path, tuple[str, ...], str | None, str | None],
+        tuple[
+            Path,
+            tuple[str, ...],
+            str | None,
+            str | None,
+            str | None,
+        ],
     ] = field(default_factory=dict, init=False, repr=False)
     _batch_executor: ThreadPoolExecutor = field(
         default_factory=lambda: ThreadPoolExecutor(max_workers=4, thread_name_prefix="workspace-batch"),
@@ -1092,6 +1098,7 @@ class SigvueApp:
                         destinations[choice.value],
                         workspace_id,
                         item_id,
+                        choice.value,
                     )
                 if status.get("status") == "cancelled":
                     status = {"status": "idle"}
@@ -1100,22 +1107,15 @@ class SigvueApp:
                         destinations[choice.value],
                         workspace_id,
                         item_id,
+                        choice.value,
                     )
                 )
-                actions.append(
-                    {
-                        **choice.__dict__,
-                        **status,
-                        **(
-                            {
-                                "collection_browser_url":
-                                    collection_browser_url
-                            }
-                            if collection_browser_url is not None
-                            else {}
-                        ),
-                    }
-                )
+                action_payload = {**choice.__dict__, **status}
+                if collection_browser_url is not None:
+                    action_payload["collection_browser_url"] = (
+                        collection_browser_url
+                    )
+                actions.append(action_payload)
         return {
             "enabled": bool(actions),
             "actions": actions,
@@ -1154,6 +1154,7 @@ class SigvueApp:
                     self._batch_destination(workspace, action, item_id),
                     overall["workspace_id"],
                     item_id,
+                    action,
                 )
             return {"status": "idle"}
 
@@ -1163,6 +1164,7 @@ class SigvueApp:
                 self._batch_destination(workspace, action, item_id),
                 overall["workspace_id"],
                 item_id,
+                action,
             )
             return (
                 durable
@@ -1229,6 +1231,7 @@ class SigvueApp:
         names: tuple[str, ...],
         workspace_id: str | None = None,
         item_id: str | None = None,
+        action: str | None = None,
     ) -> str:
         token = uuid5(
             NAMESPACE_URL,
@@ -1238,6 +1241,7 @@ class SigvueApp:
                     str(directory),
                     workspace_id or "",
                     item_id or "",
+                    action or "",
                     *names,
                 )
             ),
@@ -1248,6 +1252,7 @@ class SigvueApp:
                 names,
                 workspace_id,
                 item_id,
+                action,
             )
         return f"/results/saved/{token}"
 
@@ -1290,6 +1295,7 @@ class SigvueApp:
         destination: BatchDestination,
         workspace_id: str,
         item_id: str | None,
+        action: str,
     ) -> str | None:
         if destination.directory is None or not destination.files:
             return None
@@ -1298,6 +1304,7 @@ class SigvueApp:
             destination.files,
             workspace_id,
             item_id,
+            action,
         )
 
     @staticmethod
@@ -1355,6 +1362,7 @@ class SigvueApp:
         destination: BatchDestination,
         workspace_id: str,
         item_id: str | None,
+        action: str,
     ) -> dict[str, object]:
         if destination.directory is None or not destination.files:
             return {"status": "idle"}
@@ -1368,6 +1376,7 @@ class SigvueApp:
                     destination,
                     workspace_id,
                     item_id,
+                    action,
                 ),
             }
         return {"status": "idle"}
@@ -1906,6 +1915,8 @@ class SigvueApp:
         self,
         directory: Path,
         workspace_id: str | None,
+        item_id: str | None,
+        action: str | None,
     ) -> tuple[str, bool]:
         if workspace_id is None:
             return "ready", True
@@ -1917,6 +1928,11 @@ class SigvueApp:
             if (
                 job.workspace_id != workspace_id
                 or job.directory.resolve() != resolved_directory
+                or (action is not None and job.action != action)
+                or (
+                    item_id is not None
+                    and job.item_id not in {None, item_id}
+                )
                 or job.future.done()
             ):
                 continue
@@ -1937,7 +1953,7 @@ class SigvueApp:
             entry = self._batch_declared_entries.get(token)
             collection = self._batch_declared_collections.get(token)
         if collection is not None:
-            directory, names, _, _ = collection
+            directory, names, _, _, _ = collection
             target = (directory / filename).resolve()
             try:
                 relative = target.relative_to(directory.resolve())
@@ -2009,10 +2025,12 @@ class SigvueApp:
             collection = self._batch_declared_collections.get(token)
         if collection is None:
             raise KeyError(token)
-        directory, names, workspace_id, _ = collection
+        directory, names, workspace_id, item_id, action = collection
         status, complete = self._declared_batch_collection_state(
             directory,
             workspace_id,
+            item_id,
+            action,
         )
         requested = Path(relative_path)
         if requested.is_absolute() or ".." in requested.parts:
