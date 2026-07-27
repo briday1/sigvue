@@ -397,7 +397,7 @@ function updateStatistics(statistics,runtimeStatistics){const viewTarget=documen
 function bindSidebar(){const sidebar=document.querySelector('[data-workspace-sidebar]'),backdrop=document.querySelector('[data-sidebar-backdrop]'),toggle=document.querySelector('[data-sidebar-toggle]');if(!sidebar||!backdrop||!toggle)return;const setOpen=open=>{sidebar.classList.toggle('open',open);backdrop.classList.toggle('open',open);toggle.setAttribute('aria-expanded',String(open))};toggle.onclick=()=>setOpen(!sidebar.classList.contains('open'));backdrop.onclick=()=>setOpen(false);sidebar.querySelector('[data-sidebar-close]').onclick=()=>setOpen(false)}
 const batchState=action=>action?.status||'idle';
 const batchStatusGlyph=action=>({running:'●',pending:'●',cancelling:'●',ready:'✓',error:'!'})[batchState(action)]||'';
-const batchActionStateLabel=action=>batchState(action)==='ready'?'↻ rerun':`${batchStatusGlyph(action)} ${batchState(action)}`;
+const batchActionStateLabel=action=>{const state=batchState(action),glyph=batchStatusGlyph(action);return state==='ready'?'↻ rerun':glyph?`${glyph} ${state}`:state};
 const batchLauncherHtml=action=>`<span class="batch-play" aria-hidden="true">▶</span>`;
 const batchFolderIcon='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 18z"/><path d="M3.5 9h17"/></svg>';
 const batchBrowseAction=batch=>batch?.actions?.find(action=>activeBatchStatuses.has(batchState(action))&&action.result_browser_url)||batch?.actions?.find(action=>batchState(action)==='ready'&&action.result_browser_url)||batch?.actions?.find(action=>action.result_browser_url);
@@ -423,7 +423,10 @@ function showBatchToast(status){if(!status.id||alertedBatchIds.has(status.id)||d
 function batchNotificationIdentity(status){return `${status.workspace_id||''}\u0000${status.item_id||''}\u0000${status.action||''}`}
 function upsertBatchNotification(status){if(!status?.id||dismissedBatchIds.has(status.id))return;const notificationId=`batch-${status.id}`,identity=batchNotificationIdentity(status),index=notifications.findIndex(item=>item.notificationId===notificationId),replaced=index<0?notifications.findIndex(item=>batchNotificationIdentity(item)===identity):-1;if(index>=0){const previous=notifications[index],entry={...previous,...status,notificationId};notifications[index]=entry;if(previous.status!==entry.status){notifications.splice(index,1);notifications.unshift(entry)}}else{if(replaced>=0)notifications.splice(replaced,1);notifications.unshift({...status,notificationId})}renderNotifications()}
 function batchStatusUrl(status){return status.item_id?`/workspaces/${encodeURIComponent(status.workspace_id)}/items/${encodeURIComponent(status.item_id)}/batch`:`/workspaces/${encodeURIComponent(status.workspace_id)}/batch`}
-function applyVisibleBatchStatus(status){if(!status.workspace_id)return;const url=batchStatusUrl(status);document.querySelectorAll('[data-batch-menu]').forEach(menu=>{if(menu.dataset.batchUrl!==url)return;const button=[...menu.querySelectorAll('[data-batch-action]')].find(candidate=>candidate.dataset.batchAction===status.action);if(!button)return;const visibleStatus=status.status==='cancelled'?'idle':status.status;button.dataset.batchStatus=visibleStatus;button.title=visibleStatus==='ready'?'Regenerate existing result':'Run batch action';const state=button.querySelector('.batch-state');state.className=`batch-state ${visibleStatus}`;state.textContent=batchActionStateLabel({status:visibleStatus});const buttons=[...menu.querySelectorAll('[data-batch-action]')],summary=buttons.find(candidate=>['running','pending','cancelling'].includes(candidate.dataset.batchStatus))||buttons.find(candidate=>candidate.dataset.batchStatus==='ready')||buttons.find(candidate=>candidate.dataset.batchStatus==='error')||buttons[0],menuStatus=summary?.dataset.batchStatus||'idle';menu.className=`batch-menu ${menuStatus}`;menu.querySelector('summary').innerHTML=batchLauncherHtml({status:menuStatus});const controls=menu.closest('[data-batch-controls]'),folder=controls?.querySelector('[data-batch-folder]');if(folder&&status.result_browser_url){const label=`Browse results for ${status.action_label||'batch action'}`;folder.outerHTML=`<a class="batch-folder" data-batch-folder href="${esc(status.result_browser_url)}" aria-label="${esc(label)}" title="${esc(label)}">${batchFolderIcon}<span class="batch-folder-label">Browse</span></a>`}})}
+function setBatchMenuActionStatus(menu,action,visibleStatus){const button=[...menu.querySelectorAll('[data-batch-action]')].find(candidate=>candidate.dataset.batchAction===action);if(!button)return false;button.dataset.batchStatus=visibleStatus;button.title=visibleStatus==='ready'?'Regenerate existing result':'Run batch action';const state=button.querySelector('.batch-state');state.className=`batch-state ${visibleStatus}`;state.textContent=batchActionStateLabel({status:visibleStatus});const buttons=[...menu.querySelectorAll('[data-batch-action]')],summary=buttons.find(candidate=>['running','pending','cancelling'].includes(candidate.dataset.batchStatus))||buttons.find(candidate=>candidate.dataset.batchStatus==='ready')||buttons.find(candidate=>candidate.dataset.batchStatus==='error')||buttons[0],menuStatus=summary?.dataset.batchStatus||'idle';menu.className=`batch-menu ${menuStatus}`;menu.querySelector('summary').innerHTML=batchLauncherHtml({status:menuStatus});return true}
+function setBatchFolderStatus(menu,status){const controls=menu.closest('[data-batch-controls]'),folder=controls?.querySelector('[data-batch-folder]');if(!folder)return;const label=status.result_browser_url?`Browse results for ${status.action_label||'batch action'}`:'No current batch results yet',content=`${batchFolderIcon}<span class="batch-folder-label">Browse</span>`;folder.outerHTML=status.result_browser_url?`<a class="batch-folder" data-batch-folder href="${esc(status.result_browser_url)}" aria-label="${esc(label)}" title="${esc(label)}">${content}</a>`:`<span class="batch-folder" data-batch-folder aria-disabled="true" aria-label="${esc(label)}" title="${esc(label)}">${content}</span>`}
+function applyWorkspaceItemProgress(status){if(status.item_id!=null)return;const prefix=`/workspaces/${encodeURIComponent(status.workspace_id)}/items/`,suffix='/batch',progress=new Map((status.progress?.items||[]).map(item=>[String(item.id),item])),active=activeBatchStatuses.has(status.status);document.querySelectorAll('[data-batch-menu]').forEach(menu=>{const url=menu.dataset.batchUrl||'';if(!url.startsWith(prefix)||!url.endsWith(suffix))return;let itemId;try{itemId=decodeURIComponent(url.slice(prefix.length,-suffix.length))}catch(error){return}const item=progress.get(itemId),itemState=item?.status,visibleStatus=itemState==='ready'?'ready':itemState==='error'?'error':itemState==='running'&&active?(status.status==='cancelling'?'cancelling':'running'):'idle';if(!setBatchMenuActionStatus(menu,status.action,visibleStatus))return;setBatchFolderStatus(menu,{...status,item_id:itemId,status:visibleStatus,result_browser_url:visibleStatus==='ready'?status.result_browser_url:null})})}
+function applyVisibleBatchStatus(status){if(!status.workspace_id)return;const url=batchStatusUrl(status);document.querySelectorAll('[data-batch-menu]').forEach(menu=>{if(menu.dataset.batchUrl!==url)return;const visibleStatus=status.status==='cancelled'?'idle':status.status;if(!setBatchMenuActionStatus(menu,status.action,visibleStatus))return;setBatchFolderStatus(menu,status)});applyWorkspaceItemProgress(status)}
 function monitorBatchJob(started){if(!started?.id)return;upsertBatchNotification(started);applyVisibleBatchStatus(started);if(!activeBatchStatuses.has(started.status)){showBatchToast(started);return}if(batchPollers.has(started.id))return;const poll=async()=>{try{const status=await api(started.status_url||`/batches/${encodeURIComponent(started.id)}`);upsertBatchNotification(status);applyVisibleBatchStatus(status);if(activeBatchStatuses.has(status.status)){batchPollers.set(status.id,setTimeout(poll,500));return}batchPollers.delete(status.id);showBatchToast(status)}catch(error){batchPollers.delete(started.id);const failed={...started,status:'error',detail:error.message};upsertBatchNotification(failed);applyVisibleBatchStatus(failed);showBatchToast(failed)}};batchPollers.set(started.id,setTimeout(poll,500))}
 async function syncBatchNotifications(){try{const response=await api('/batches');for(const status of [...(response.jobs||[])].reverse())monitorBatchJob(status)}catch(error){console.error('Unable to restore batch notifications',error)}}
 function closeBatchMenus(except=null){document.querySelectorAll('[data-batch-menu][open]').forEach(menu=>{if(menu!==except)menu.open=false})}
@@ -1047,16 +1050,98 @@ class SigvueApp:
         actions = []
         with self._batch_lock:
             for choice in choices:
-                job_id = self._batch_latest.get((workspace_id, item_id, choice.value))
-                status = self.batch_status(job_id) if job_id else self._declared_batch_status(
-                    workspace,
-                    choice.value,
-                    item_id,
+                job_id = self._batch_latest.get(
+                    (workspace_id, item_id, choice.value)
                 )
+                workspace_job_id = (
+                    self._batch_latest.get(
+                        (workspace_id, None, choice.value)
+                    )
+                    if item_id is not None
+                    else None
+                )
+                job = self._batch_jobs.get(job_id) if job_id else None
+                workspace_job = (
+                    self._batch_jobs.get(workspace_job_id)
+                    if workspace_job_id
+                    else None
+                )
+                if (
+                    workspace_job is not None
+                    and (
+                        job is None
+                        or workspace_job.started_at >= job.started_at
+                    )
+                ):
+                    status = self._workspace_batch_item_status(
+                        workspace,
+                        workspace_job_id,
+                        item_id,
+                        choice.value,
+                    )
+                elif job_id:
+                    status = self.batch_status(job_id)
+                else:
+                    status = self._declared_batch_status(
+                        workspace,
+                        choice.value,
+                        item_id,
+                    )
                 if status.get("status") == "cancelled":
                     status = {"status": "idle"}
                 actions.append({**choice.__dict__, **status})
         return {"enabled": bool(actions), "actions": actions}
+
+    def _workspace_batch_item_status(
+        self,
+        workspace: Any,
+        job_id: str,
+        item_id: str,
+        action: str,
+    ) -> dict[str, object]:
+        """Project the latest group run onto one matching item action."""
+        overall = self.batch_status(job_id)
+        item = next(
+            (
+                candidate
+                for candidate in overall.get("progress", {}).get(
+                    "items",
+                    (),
+                )
+                if str(candidate.get("id")) == item_id
+            ),
+            None,
+        )
+        if item is None:
+            if overall["status"] == "ready":
+                return self._declared_batch_status(
+                    workspace,
+                    action,
+                    item_id,
+                )
+            return {"status": "idle"}
+
+        item_status = str(item.get("status", "pending"))
+        if item_status == "ready":
+            durable = self._declared_batch_status(
+                workspace,
+                action,
+                item_id,
+            )
+            return (
+                durable
+                if durable.get("status") == "ready"
+                else {"status": "ready"}
+            )
+        if item_status == "running":
+            return {"status": "running"}
+        if item_status == "error":
+            return {
+                key: value
+                for key, value in item.items()
+                if key in {"status", "detail", "log"}
+            }
+        return {"status": "idle"}
 
     @staticmethod
     def _batch_destination(workspace: Any, action: str, item_id: str | None) -> BatchDestination:

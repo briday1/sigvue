@@ -417,6 +417,15 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("No matching workspaces.", body)
         self.assertIn("function batchMenuHtml", body)
         self.assertIn("function bindBatchMenus", body)
+        self.assertIn("function applyWorkspaceItemProgress(status)", body)
+        self.assertIn(
+            "itemState==='running'&&active?",
+            body,
+        )
+        self.assertIn(
+            "visibleStatus==='ready'?status.result_browser_url:null",
+            body,
+        )
         self.assertIn("headerNotifications.open=false", body)
         self.assertIn("headerNotifications.onclick=event=>", body)
         self.assertIn("function followInternalResultLink(event)", body)
@@ -441,7 +450,7 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("closeBatchMenus(menu)", body)
         self.assertIn("data-batch-action", body)
         self.assertIn(
-            "batchState(action)==='ready'?'↻ rerun':",
+            "state==='ready'?'↻ rerun':",
             body,
         )
         self.assertIn("Regenerate existing result", body)
@@ -1253,10 +1262,18 @@ class WebAppTests(unittest.TestCase):
                 return resource.source
 
         class ProgressBatch(Batch):
+            item_actions = (CapabilityChoice("render", "Render item"),)
             workspace_actions = (CapabilityChoice("render", "Render workspace"),)
 
             def __init__(self, output):
                 self.output = output
+
+            def item_destination(self, resource, request):
+                return BatchDestination(
+                    self.output,
+                    (f"{resource.identifier}.txt",),
+                    "Item output is ready",
+                )
 
             def workspace_destination(self, resources, request):
                 return BatchDestination(
@@ -1325,6 +1342,23 @@ class WebAppTests(unittest.TestCase):
                 ["item-0.txt"],
                 [file["name"] for file in running["files"]],
             )
+            row_actions = [
+                item["batch"]["actions"][0]
+                for item in app.browse_items(
+                    "progress-workspace",
+                    {},
+                )["items"]
+            ]
+            self.assertEqual(
+                ["ready", "running", "idle"],
+                [action["status"] for action in row_actions],
+            )
+            self.assertIn(
+                "/results/saved/",
+                row_actions[0]["result_browser_url"],
+            )
+            self.assertNotIn("result_browser_url", row_actions[1])
+            self.assertNotIn("result_browser_url", row_actions[2])
             live_listing = app.batch_outputs(job_id)
             self.assertEqual("running", live_listing["status"])
             self.assertFalse(live_listing["complete"])
@@ -1360,6 +1394,20 @@ class WebAppTests(unittest.TestCase):
             self.assertEqual(
                 {"item-0.txt", "item-2.txt"},
                 {file["name"] for file in completed["files"]},
+            )
+            completed_row_actions = [
+                item["batch"]["actions"][0]
+                for item in app.browse_items(
+                    "progress-workspace",
+                    {},
+                )["items"]
+            ]
+            self.assertEqual(
+                ["ready", "error", "ready"],
+                [
+                    action["status"]
+                    for action in completed_row_actions
+                ],
             )
             final_listing = app.batch_outputs(job_id)
             self.assertEqual("ready", final_listing["status"])
