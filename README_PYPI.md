@@ -38,24 +38,26 @@ workflows:
 
 ```bash
 python -m pip install sigvue
-sigvue --config browser.toml
+sigvue
 ```
 
 Open <http://127.0.0.1:8000>.
+Run `sigvue --config /path/to/browser.toml` to open an existing profile
+directly.
 
 For the same application in a native desktop window, install Sigvue's desktop
 extra and run the core desktop host:
 
 ```bash
 python -m pip install "sigvue[desktop]"
-sigvue-desktop --config browser.toml
+sigvue-desktop --config /path/to/browser.toml
 ```
 
 From a Sigvue source checkout, the equivalent editable installation is:
 
 ```bash
 python -m pip install -e ".[desktop]"
-sigvue-desktop --config browser.toml
+sigvue-desktop --config examples/browser.toml
 ```
 
 `sigvue-desktop` accepts the same workspace profile as the browser server.
@@ -65,7 +67,7 @@ views, and batch actions; they do not need their own desktop launcher.
 
 ## The API
 
-![The API diagram](https://raw.githubusercontent.com/briday1/sigvue/main/docs/pypi-diagrams/01-the-api.svg)
+![The API diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.72/docs/pypi-diagrams/01-the-api.svg)
 
 There is one application object:
 
@@ -322,7 +324,7 @@ Tabs, weighted grids, nested groups, multidimensional switchers, display
 controls, inline processing controls, tables, text, and deferred plots all stay
 in the one nested `ui` API.
 
-![Exact complex layouts diagram](https://raw.githubusercontent.com/briday1/sigvue/main/docs/pypi-diagrams/02-exact-complex-layouts.svg)
+![Exact complex layouts diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.72/docs/pypi-diagrams/02-exact-complex-layouts.svg)
 
 ## Custom discovery metadata
 
@@ -398,7 +400,7 @@ to the most recently run action. A particular notification still links to its
 individual job, while **All batch results** shows finished outputs from every
 action sharing the same destination directory.
 
-![Optional capabilities diagram](https://raw.githubusercontent.com/briday1/sigvue/main/docs/pypi-diagrams/03-optional-capabilities.svg)
+![Optional capabilities diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.72/docs/pypi-diagrams/03-optional-capabilities.svg)
 
 ## Configuration
 
