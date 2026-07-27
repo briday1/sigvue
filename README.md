@@ -404,9 +404,10 @@ thousands of support paths to the notification UI.
 Top-level `BatchResult.files` entries may also be directories. Sigvue opens
 those results in a viewport-sized searchable file/image browser with independent
 scrollback and expandable nested folders. The tree updates as a running batch
-finishes files without resizing the image preview. Sigvue opens individual images
-and HTML reports directly, and offers other file types as downloads alongside
-their local copyable paths.
+finishes files without resizing the image preview. PNG and GIF previews scale to
+fit that pane in both dimensions without internal scrolling. Sigvue opens
+individual images and HTML reports directly, and offers other file types as
+downloads alongside their local copyable paths.
 
 ```mermaid
 flowchart TB

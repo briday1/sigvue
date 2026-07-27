@@ -468,7 +468,7 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("This image is still being finalized.", body)
         self.assertIn("function sizeResultBrowser()", body)
         self.assertIn(
-            "window.innerHeight-target.getBoundingClientRect().top-18",
+            "window.innerHeight-target.getBoundingClientRect().top+46",
             body,
         )
         self.assertIn(
@@ -488,6 +488,17 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("Promise.all([...expanded]", body)
         self.assertIn("Search loaded files and folders…", body)
         self.assertIn("overscroll-behavior:contain; scrollbar-gutter:stable", body)
+        self.assertIn(
+            ".result-image-stage { display:flex; min-width:0; min-height:0; "
+            "flex:1 1 0;",
+            body,
+        )
+        self.assertIn(
+            ".result-image-stage img { width:auto; height:auto; "
+            "max-width:100%; max-height:100%;",
+            body,
+        )
+        self.assertIn(".result-preview-toolbar { flex:none }", body)
         self.assertIn(
             "header .home-title { all:unset; display:block; min-width:0;",
             body,
