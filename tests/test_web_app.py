@@ -466,6 +466,28 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("generation!==resultBrowserGeneration", body)
         self.assertIn("selectedVersion=null", body)
         self.assertIn("This image is still being finalized.", body)
+        self.assertIn("function sizeResultBrowser()", body)
+        self.assertIn(
+            "window.innerHeight-target.getBoundingClientRect().top-18",
+            body,
+        )
+        self.assertIn(
+            "window.addEventListener('resize',sizeResultBrowser)",
+            body,
+        )
+        self.assertIn(
+            "window.removeEventListener('resize',sizeResultBrowser)",
+            body,
+        )
+        self.assertIn('id="result-browser-list" role="tree"', body)
+        self.assertIn("const flatten=()=>", body)
+        self.assertIn("const toggleFolder=entry=>", body)
+        self.assertIn("aria-expanded=", body)
+        self.assertIn("result-tree-message", body)
+        self.assertIn("list.scrollTop=scrollTop", body)
+        self.assertIn("Promise.all([...expanded]", body)
+        self.assertIn("Search loaded files and folders…", body)
+        self.assertIn("overscroll-behavior:contain; scrollbar-gutter:stable", body)
         self.assertIn(
             "header .home-title { all:unset; display:block; min-width:0;",
             body,

@@ -402,9 +402,11 @@ such as image tiles. Sigvue serves those files to the report without adding
 thousands of support paths to the notification UI.
 
 Top-level `BatchResult.files` entries may also be directories. Sigvue opens
-those results in a bounded searchable file/image browser, opens individual
-images and HTML reports directly, and offers other file types as downloads
-alongside their local copyable paths.
+those results in a viewport-sized searchable file/image browser with independent
+scrollback and expandable nested folders. The tree updates as a running batch
+finishes files without resizing the image preview. Sigvue opens individual images
+and HTML reports directly, and offers other file types as downloads alongside
+their local copyable paths.
 
 ```mermaid
 flowchart TB
