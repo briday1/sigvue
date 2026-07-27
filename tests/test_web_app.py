@@ -427,10 +427,17 @@ class WebAppTests(unittest.TestCase):
             body,
         )
         self.assertIn("batch?.result_browser_url", body)
-        self.assertIn("Browse all batch results", body)
+        self.assertIn("function batchBrowseChoices(batch)", body)
+        self.assertIn("All batch results", body)
+        self.assertIn("action.collection_browser_url", body)
+        self.assertIn("data-batch-browse-action", body)
         self.assertIn('data-batch-folder-scope="collection"', body)
         self.assertIn(
             "folder.dataset.batchFolderScope==='collection'",
+            body,
+        )
+        self.assertIn(
+            "[data-batch-menu][open],[data-batch-browse-menu][open]",
             body,
         )
         self.assertIn("headerNotifications.open=false", body)
@@ -1511,6 +1518,32 @@ class WebAppTests(unittest.TestCase):
                 item_batch["actions"][0]["result_browser_url"],
                 item_batch["actions"][1]["result_browser_url"],
             )
+            action_collection_urls = [
+                action["collection_browser_url"]
+                for action in item_batch["actions"]
+            ]
+            self.assertNotEqual(
+                action_collection_urls[0],
+                action_collection_urls[1],
+            )
+            self.assertEqual(
+                {"recording.png"},
+                {
+                    entry["name"]
+                    for entry in app.declared_batch_outputs(
+                        action_collection_urls[0].rsplit("/", 1)[-1]
+                    )["entries"]
+                },
+            )
+            self.assertEqual(
+                {"recording.gif"},
+                {
+                    entry["name"]
+                    for entry in app.declared_batch_outputs(
+                        action_collection_urls[1].rsplit("/", 1)[-1]
+                    )["entries"]
+                },
+            )
             collection_token = item_batch["result_browser_url"].rsplit(
                 "/",
                 1,
@@ -1534,6 +1567,27 @@ class WebAppTests(unittest.TestCase):
                     entry["name"]
                     for entry in workspace_collection["entries"]
                 },
+            )
+            (output_path / "recording.png").unlink()
+            (output_path / "recording.gif").unlink()
+            empty_batch = app.browse_items(
+                "multi-action-workspace",
+                {},
+            )["items"][0]["batch"]
+            self.assertEqual(
+                ["idle", "idle"],
+                [
+                    action["status"]
+                    for action in empty_batch["actions"]
+                ],
+            )
+            self.assertTrue(
+                all(
+                    action["collection_browser_url"].startswith(
+                        "/results/saved/"
+                    )
+                    for action in empty_batch["actions"]
+                )
             )
 
     def test_running_item_batch_can_be_cancelled_and_returns_to_idle(self):

@@ -409,10 +409,11 @@ fit that pane in both dimensions without internal scrolling. Sigvue opens
 individual images and HTML reports directly, and offers other file types as
 downloads alongside their local copyable paths.
 
-The persistent **Browse** button opens the cumulative declared output collection
-for that workspace or item, not only the most recently run action. A particular
-notification still links to its individual job, while the cumulative browser
-shows finished outputs from every action sharing the same destination directory.
+The persistent **Browse** menu can open all declared outputs for that workspace
+or item, or narrow the result browser to one batch action type. It is not limited
+to the most recently run action. A particular notification still links to its
+individual job, while **All batch results** shows finished outputs from every
+action sharing the same destination directory.
 
 ```mermaid
 flowchart TB
