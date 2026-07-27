@@ -466,6 +466,7 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("function bindItemActionRail", body)
         self.assertIn("data-batch-folder", body)
         self.assertIn("batchFolderIcon", body)
+        self.assertIn('class="batch-folder-label">Browse</span>', body)
         self.assertIn("function syncBatchNotifications", body)
         self.assertIn("syncBatchNotifications();boot()", body)
         self.assertIn("data-batch-status", body)
@@ -481,8 +482,16 @@ class WebAppTests(unittest.TestCase):
         self.assertIn('<th class="tags-column">Tags</th>', body)
         self.assertNotIn('<th class="batch-cell">Run</th>', body)
         self.assertNotIn('<td class="batch-cell">', body)
-        self.assertIn(".item-toolbar { display:grid;", body)
-        self.assertIn(".item-browser-layout { display:grid;", body)
+        self.assertIn(
+            ".item-toolbar { display:grid; "
+            "grid-template-columns:minmax(0,1fr) 132px;",
+            body,
+        )
+        self.assertIn(
+            ".item-browser-layout { display:grid; "
+            "grid-template-columns:minmax(0,1fr) 132px;",
+            body,
+        )
         self.assertIn('class="batch-controls"', body)
         self.assertIn(".batch-menu.ready summary { color:#16803c;", body)
         self.assertIn("${w.name} ${w.description||''} ${w.category||''}", body)
