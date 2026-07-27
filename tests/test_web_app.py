@@ -553,7 +553,9 @@ class WebAppTests(unittest.TestCase):
             body,
         )
         self.assertIn('class="batch-controls"', body)
-        self.assertIn(".batch-menu.ready summary { color:#16803c;", body)
+        self.assertNotIn(".batch-menu.ready summary", body)
+        self.assertNotIn(".batch-menu.running summary", body)
+        self.assertNotIn(".batch-menu.error summary", body)
         self.assertIn("${w.name} ${w.description||''} ${w.category||''}", body)
         self.assertNotIn('id="reload-config"', body)
         self.assertNotIn("Reload browser.toml", body)
