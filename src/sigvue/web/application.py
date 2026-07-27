@@ -398,7 +398,7 @@ const batchActionStateLabel=action=>{const state=batchState(action),glyph=batchS
 const batchLauncherHtml=action=>`<span class="batch-play" aria-hidden="true">▶</span>`;
 const batchFolderIcon='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 18z"/><path d="M3.5 9h17"/></svg>';
 const batchBrowseAction=batch=>batch?.actions?.find(action=>activeBatchStatuses.has(batchState(action))&&action.result_browser_url)||batch?.actions?.find(action=>batchState(action)==='ready'&&action.result_browser_url)||batch?.actions?.find(action=>action.result_browser_url);
-function batchFolderHtml(batch){const action=batchBrowseAction(batch),url=action?.result_browser_url,label=action?`Browse results for ${action.label}`:'No batch results yet',content=`${batchFolderIcon}<span class="batch-folder-label">Browse</span>`;return url?`<a class="batch-folder" data-batch-folder href="${esc(url)}" aria-label="${esc(label)}" title="${esc(label)}">${content}</a>`:`<span class="batch-folder" data-batch-folder aria-disabled="true" aria-label="${esc(label)}" title="${esc(label)}">${content}</span>`}
+function batchFolderHtml(batch){const action=batchBrowseAction(batch),collectionUrl=batch?.result_browser_url,url=collectionUrl||action?.result_browser_url,label=collectionUrl?'Browse all batch results':action?`Browse results for ${action.label}`:'No batch results yet',scope=collectionUrl?' data-batch-folder-scope="collection"':'',content=`${batchFolderIcon}<span class="batch-folder-label">Browse</span>`;return url?`<a class="batch-folder" data-batch-folder${scope} href="${esc(url)}" aria-label="${esc(label)}" title="${esc(label)}">${content}</a>`:`<span class="batch-folder" data-batch-folder aria-disabled="true" aria-label="${esc(label)}" title="${esc(label)}">${content}</span>`}
 function batchArtifactHtml(file){const action=file.browse_url?`<a class="batch-open" href="${esc(file.browse_url)}">Browse</a>`:file.open_url?`<a class="batch-open" href="${esc(file.open_url)}" target="_blank" rel="noopener">Open</a>`:`<a class="batch-open" href="${esc(file.download_url||file.url)}">Download</a>`;return `<div class="batch-artifact"><span class="batch-path" title="${esc(file.path)}">${esc(file.path)}</span>${action}<button class="copy-path" type="button" data-copy-path="${esc(file.path)}">Copy path</button></div>`}
 function batchMenuHtml(batch,url,showArtifacts=true){if(!batch?.enabled)return '';const summary=batch.actions.find(action=>['running','pending','cancelling'].includes(batchState(action)))||batch.actions.find(action=>batchState(action)==='ready')||batch.actions.find(action=>batchState(action)==='error')||batch.actions[0];return `<details class="batch-menu ${esc(batchState(summary))}" data-batch-menu data-batch-url="${esc(url)}"><summary title="Run batch action" aria-label="Run batch action">${batchLauncherHtml(summary)}</summary><div class="batch-menu-popover">${batch.actions.map(action=>`<div class="batch-action-row"><button class="batch-action" type="button" title="${batchState(action)==='ready'?'Regenerate existing result':'Run batch action'}" data-batch-action="${esc(action.value)}" data-batch-status="${esc(batchState(action))}"><span>${esc(action.label)}</span><span class="batch-state ${esc(batchState(action))}">${esc(batchActionStateLabel(action))}</span></button>${showArtifacts&&action.files?.length?`<div class="batch-artifacts">${action.files.map(batchArtifactHtml).join('')}</div>`:''}</div>`).join('')}</div></details>`}
 function batchControlsHtml(batch,url){if(!batch?.enabled)return '<span class="batch-controls"></span>';return `<span class="batch-controls" data-batch-controls>${batchMenuHtml(batch,url,false)}${batchFolderHtml(batch)}</span>`}
@@ -421,8 +421,8 @@ function batchNotificationIdentity(status){return `${status.workspace_id||''}\u0
 function upsertBatchNotification(status){if(!status?.id||dismissedBatchIds.has(status.id))return;const notificationId=`batch-${status.id}`,identity=batchNotificationIdentity(status),index=notifications.findIndex(item=>item.notificationId===notificationId),replaced=index<0?notifications.findIndex(item=>batchNotificationIdentity(item)===identity):-1;if(index>=0){const previous=notifications[index],entry={...previous,...status,notificationId};notifications[index]=entry;if(previous.status!==entry.status){notifications.splice(index,1);notifications.unshift(entry)}}else{if(replaced>=0)notifications.splice(replaced,1);notifications.unshift({...status,notificationId})}renderNotifications()}
 function batchStatusUrl(status){return status.item_id?`/workspaces/${encodeURIComponent(status.workspace_id)}/items/${encodeURIComponent(status.item_id)}/batch`:`/workspaces/${encodeURIComponent(status.workspace_id)}/batch`}
 function setBatchMenuActionStatus(menu,action,visibleStatus){const button=[...menu.querySelectorAll('[data-batch-action]')].find(candidate=>candidate.dataset.batchAction===action);if(!button)return false;button.dataset.batchStatus=visibleStatus;button.title=visibleStatus==='ready'?'Regenerate existing result':'Run batch action';const state=button.querySelector('.batch-state');state.className=`batch-state ${visibleStatus}`;state.textContent=batchActionStateLabel({status:visibleStatus});const buttons=[...menu.querySelectorAll('[data-batch-action]')],summary=buttons.find(candidate=>['running','pending','cancelling'].includes(candidate.dataset.batchStatus))||buttons.find(candidate=>candidate.dataset.batchStatus==='ready')||buttons.find(candidate=>candidate.dataset.batchStatus==='error')||buttons[0],menuStatus=summary?.dataset.batchStatus||'idle';menu.className=`batch-menu ${menuStatus}`;menu.querySelector('summary').innerHTML=batchLauncherHtml({status:menuStatus});return true}
-function setBatchFolderStatus(menu,status){const controls=menu.closest('[data-batch-controls]'),folder=controls?.querySelector('[data-batch-folder]');if(!folder)return;const label=status.result_browser_url?`Browse results for ${status.action_label||'batch action'}`:'No current batch results yet',content=`${batchFolderIcon}<span class="batch-folder-label">Browse</span>`;folder.outerHTML=status.result_browser_url?`<a class="batch-folder" data-batch-folder href="${esc(status.result_browser_url)}" aria-label="${esc(label)}" title="${esc(label)}">${content}</a>`:`<span class="batch-folder" data-batch-folder aria-disabled="true" aria-label="${esc(label)}" title="${esc(label)}">${content}</span>`}
-function applyWorkspaceItemProgress(status){if(status.item_id!=null)return;const prefix=`/workspaces/${encodeURIComponent(status.workspace_id)}/items/`,suffix='/batch',progress=new Map((status.progress?.items||[]).map(item=>[String(item.id),item])),active=activeBatchStatuses.has(status.status);document.querySelectorAll('[data-batch-menu]').forEach(menu=>{const url=menu.dataset.batchUrl||'';if(!url.startsWith(prefix)||!url.endsWith(suffix))return;let itemId;try{itemId=decodeURIComponent(url.slice(prefix.length,-suffix.length))}catch(error){return}const item=progress.get(itemId),itemState=item?.status,visibleStatus=itemState==='ready'?'ready':itemState==='error'?'error':itemState==='running'&&active?(status.status==='cancelling'?'cancelling':'running'):'idle';if(!setBatchMenuActionStatus(menu,status.action,visibleStatus))return;setBatchFolderStatus(menu,{...status,item_id:itemId,status:visibleStatus,result_browser_url:visibleStatus==='ready'?status.result_browser_url:null})})}
+function setBatchFolderStatus(menu,status){const controls=menu.closest('[data-batch-controls]'),folder=controls?.querySelector('[data-batch-folder]');if(!folder||folder.dataset.batchFolderScope==='collection')return;const label=status.result_browser_url?`Browse results for ${status.action_label||'batch action'}`:'No current batch results yet',content=`${batchFolderIcon}<span class="batch-folder-label">Browse</span>`;folder.outerHTML=status.result_browser_url?`<a class="batch-folder" data-batch-folder href="${esc(status.result_browser_url)}" aria-label="${esc(label)}" title="${esc(label)}">${content}</a>`:`<span class="batch-folder" data-batch-folder aria-disabled="true" aria-label="${esc(label)}" title="${esc(label)}">${content}</span>`}
+function applyWorkspaceItemProgress(status){if(status.item_id!=null)return;const prefix=`/workspaces/${encodeURIComponent(status.workspace_id)}/items/`,suffix='/batch',progress=new Map((status.progress?.items||[]).map(item=>[String(item.id),item])),active=activeBatchStatuses.has(status.status);document.querySelectorAll('[data-batch-menu]').forEach(menu=>{const url=menu.dataset.batchUrl||'';if(!url.startsWith(prefix)||!url.endsWith(suffix))return;let itemId;try{itemId=decodeURIComponent(url.slice(prefix.length,-suffix.length))}catch(error){return}const item=progress.get(itemId),itemState=item?.status,visibleStatus=itemState==='ready'?'ready':itemState==='error'?'error':active&&itemState==='running'?(status.status==='cancelling'?'cancelling':'running'):active&&(!itemState||itemState==='pending')?'pending':'idle';if(!setBatchMenuActionStatus(menu,status.action,visibleStatus))return;setBatchFolderStatus(menu,{...status,item_id:itemId,status:visibleStatus,result_browser_url:visibleStatus==='ready'?status.result_browser_url:null})})}
 function applyVisibleBatchStatus(status){if(!status.workspace_id)return;const url=batchStatusUrl(status);document.querySelectorAll('[data-batch-menu]').forEach(menu=>{if(menu.dataset.batchUrl!==url)return;const visibleStatus=status.status==='cancelled'?'idle':status.status;if(!setBatchMenuActionStatus(menu,status.action,visibleStatus))return;setBatchFolderStatus(menu,status)});applyWorkspaceItemProgress(status)}
 function monitorBatchJob(started){if(!started?.id)return;upsertBatchNotification(started);applyVisibleBatchStatus(started);if(!activeBatchStatuses.has(started.status)){showBatchToast(started);return}if(batchPollers.has(started.id))return;const poll=async()=>{try{const status=await api(started.status_url||`/batches/${encodeURIComponent(started.id)}`);upsertBatchNotification(status);applyVisibleBatchStatus(status);if(activeBatchStatuses.has(status.status)){batchPollers.set(status.id,setTimeout(poll,500));return}batchPollers.delete(status.id);showBatchToast(status)}catch(error){batchPollers.delete(started.id);const failed={...started,status:'error',detail:error.message};upsertBatchNotification(failed);applyVisibleBatchStatus(failed);showBatchToast(failed)}};batchPollers.set(started.id,setTimeout(poll,500))}
 async function syncBatchNotifications(){try{const response=await api('/batches');for(const status of [...(response.jobs||[])].reverse())monitorBatchJob(status)}catch(error){console.error('Unable to restore batch notifications',error)}}
@@ -673,7 +673,7 @@ class SigvueApp:
     )
     _batch_declared_collections: dict[
         str,
-        tuple[Path, tuple[str, ...]],
+        tuple[Path, tuple[str, ...], str | None, str | None],
     ] = field(default_factory=dict, init=False, repr=False)
     _batch_executor: ThreadPoolExecutor = field(
         default_factory=lambda: ThreadPoolExecutor(max_workers=4, thread_name_prefix="workspace-batch"),
@@ -1044,6 +1044,14 @@ class SigvueApp:
         choices = capability.item_actions if capability is not None and item_id is not None else (
             capability.workspace_actions if capability is not None else ()
         )
+        destinations = {
+            choice.value: self._batch_destination(
+                workspace,
+                choice.value,
+                item_id,
+            )
+            for choice in choices
+        }
         actions = []
         with self._batch_lock:
             for choice in choices:
@@ -1080,14 +1088,22 @@ class SigvueApp:
                     status = self.batch_status(job_id)
                 else:
                     status = self._declared_batch_status(
-                        workspace,
-                        choice.value,
+                        destinations[choice.value],
+                        workspace_id,
                         item_id,
                     )
                 if status.get("status") == "cancelled":
                     status = {"status": "idle"}
                 actions.append({**choice.__dict__, **status})
-        return {"enabled": bool(actions), "actions": actions}
+        return {
+            "enabled": bool(actions),
+            "actions": actions,
+            "result_browser_url": self._combined_batch_collection_url(
+                tuple(destinations.values()),
+                workspace_id,
+                item_id,
+            ),
+        }
 
     def _workspace_batch_item_status(
         self,
@@ -1110,10 +1126,12 @@ class SigvueApp:
             None,
         )
         if item is None:
+            if overall["status"] in {"pending", "running", "cancelling"}:
+                return {"status": "pending"}
             if overall["status"] == "ready":
                 return self._declared_batch_status(
-                    workspace,
-                    action,
+                    self._batch_destination(workspace, action, item_id),
+                    overall["workspace_id"],
                     item_id,
                 )
             return {"status": "idle"}
@@ -1121,8 +1139,8 @@ class SigvueApp:
         item_status = str(item.get("status", "pending"))
         if item_status == "ready":
             durable = self._declared_batch_status(
-                workspace,
-                action,
+                self._batch_destination(workspace, action, item_id),
+                overall["workspace_id"],
                 item_id,
             )
             return (
@@ -1130,8 +1148,8 @@ class SigvueApp:
                 if durable.get("status") == "ready"
                 else {"status": "ready"}
             )
-        if item_status == "running":
-            return {"status": "running"}
+        if item_status in {"pending", "running"}:
+            return {"status": item_status}
         if item_status == "error":
             return {
                 key: value
@@ -1188,14 +1206,63 @@ class SigvueApp:
         self,
         directory: Path,
         names: tuple[str, ...],
+        workspace_id: str | None = None,
+        item_id: str | None = None,
     ) -> str:
         token = uuid5(
             NAMESPACE_URL,
-            "\0".join(("sigvue-batch-collection", str(directory), *names)),
+            "\0".join(
+                (
+                    "sigvue-batch-collection",
+                    str(directory),
+                    workspace_id or "",
+                    item_id or "",
+                    *names,
+                )
+            ),
         ).hex
         with self._batch_lock:
-            self._batch_declared_collections[token] = (directory, names)
+            self._batch_declared_collections[token] = (
+                directory,
+                names,
+                workspace_id,
+                item_id,
+            )
         return f"/results/saved/{token}"
+
+    def _combined_batch_collection_url(
+        self,
+        destinations: tuple[BatchDestination, ...],
+        workspace_id: str,
+        item_id: str | None,
+    ) -> str | None:
+        durable = tuple(
+            destination
+            for destination in destinations
+            if destination.directory is not None and destination.files
+        )
+        if not durable:
+            return None
+        directories = {
+            destination.directory.expanduser().resolve()
+            for destination in durable
+            if destination.directory is not None
+        }
+        if len(directories) != 1:
+            return None
+        names = tuple(
+            dict.fromkeys(
+                name
+                for destination in durable
+                for name in destination.files
+            )
+        )
+        return self._declared_batch_collection_url(
+            directories.pop(),
+            names,
+            workspace_id,
+            item_id,
+        )
 
     @staticmethod
     def _batch_path_signature(path: Path) -> tuple[int, int] | None:
@@ -1247,8 +1314,12 @@ class SigvueApp:
             visible.append(name)
         return tuple(visible)
 
-    def _declared_batch_status(self, workspace: Any, action: str, item_id: str | None) -> dict[str, object]:
-        destination = self._batch_destination(workspace, action, item_id)
+    def _declared_batch_status(
+        self,
+        destination: BatchDestination,
+        workspace_id: str,
+        item_id: str | None,
+    ) -> dict[str, object]:
         if destination.directory is None or not destination.files:
             return {"status": "idle"}
         directory = destination.directory.expanduser().resolve()
@@ -1260,6 +1331,8 @@ class SigvueApp:
                 "result_browser_url": self._declared_batch_collection_url(
                     directory,
                     destination.files,
+                    workspace_id,
+                    item_id,
                 ),
             }
         return {"status": "idle"}
@@ -1794,13 +1867,42 @@ class SigvueApp:
             raise KeyError(job_id)
         return tuple(job.future.result().get("assets", ()))
 
+    def _declared_batch_collection_state(
+        self,
+        directory: Path,
+        workspace_id: str | None,
+    ) -> tuple[str, bool]:
+        if workspace_id is None:
+            return "ready", True
+        resolved_directory = directory.resolve()
+        with self._batch_lock:
+            jobs = tuple(self._batch_jobs.values())
+        active = []
+        for job in jobs:
+            if (
+                job.workspace_id != workspace_id
+                or job.directory.resolve() != resolved_directory
+                or job.future.done()
+            ):
+                continue
+            active.append(job)
+        if not active:
+            return "ready", True
+        latest = max(active, key=lambda job: job.started_at)
+        if latest.cancel_event.is_set():
+            return "cancelling", False
+        return (
+            "running" if latest.future.running() else "pending",
+            False,
+        )
+
     def declared_batch_file(self, token: str, filename: str) -> Path:
         with self._batch_lock:
             target = self._batch_declared_files.get((token, filename))
             entry = self._batch_declared_entries.get(token)
             collection = self._batch_declared_collections.get(token)
         if collection is not None:
-            directory, names = collection
+            directory, names, _, _ = collection
             target = (directory / filename).resolve()
             try:
                 relative = target.relative_to(directory.resolve())
@@ -1872,7 +1974,11 @@ class SigvueApp:
             collection = self._batch_declared_collections.get(token)
         if collection is None:
             raise KeyError(token)
-        directory, names = collection
+        directory, names, workspace_id, _ = collection
+        status, complete = self._declared_batch_collection_state(
+            directory,
+            workspace_id,
+        )
         requested = Path(relative_path)
         if requested.is_absolute() or ".." in requested.parts:
             raise KeyError(relative_path)
@@ -1891,8 +1997,8 @@ class SigvueApp:
                     Path(*children).as_posix() if children else "",
                     prefix,
                 ),
-                "status": "ready",
-                "complete": True,
+                "status": status,
+                "complete": complete,
             }
 
         entries = []
@@ -1903,14 +2009,14 @@ class SigvueApp:
                 size = None
                 version = None
             elif target.is_file():
-                status = target.stat()
+                file_status = target.stat()
                 kind = (
                     "image"
                     if target.suffix.lower() in _IMAGE_SUFFIXES
                     else "file"
                 )
-                size = status.st_size
-                version = status.st_mtime_ns
+                size = file_status.st_size
+                version = file_status.st_mtime_ns
             else:
                 continue
             url = f"/batch-files/{token}/{quote(name, safe='')}"
@@ -1941,8 +2047,8 @@ class SigvueApp:
             "path": str(directory),
             "relative_path": "",
             "entries": entries,
-            "status": "ready",
-            "complete": True,
+            "status": status,
+            "complete": complete,
         }
 
     def declared_batch_directory(

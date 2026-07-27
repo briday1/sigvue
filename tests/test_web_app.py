@@ -419,11 +419,18 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("function bindBatchMenus", body)
         self.assertIn("function applyWorkspaceItemProgress(status)", body)
         self.assertIn(
-            "itemState==='running'&&active?",
+            "active&&(!itemState||itemState==='pending')?'pending':'idle'",
             body,
         )
         self.assertIn(
             "visibleStatus==='ready'?status.result_browser_url:null",
+            body,
+        )
+        self.assertIn("batch?.result_browser_url", body)
+        self.assertIn("Browse all batch results", body)
+        self.assertIn('data-batch-folder-scope="collection"', body)
+        self.assertIn(
+            "folder.dataset.batchFolderScope==='collection'",
             body,
         )
         self.assertIn("headerNotifications.open=false", body)
@@ -1309,10 +1316,11 @@ class WebAppTests(unittest.TestCase):
 
         base = self.create_example_app().registry.get("test-workspace")
         with TemporaryDirectory() as output:
-            (Path(output) / "item-2.txt").write_text(
-                "stale result from an earlier run",
-                encoding="utf-8",
-            )
+            for index in range(3):
+                (Path(output) / f"item-{index}.txt").write_text(
+                    "stale result from an earlier run",
+                    encoding="utf-8",
+                )
             workspace = Workspace._from_runtime_components(
                 identifier="progress-workspace",
                 name="Progress workspace",
@@ -1325,6 +1333,18 @@ class WebAppTests(unittest.TestCase):
             )
             app = SigvueApp()
             app.register_workspace(workspace)
+
+            before = app.browse_items("progress-workspace", {})
+            self.assertEqual(
+                ["ready", "ready", "ready"],
+                [
+                    item["batch"]["actions"][0]["status"]
+                    for item in before["items"]
+                ],
+            )
+            collection_url = before["batch"]["result_browser_url"]
+            self.assertTrue(collection_url.startswith("/results/saved/"))
+            collection_token = collection_url.rsplit("/", 1)[-1]
 
             job_id = app.start_batch("progress-workspace", "render")
             self.assertTrue(second_started.wait(timeout=2))
@@ -1352,7 +1372,7 @@ class WebAppTests(unittest.TestCase):
                 )["items"]
             ]
             self.assertEqual(
-                ["ready", "running", "idle"],
+                ["ready", "running", "pending"],
                 [action["status"] for action in row_actions],
             )
             self.assertIn(
@@ -1376,6 +1396,13 @@ class WebAppTests(unittest.TestCase):
             )
             with self.assertRaises(KeyError):
                 app.batch_file(job_id, "item-2.txt")
+            cumulative = app.declared_batch_outputs(collection_token)
+            self.assertEqual("running", cumulative["status"])
+            self.assertFalse(cumulative["complete"])
+            self.assertEqual(
+                {"item-0.txt", "item-1.txt", "item-2.txt"},
+                {entry["name"] for entry in cumulative["entries"]},
+            )
 
             release_second.set()
             app._batch_jobs[job_id].future.result(timeout=10)
@@ -1418,7 +1445,96 @@ class WebAppTests(unittest.TestCase):
                 {"item-0.txt", "item-2.txt"},
                 {entry["name"] for entry in final_listing["entries"]},
             )
+            cumulative = app.declared_batch_outputs(collection_token)
+            self.assertEqual("ready", cumulative["status"])
+            self.assertTrue(cumulative["complete"])
             self.assertEqual(str(Path(output).resolve()), completed["output_directory"])
+
+    def test_batch_browse_collection_includes_every_declared_action_output(self):
+        class MultiActionBatch(Batch):
+            item_actions = (
+                CapabilityChoice("image", "Render image"),
+                CapabilityChoice("animation", "Render animation"),
+            )
+            workspace_actions = item_actions
+
+            def __init__(self, output):
+                self.output = output
+
+            @staticmethod
+            def _filename(resource, action):
+                suffix = "png" if action == "image" else "gif"
+                return f"{resource.identifier}.{suffix}"
+
+            def item_destination(self, resource, request):
+                return BatchDestination(
+                    self.output,
+                    (self._filename(resource, request.action),),
+                    "Item output is ready",
+                )
+
+            def workspace_destination(self, resources, request):
+                return BatchDestination(
+                    self.output,
+                    tuple(
+                        self._filename(resource, request.action)
+                        for resource in resources
+                    ),
+                    "Workspace outputs are ready",
+                )
+
+        base = self.create_example_app().registry.get("test-workspace")
+        with TemporaryDirectory() as output:
+            output_path = Path(output)
+            (output_path / "recording.png").write_bytes(b"png")
+            (output_path / "recording.gif").write_bytes(b"gif")
+            workspace = Workspace._from_runtime_components(
+                identifier="multi-action-workspace",
+                name="Multi-action workspace",
+                description="Cumulative batch results",
+                source=base._legacy_runtime.source,
+                delivery=base._legacy_runtime.delivery,
+                analysis=base._legacy_runtime.analysis,
+                presentation=base._legacy_runtime.presentation,
+                batch=MultiActionBatch(output_path),
+            )
+            app = SigvueApp()
+            app.register_workspace(workspace)
+
+            listing = app.browse_items("multi-action-workspace", {})
+            item_batch = listing["items"][0]["batch"]
+            self.assertEqual(
+                ["ready", "ready"],
+                [action["status"] for action in item_batch["actions"]],
+            )
+            self.assertNotEqual(
+                item_batch["actions"][0]["result_browser_url"],
+                item_batch["actions"][1]["result_browser_url"],
+            )
+            collection_token = item_batch["result_browser_url"].rsplit(
+                "/",
+                1,
+            )[-1]
+            collection = app.declared_batch_outputs(collection_token)
+            self.assertEqual(
+                {"recording.png", "recording.gif"},
+                {entry["name"] for entry in collection["entries"]},
+            )
+
+            workspace_batch = listing["batch"]
+            workspace_token = workspace_batch[
+                "result_browser_url"
+            ].rsplit("/", 1)[-1]
+            workspace_collection = app.declared_batch_outputs(
+                workspace_token,
+            )
+            self.assertEqual(
+                {"recording.png", "recording.gif"},
+                {
+                    entry["name"]
+                    for entry in workspace_collection["entries"]
+                },
+            )
 
     def test_running_item_batch_can_be_cancelled_and_returns_to_idle(self):
         started = Event()
