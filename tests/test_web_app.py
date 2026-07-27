@@ -430,8 +430,12 @@ class WebAppTests(unittest.TestCase):
             body,
         )
         self.assertIn(
-            "document.addEventListener('click',event=>{closeBatchMenus();"
-            "headerNotifications.open=false;followInternalResultLink(event)});",
+            "document.addEventListener('click',followInternalResultLink,true);",
+            body,
+        )
+        self.assertIn(
+            "document.addEventListener('click',()=>{closeBatchMenus();"
+            "headerNotifications.open=false});",
             body,
         )
         self.assertIn("closeBatchMenus(menu)", body)
