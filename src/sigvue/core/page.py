@@ -191,6 +191,7 @@ class ViewSpec:
     update_policy: str = "dynamic"
     axis_navigation: AxisNavigation = "free"
     dependencies: tuple[str, ...] = ()
+    viewport_controls: dict[str, tuple[str, str]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

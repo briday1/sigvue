@@ -523,6 +523,7 @@ class UI(_ControlUI, Protocol):
         update: str | None = None,
         depends_on: Iterable[str] = (),
         axis_navigation: AxisNavigation = "free",
+        viewport_controls: dict[str, tuple[str, str]] | None = None,
     ) -> None: ...
 
     def text(
@@ -647,6 +648,7 @@ class WorkspaceUIContext:
         self.figures: dict[str, object] = {}
         self.figure_updates: dict[str, str] = {}
         self.figure_axis_navigation: dict[str, AxisNavigation] = {}
+        self.figure_viewport_controls: dict[str, dict[str, tuple[str, str]]] = {}
         self.figure_dependencies: dict[str, tuple[str, ...]] = {}
         self.tabs: list[_Tab] = []
         self.playback_config = PlaybackConfiguration()
@@ -1514,6 +1516,7 @@ class WorkspaceUIContext:
         update: str | None = None,
         depends_on: Iterable[str] = (),
         axis_navigation: AxisNavigation = "free",
+        viewport_controls: dict[str, tuple[str, str]] | None = None,
     ) -> None:
         """Add a plot, optionally constraining pan and reset to its declared axis ranges."""
         self.view(
@@ -1523,6 +1526,13 @@ class WorkspaceUIContext:
             depends_on=depends_on,
             axis_navigation=axis_navigation,
         )
+        view_key = key or f"view-{len(self.figures)}"
+        controls = dict(viewport_controls or {})
+        if any(axis not in {"xaxis", "yaxis"} for axis in controls):
+            raise ValueError("viewport controls support xaxis and yaxis")
+        if any(len(names) != 2 for names in controls.values()):
+            raise ValueError("each viewport axis requires lower and upper controls")
+        self.figure_viewport_controls[view_key] = controls
 
     def text(
         self,
@@ -2227,6 +2237,7 @@ class Workspace:
                 initial.figure_updates[name],
                 initial.figure_axis_navigation[name],
                 initial.figure_dependencies[name],
+                initial.figure_viewport_controls.get(name, {}),
             )
             for name in initial.figures
         )
