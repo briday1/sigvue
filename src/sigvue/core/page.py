@@ -55,6 +55,8 @@ class PlaybackConfiguration:
     overview_label: str | None = None
     segments: tuple[Segment, ...] = ()
     selected_segment_id: str | None = None
+    segmented_rate_hz: float = 1.0
+    segmented_step: int = 1
     time_unit: TimeUnit = "s"
 
     def __post_init__(self) -> None:
@@ -151,6 +153,15 @@ class PlaybackConfiguration:
         if self.mode == "segmented":
             if self.duration_seconds <= 0:
                 raise ValueError("Segmented duration must be positive")
+            if (
+                not isfinite(self.segmented_rate_hz)
+                or not 0.1 <= self.segmented_rate_hz <= 30
+            ):
+                raise ValueError(
+                    "Segmented playback rate must be between 0.1 and 30 Hz"
+                )
+            if self.segmented_step < 1:
+                raise ValueError("Segmented playback step must be at least one")
             if not self.segments:
                 raise ValueError("Segmented playback requires at least one segment")
             identifiers = [segment.identifier for segment in self.segments]

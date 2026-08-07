@@ -774,6 +774,8 @@ class WorkspaceContractTests(unittest.TestCase):
                 Segment("late", 13.25, 0.8, "Late event"),
                 Segment("early", 1.5, 0.2, "Early event"),
             ),
+            playback_rate=4.0,
+            playback_step=2,
         )
         self.assertEqual("late", selected.identifier)
         self.assertEqual(
@@ -781,6 +783,8 @@ class WorkspaceContractTests(unittest.TestCase):
             [segment.identifier for segment in ui.playback_config.segments],
         )
         self.assertEqual("segmented", ui.playback_config.mode)
+        self.assertEqual(4.0, ui.playback_config.segmented_rate_hz)
+        self.assertEqual(2, ui.playback_config.segmented_step)
 
     def test_segmented_can_generate_regular_intervals_with_skips(self):
         ui = AnalysisContext({"__segment_id": "segment-3"})

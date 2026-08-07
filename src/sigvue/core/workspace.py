@@ -386,6 +386,8 @@ class BufferUI(_ControlUI, Protocol):
         segment_duration: float | None = None,
         stride: float | None = None,
         default: str | None = None,
+        playback_rate: float = 1.0,
+        playback_step: int = 1,
         time_unit: TimeUnit = "s",
     ) -> Segment: ...
 
@@ -1169,6 +1171,8 @@ class WorkspaceUIContext:
         segment_duration: float | None = None,
         stride: float | None = None,
         default: str | None = None,
+        playback_rate: float = 1.0,
+        playback_step: int = 1,
         time_unit: TimeUnit = "s",
     ) -> Segment:
         """Select one explicit or regularly generated interval for display."""
@@ -1206,6 +1210,14 @@ class WorkspaceUIContext:
             )
         if not descriptors:
             raise ValueError("Segmented playback requires at least one segment")
+        playback_rate = float(playback_rate)
+        playback_step = int(playback_step)
+        if not 0.1 <= playback_rate <= 30:
+            raise ValueError(
+                "Segmented playback rate must be between 0.1 and 30 Hz"
+            )
+        if playback_step < 1:
+            raise ValueError("Segmented playback step must be at least one")
         identifiers = {segment.identifier for segment in descriptors}
         requested = str(
             self.values.get("__segment_id", default or descriptors[0].identifier)
@@ -1221,6 +1233,8 @@ class WorkspaceUIContext:
             loop=False,
             segments=descriptors,
             selected_segment_id=selected.identifier,
+            segmented_rate_hz=playback_rate,
+            segmented_step=playback_step,
             time_unit=time_unit,
         )
         return selected

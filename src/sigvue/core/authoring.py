@@ -245,6 +245,8 @@ class Reader(Generic[Reference, Opened]):
         segment_duration: float | None = None,
         stride: float | None = None,
         default: str | None = None,
+        playback_rate: float = 1.0,
+        playback_step: int = 1,
         time_unit: TimeUnit = "s",
     ) -> SegmentedReader[Reference, Opened, Selected]:
         """Add explicit or regular segment reads and browser playback controls."""
@@ -256,6 +258,8 @@ class Reader(Generic[Reference, Opened]):
             segment_duration=segment_duration,
             stride=stride,
             default=default,
+            playback_rate=playback_rate,
+            playback_step=playback_step,
             time_unit=time_unit,
         )
 
@@ -797,6 +801,8 @@ class SegmentedReader(Generic[Reference, Opened, Selected]):
         segment_duration: float | None,
         stride: float | None,
         default: str | None,
+        playback_rate: float,
+        playback_step: int,
         time_unit: TimeUnit,
     ) -> None:
         _require_arity(read, 2, "segment read")
@@ -825,6 +831,14 @@ class SegmentedReader(Generic[Reference, Opened, Selected]):
         self.segment_duration = segment_duration
         self.stride = stride
         self.default = default
+        self.playback_rate = float(playback_rate)
+        self.playback_step = int(playback_step)
+        if not 0.1 <= self.playback_rate <= 30:
+            raise ValueError(
+                "segmented playback rate must be between 0.1 and 30 Hz"
+            )
+        if self.playback_step < 1:
+            raise ValueError("segmented playback step must be at least one")
         self.time_unit = _validate_time_unit(time_unit)
         self._cache: _RangeCache[Opened, Selected] = _RangeCache()
 
@@ -944,6 +958,8 @@ class SegmentedReader(Generic[Reference, Opened, Selected]):
             duration=self.duration(opened),
             segments=segments,
             default=self.default,
+            playback_rate=self.playback_rate,
+            playback_step=self.playback_step,
             time_unit=self.time_unit,
         )
         start = selected.start_seconds
