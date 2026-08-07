@@ -378,6 +378,8 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("view.selection_controls", body)
         self.assertIn("data-commit-mode", body)
         self.assertIn("data-limits-reset", body)
+        self.assertIn('title="Reset to default">↻</button>', body)
+        self.assertIn(".limits-picker-head.has-reset", body)
         self.assertIn("data-action", body)
         self.assertIn("function plotlyViewConfig", body)
         self.assertIn("if(view?.drag_mode)layout.dragmode=view.drag_mode", body)
