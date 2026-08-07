@@ -193,6 +193,8 @@ class ControlSpec:
     picker_label: str | None = None
     option_previews: tuple[tuple[str, ...], ...] = ()
     option_labels: tuple[str, ...] = ()
+    commit_mode: Literal["change", "explicit"] = "change"
+    resettable: bool = False
 
 
 @dataclass(frozen=True)
@@ -202,7 +204,11 @@ class ViewSpec:
     update_policy: str = "dynamic"
     axis_navigation: AxisNavigation = "free"
     dependencies: tuple[str, ...] = ()
-    viewport_controls: dict[str, tuple[str, str]] = field(default_factory=dict)
+    viewport_controls: dict[str, str | tuple[str, str]] = field(default_factory=dict)
+    selection_controls: dict[str, str | tuple[str, str]] = field(default_factory=dict)
+    drag_mode: str | None = None
+    modebar_add: tuple[str, ...] = ()
+    modebar_remove: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -247,6 +253,31 @@ class PageDefinition:
             )
         view_names = {view.name for view in self.views}
         controls_by_name = {control.name: control for control in self.controls}
+        invalid_commits = {control.commit_mode for control in self.controls} - {
+            "change",
+            "explicit",
+        }
+        if invalid_commits:
+            raise ValueError(
+                f"Unknown control commit modes: {', '.join(sorted(invalid_commits))}"
+            )
+        for view in self.views:
+            for bindings in (view.viewport_controls, view.selection_controls):
+                for target in bindings.values():
+                    names = (target,) if isinstance(target, str) else target
+                    for name in names:
+                        control = controls_by_name.get(name)
+                        if control is None:
+                            raise ValueError(
+                                f"Plot binding control is not defined: {name}"
+                            )
+                    if (
+                        isinstance(target, str)
+                        and controls_by_name[target].control_type != "limits"
+                    ):
+                        raise ValueError(
+                            f"Single-target plot bindings require a limits control: {target}"
+                        )
         validate_layout(self.layout, view_names, set(controls_by_name))
         overview_bindings = (
             (

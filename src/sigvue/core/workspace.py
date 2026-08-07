@@ -443,9 +443,15 @@ class UI(_ControlUI, Protocol):
         step: float = 1.0,
         label: str | None = None,
         group: str = "Plot styles",
+        commit: Literal["change", "explicit"] = "change",
+        resettable: bool = False,
     ) -> tuple[float, float]: ...
 
     def plot_viewport(self, view_key: str) -> dict[str, object]: ...
+
+    def plot_selection(self, view_key: str) -> dict[str, tuple[float, float]]: ...
+
+    def action(self, name: str, *, label: str | None = None) -> bool: ...
 
     def trace_style(
         self,
@@ -525,7 +531,11 @@ class UI(_ControlUI, Protocol):
         update: str | None = None,
         depends_on: Iterable[str] = (),
         axis_navigation: AxisNavigation = "free",
-        viewport_controls: dict[str, tuple[str, str]] | None = None,
+        viewport_controls: dict[str, str | tuple[str, str]] | None = None,
+        selection_controls: dict[str, str | tuple[str, str]] | None = None,
+        drag_mode: str | None = None,
+        modebar_add: Iterable[str] = (),
+        modebar_remove: Iterable[str] = (),
     ) -> None: ...
 
     def text(
@@ -650,7 +660,15 @@ class WorkspaceUIContext:
         self.figures: dict[str, object] = {}
         self.figure_updates: dict[str, str] = {}
         self.figure_axis_navigation: dict[str, AxisNavigation] = {}
-        self.figure_viewport_controls: dict[str, dict[str, tuple[str, str]]] = {}
+        self.figure_viewport_controls: dict[
+            str, dict[str, str | tuple[str, str]]
+        ] = {}
+        self.figure_selection_controls: dict[
+            str, dict[str, str | tuple[str, str]]
+        ] = {}
+        self.figure_plot_options: dict[
+            str, tuple[str | None, tuple[str, ...], tuple[str, ...]]
+        ] = {}
         self.figure_dependencies: dict[str, tuple[str, ...]] = {}
         self.tabs: list[_Tab] = []
         self.playback_config = PlaybackConfiguration()
@@ -907,6 +925,8 @@ class WorkspaceUIContext:
         step: float = 1.0,
         label: str | None = None,
         group: str = "Plot styles",
+        commit: Literal["change", "explicit"] = "change",
+        resettable: bool = False,
     ) -> tuple[float, float]:
         """Add ordered lower and upper limits through paired numeric inputs."""
         lower_default, upper_default = (float(default[0]), float(default[1]))
@@ -915,6 +935,8 @@ class WorkspaceUIContext:
             raise ValueError("Limits minimum must be less than maximum")
         if step <= 0:
             raise ValueError("Limits step must be positive")
+        if commit not in {"change", "explicit"}:
+            raise ValueError("Limits commit must be 'change' or 'explicit'")
         if not minimum <= lower_default < upper_default <= maximum:
             raise ValueError(
                 "Default limits must be ordered and within the available range"
@@ -929,6 +951,8 @@ class WorkspaceUIContext:
                 maximum=maximum,
                 step=step,
                 group=group,
+                commit_mode=commit,
+                resettable=resettable,
             )
         )
         raw = self.values.setdefault(name, (lower_default, upper_default))
@@ -951,6 +975,29 @@ class WorkspaceUIContext:
             return {}
         viewport = decoded.get(view_key, {})
         return viewport if isinstance(viewport, dict) else {}
+
+    def plot_selection(self, view_key: str) -> dict[str, tuple[float, float]]:
+        """Return the latest Plotly box/lasso selection bounds for a view."""
+        try:
+            decoded = json.loads(str(self.values.get("__plot_selections", "{}")))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return {}
+        selected = decoded.get(view_key, {}) if isinstance(decoded, dict) else {}
+        if not isinstance(selected, dict):
+            return {}
+        result: dict[str, tuple[float, float]] = {}
+        for axis, bounds in selected.items():
+            try:
+                lower, upper = sorted((float(bounds[0]), float(bounds[1])))
+            except (IndexError, TypeError, ValueError):
+                continue
+            result[str(axis)] = (lower, upper)
+        return result
+
+    def action(self, name: str, *, label: str | None = None) -> bool:
+        """Add a momentary button and report whether it triggered this request."""
+        self._add_control(ControlSpec(name=name, control_type="action", label=label))
+        return str(self.values.get("__action", "")) == name
 
     def trace_style(
         self,
@@ -1054,6 +1101,8 @@ class WorkspaceUIContext:
                 picker_label=control.picker_label,
                 option_previews=control.option_previews,
                 option_labels=control.option_labels,
+                commit_mode=control.commit_mode,
+                resettable=control.resettable,
             )
             self._active_parameter_nodes.append(control_slot(control.name))
         self.controls.append(control)
@@ -1530,7 +1579,11 @@ class WorkspaceUIContext:
         update: str | None = None,
         depends_on: Iterable[str] = (),
         axis_navigation: AxisNavigation = "free",
-        viewport_controls: dict[str, tuple[str, str]] | None = None,
+        viewport_controls: dict[str, str | tuple[str, str]] | None = None,
+        selection_controls: dict[str, str | tuple[str, str]] | None = None,
+        drag_mode: str | None = None,
+        modebar_add: Iterable[str] = (),
+        modebar_remove: Iterable[str] = (),
     ) -> None:
         """Add a plot, optionally constraining pan and reset to its declared axis ranges."""
         self.view(
@@ -1541,12 +1594,40 @@ class WorkspaceUIContext:
             axis_navigation=axis_navigation,
         )
         view_key = key or f"view-{len(self.figures)}"
-        controls = dict(viewport_controls or {})
-        if any(axis not in {"xaxis", "yaxis"} for axis in controls):
-            raise ValueError("viewport controls support xaxis and yaxis")
-        if any(len(names) != 2 for names in controls.values()):
-            raise ValueError("each viewport axis requires lower and upper controls")
-        self.figure_viewport_controls[view_key] = controls
+        def validate_bindings(
+            bindings: dict[str, str | tuple[str, str]], label: str
+        ) -> None:
+            if any(axis not in {"xaxis", "yaxis"} for axis in bindings):
+                raise ValueError(f"{label} controls support xaxis and yaxis")
+            if any(
+                not isinstance(target, str) and len(target) != 2
+                for target in bindings.values()
+            ):
+                raise ValueError(
+                    f"each {label} axis requires a limits control or two controls"
+                )
+
+        viewport_bindings = dict(viewport_controls or {})
+        selection_bindings = dict(selection_controls or {})
+        validate_bindings(viewport_bindings, "viewport")
+        validate_bindings(selection_bindings, "selection")
+        if drag_mode not in {
+            None,
+            "zoom",
+            "pan",
+            "select",
+            "lasso",
+            "orbit",
+            "turntable",
+        }:
+            raise ValueError(f"Unknown initial Plotly drag mode: {drag_mode}")
+        self.figure_viewport_controls[view_key] = viewport_bindings
+        self.figure_selection_controls[view_key] = selection_bindings
+        self.figure_plot_options[view_key] = (
+            drag_mode,
+            tuple(modebar_add),
+            tuple(modebar_remove),
+        )
 
     def text(
         self,
@@ -2244,14 +2325,18 @@ class Workspace:
         )
         views = tuple(
             ViewSpec(
-                name,
-                lambda values, key=name: _resolve_deferred_view(
+                name=name,
+                callback=lambda values, key=name: _resolve_deferred_view(
                     render(values).figures[key]
                 ),
-                initial.figure_updates[name],
-                initial.figure_axis_navigation[name],
-                initial.figure_dependencies[name],
-                initial.figure_viewport_controls.get(name, {}),
+                update_policy=initial.figure_updates[name],
+                axis_navigation=initial.figure_axis_navigation[name],
+                dependencies=initial.figure_dependencies[name],
+                viewport_controls=initial.figure_viewport_controls.get(name, {}),
+                selection_controls=initial.figure_selection_controls.get(name, {}),
+                drag_mode=initial.figure_plot_options.get(name, (None, (), ()))[0],
+                modebar_add=initial.figure_plot_options.get(name, (None, (), ()))[1],
+                modebar_remove=initial.figure_plot_options.get(name, (None, (), ()))[2],
             )
             for name in initial.figures
         )

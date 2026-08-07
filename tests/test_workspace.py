@@ -1000,6 +1000,34 @@ class WorkspaceContractTests(unittest.TestCase):
         )
         self.assertEqual((-10.0, 10.0), fallback)
 
+    def test_limits_support_explicit_commit_and_dynamic_reset(self):
+        ui = AnalysisContext({"frequency_bounds": "12,48"})
+        selected = ui.limits(
+            "frequency_bounds",
+            default=(10, 50),
+            minimum=0,
+            maximum=100,
+            commit="explicit",
+            resettable=True,
+        )
+
+        self.assertEqual((12.0, 48.0), selected)
+        self.assertEqual("explicit", ui.controls[0].commit_mode)
+        self.assertTrue(ui.controls[0].resettable)
+
+    def test_plot_selection_and_momentary_actions_are_public_request_state(self):
+        ui = AnalysisContext(
+            {
+                "__plot_selections": '{"spectrum":{"xaxis":[9,3],"bad":null}}',
+                "__action": "apply_zoom",
+            }
+        )
+
+        self.assertEqual({"xaxis": (3.0, 9.0)}, ui.plot_selection("spectrum"))
+        self.assertTrue(ui.action("apply_zoom", label="Apply zoom"))
+        self.assertFalse(ui.action("reset_zoom"))
+        self.assertEqual(["action", "action"], [item.control_type for item in ui.controls])
+
     def test_inline_parameter_group_places_typed_controls_in_layout(self):
         def analyze(data, ui: AnalysisContext):
             with ui.tab("Parameterized"):
@@ -1195,6 +1223,34 @@ class WorkspaceContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "axis_navigation"):
             with ui.tab("Invalid"):
                 ui.plot(go.Figure(), axis_navigation="locked")
+
+    def test_plot_exposes_control_bindings_and_plotly_tools(self):
+        ui = AnalysisContext({})
+        ui.limits("bounds", default=(0, 10), minimum=0, maximum=20)
+        ui.number("lower", default=0)
+        ui.number("upper", default=10)
+        with ui.tab("Spectrum"):
+            ui.plot(
+                go.Figure(),
+                key="spectrum",
+                viewport_controls={"xaxis": "bounds"},
+                selection_controls={"yaxis": ("lower", "upper")},
+                drag_mode="select",
+                modebar_add=("drawline",),
+                modebar_remove=("zoom2d",),
+            )
+
+        self.assertEqual(
+            ("select", ("drawline",), ("zoom2d",)),
+            ui.figure_plot_options["spectrum"],
+        )
+        self.assertEqual(
+            {"xaxis": "bounds"}, ui.figure_viewport_controls["spectrum"]
+        )
+        self.assertEqual(
+            {"yaxis": ("lower", "upper")},
+            ui.figure_selection_controls["spectrum"],
+        )
 
     def test_static_views_are_cached_while_dynamic_views_follow_playback(self):
         builds = {"static": 0}

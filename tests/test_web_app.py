@@ -372,6 +372,15 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("binding.selection_policy==='box_preferred'", body)
         self.assertIn("plotSelectionRange", body)
         self.assertIn("plotly_selected", body)
+        self.assertIn("__plot_selections:JSON.stringify", body)
+        self.assertIn("function setControlValue", body)
+        self.assertIn("function syncBoundControls", body)
+        self.assertIn("view.selection_controls", body)
+        self.assertIn("data-commit-mode", body)
+        self.assertIn("data-limits-reset", body)
+        self.assertIn("data-action", body)
+        self.assertIn("function plotlyViewConfig", body)
+        self.assertIn("if(view?.drag_mode)layout.dragmode=view.drag_mode", body)
         self.assertIn("plotly_deselect", body)
         self.assertIn("apiPost(`/workspaces/", body)
         self.assertIn('<span class="annotation-marker', body)
@@ -616,7 +625,7 @@ class WebAppTests(unittest.TestCase):
             body,
         )
         self.assertIn(
-            "Plotly.react(target,view.value.data||[],layout,plotlyConfig)"
+            "Plotly.react(target,view.value.data||[],layout,plotlyViewConfig(view))"
             ".finally(()=>{target._sigvueUpdating=false})",
             body,
         )
@@ -804,7 +813,7 @@ class WebAppTests(unittest.TestCase):
         self.assertIn(
             "delete layout.width;delete layout.height;layout.autosize=true", body
         )
-        self.assertIn("managedPlotlyLayout(view),plotlyConfig", body)
+        self.assertIn("managedPlotlyLayout(view),plotlyViewConfig(view)", body)
         self.assertIn("plotly_relayouting", body)
         self.assertIn("plotly_relayout", body)
         self.assertIn("__plot_viewports:JSON.stringify(plotViewportPayload())", body)
@@ -812,7 +821,7 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("if(onCommit)void onCommit()", body)
         self.assertIn("if(x.closest('[data-limits-picker]'))return", body)
         self.assertIn("view.rasterized||Object.keys(view.viewport_controls||{}).length", body)
-        self.assertIn("syncViewportControls(view,viewport)", body)
+        self.assertIn("syncBoundControls(view.viewport_controls,viewport,true)", body)
         self.assertIn("if(plot._sigvueUpdating||plot._sigvueResetting)return", body)
         self.assertIn("target._sigvueUpdating=true", body)
         self.assertIn("target._sigvueUpdating=false", body)

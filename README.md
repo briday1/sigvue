@@ -205,6 +205,46 @@ reader = Files(root, "*.json", open_collection).segmented(
 The callback receives the selected `Segment`, so irregular events and scans
 retain their identity.
 
+### Plot interaction and commit workflows
+
+Plot selections and viewports are public request state. Bind either event directly
+to a paired `ui.limits()` control, or read the selection in presentation code:
+
+```python
+bounds = ui.limits(
+    "frequency_bounds",
+    default=(0.0, 100.0),
+    minimum=0.0,
+    maximum=500.0,
+    commit="explicit",  # preview locally until an action is clicked
+    resettable=True,
+)
+apply_bounds = ui.action("apply_bounds", label="Apply bounds")
+selection = ui.plot_selection("spectrum")
+
+with ui.tab("Spectrum"):
+    ui.plot(
+        make_spectrum(bounds, apply_bounds),
+        key="spectrum",
+        selection_controls={"xaxis": "frequency_bounds"},
+        drag_mode="select",
+        modebar_add=("select2d",),
+    )
+```
+
+A string binding targets one `ui.limits()` control; a two-name tuple targets
+separate scalar controls. `viewport_controls` has the same binding forms for
+pan/zoom ranges. New plot events update the bound control, while a later manual
+edit clears stale selection ownership. With `commit="change"` (the default),
+updates refresh immediately. With `commit="explicit"`, handles and overlays
+can be previewed without rerunning analysis; clicking any `ui.action()` sends
+all current control values and a momentary action flag in one request.
+
+A resettable limits control resets to the default and bounds declared by the
+current render, so authors can derive them from the active data window. Per-plot
+`modebar_add`, `modebar_remove`, and `drag_mode` customize Plotly tools without
+reaching into browser internals.
+
 ### Seek and live playback
 
 ```python
