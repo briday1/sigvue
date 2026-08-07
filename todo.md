@@ -21,6 +21,10 @@
 
 ## Control authoring
 
+- Ensure both handles of an overlapping `ui.limits` range control remain
+  independently clickable. The active lower or upper thumb must own the
+  pointer hit area; changing either bound must serialize and commit the full
+  pair without requiring the other bound to move first.
 - Provide a supported way for one UI event to update another control's value,
   including its custom visuals, serialized value, dependencies, and callbacks.
 - Add a momentary action/button control for operations such as applying a
