@@ -626,15 +626,13 @@ class WebAppTests(unittest.TestCase):
             "layout=layoutWithPlotViewport(view,restored)",
             body,
         )
-        self.assertIn(
-            "Plotly.react(target,view.value.data||[],layout,plotlyViewConfig(view))"
-            ".finally(()=>{target._sigvueUpdating=false})",
-            body,
-        )
+        self.assertIn("followReset=plotViewportAtReset(viewport,previous)", body)
+        self.assertIn("restored=followReset?{}:restoredPlotViewport", body)
+        self.assertIn("reaction.then(()=>Plotly.relayout(target,state.reset))", body)
         update_plotly = body.split("async function updatePlotlyViews", 1)[1].split(
             "async function updateMatplotlibViews", 1
         )[0]
-        self.assertNotIn("Plotly.relayout", update_plotly)
+        self.assertIn("Plotly.relayout", update_plotly)
         self.assertNotIn("Plotly.Plots.resize", update_plotly)
         self.assertIn("activeViewChanged=async()=>", body)
         self.assertIn("if(!p.lazy_views)return true", body)
