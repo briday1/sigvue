@@ -636,7 +636,14 @@ class WebAppTests(unittest.TestCase):
         )[0]
         self.assertNotIn("Plotly.relayout", update_plotly)
         self.assertNotIn("Plotly.Plots.resize", update_plotly)
-        self.assertIn("activeViewChanged=()=>p.lazy_views?refresh(true)", body)
+        self.assertIn("activeViewChanged=async()=>", body)
+        self.assertIn("if(!p.lazy_views)return true", body)
+        active_view_refresh = body.split("activeViewChanged=async()=>", 1)[1].split(
+            ";activeThemeRefresh", 1
+        )[0]
+        self.assertIn("if(isPlayback)clearInterval(playbackTimer)", active_view_refresh)
+        self.assertIn("const applied=await refresh(true)", active_view_refresh)
+        self.assertIn("startFrameworkPlayback(p.playback,refresh)", active_view_refresh)
         self.assertIn("data-view-slot", body)
         self.assertIn("updateMatplotlibViews(p.rendered_views)", body)
         self.assertIn("updateGenericViews(p.rendered_views)", body)
