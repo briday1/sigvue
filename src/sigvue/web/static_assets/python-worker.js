@@ -63,6 +63,13 @@ with zipfile.ZipFile(io.BytesIO(_project_archive.to_py())) as archive:
 _version_path.write_text(_build_id)
 from sigvue.web.browser import BrowserRuntime
 _runtime = BrowserRuntime(_config_path)
+# Saved-result URLs may be the first route after a reload, before any catalog visit.
+for workspace in _runtime.app.registry.list():
+    if getattr(workspace, "batch", None) is not None:
+        workspace_id = workspace.metadata.identifier
+        _runtime.app._batch_capability(workspace, workspace_id)
+        for item in workspace.discover_items():
+            _runtime.app._batch_capability(workspace, workspace_id, item.identifier)
 `);
   runtime = python.globals.get('_runtime');
   python.globals.delete('_project_archive');

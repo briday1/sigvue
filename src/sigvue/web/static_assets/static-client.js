@@ -43,7 +43,7 @@
     if (value && typeof value === 'object') {
       return Object.fromEntries(Object.entries(value).map(([name, entry]) => [name, rewriteUrls(entry, name)]));
     }
-    if (typeof value !== 'string' || !['url', 'download_url', 'open_url', 'browse_url', 'result_browser_url'].includes(key)) return value;
+    if (typeof value !== 'string' || !['url', 'download_url', 'open_url', 'browse_url', 'result_browser_url', 'collection_browser_url'].includes(key)) return value;
     if (value.startsWith('/results/')) return routeUrl(value);
     if (/^\/(?:exports|batches|batch-files)\/[^/]+\/.+/.test(value)) {
       return new URL(`__files__/${encodeURIComponent(clientId)}${value}`, base).href;

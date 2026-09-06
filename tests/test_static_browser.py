@@ -252,6 +252,12 @@ local-values = "local_demo:create_workspace"
     assert dimensions[0] > 0 and dimensions[1] > 0
     page.goto(status["result_browser_url"])
     page.wait_for_selector(".result-browser")
+    saved = recordings(page, "local-values")[0]["batch"]["actions"][0]["collection_browser_url"]
+    assert saved.startswith(base + "#/results/saved/")
+    page.goto(saved)
+    page.reload()
+    page.wait_for_selector(".result-browser")
+    page.wait_for_function("document.querySelector('.result-image-stage img')?.naturalWidth > 0")
     page.goto(base)
     page.reload()
     page.evaluate("async () => { await window.sigvueStatic.ready; }")
