@@ -2,7 +2,8 @@
 
 # Sigvue
 
-Sigvue turns a file-backed scientific script into a local browser application.
+Sigvue turns a file-backed scientific script into a local browser application,
+served by Python or running Python entirely in the browser on a static site.
 It does not impose separate processing and presentation stages.
 
 If you can read and display your data, you already have the application:
@@ -65,9 +66,91 @@ It owns the local server and pywebview window, including native fullscreen and
 the workspace wizard's folder picker. Workspace packages only provide readers,
 views, and batch actions; they do not need their own desktop launcher.
 
+### Static hosting: GitHub Pages and GitLab Pages
+
+The static build runs the **same Python workspaces and request handlers** in a
+Pyodide Web Worker. It includes NumPy, SciPy, Matplotlib, Pillow, Plotly, and
+the complete generated LTE and communications recordings. Analysis, controls,
+window navigation, plot interaction, annotations, and JSON/MAT exports run on
+the visitor's device; this is not a collection of pre-rendered demo screenshots.
+The server and desktop commands above are unchanged.
+
+The **Static demos on GitHub Pages** workflow builds and tests the actual
+browser application on pull requests and deploys `main`. In repository
+**Settings → Pages → Build and deployment**, select **GitHub Actions**.
+The project URL is <https://briday1.github.io/sigvue/>.
+No Python server, API service, credentials, CDN, or cross-origin-isolation
+headers are needed by the published application.
+
+To build the same site yourself, from this checkout:
+
+```bash
+python -m pip install -e ".[examples]"
+python -m examples.scripts.generate_all
+curl --fail --location --retry 3 \
+  https://github.com/pyodide/pyodide/releases/download/314.0.6/pyodide-314.0.6.tar.bz2 \
+  --output /tmp/pyodide.tar.bz2
+echo "fd25b21567f83f83b0b8bb1780a5458c6d4dd10bb07a22004424194022037f00  /tmp/pyodide.tar.bz2" | sha256sum --check
+tar -xjf /tmp/pyodide.tar.bz2 -C /tmp
+sigvue-static --root "$PWD" --config examples/browser.toml \
+  --include examples --pyodide /tmp/pyodide --output _site
+python -m http.server --directory _site 8000
+```
+
+Open <http://localhost:8000>. Publish the **contents** of `_site` to any HTTPS
+static host, including a GitLab Pages `public/` artifact. Hash-based links work
+at a project subpath and survive refresh without a server rewrite or custom
+404 page. The output must be absent or empty when building again.
+
+For your own project, provide its root, profile, and explicit `--include`
+files/directories; repeat `--include` as needed. Paths in the profile must be
+relative and remain inside that root. Only selected files are published;
+review them before deployment because **every bundled file is public**.
+Hidden files, symlinks, caches, and tests are excluded. Extra native
+dependencies must have a compatible Pyodide build; arbitrary installed desktop
+extensions cannot be copied into WebAssembly.
+
+**Storage is local to the visitor.** Writable files and annotations live in
+IndexedDB, isolated by site path. Nothing is uploaded to GitHub, GitLab, or a
+Sigvue backend. Use **Local files** to import files or folders, or download a
+ZIP backup; exports download through the browser as ordinary files. Workspace
+paths inside Python start at `/project`. Browser storage is not the host's
+filesystem: changing the hosted source files or another person's annotations
+is neither necessary nor possible. Clearing site data removes local changes;
+private browsing and storage quotas follow browser policy. Storage failures
+are reported rather than silently switching to nonpersistent storage.
+Local profiles and data are preserved when a new version of the site is
+deployed; deployed Python modules are refreshed.
+
+To create a workspace using your own recordings:
+
+1. Open **Local files**, choose a destination such as `my-recordings`, and
+   import your files (or import a folder, preserving its folder name).
+2. Open **+ Workspace**, choose the LTE or communications workspace type, and
+   set **Data directory** to `/project/my-recordings`.
+3. Choose a name and identifier. Enable **Save to a profile** to retain the
+   workspace after reload; the default profile is also browser-local.
+
+Custom Python workspace repositories can be imported the same way. Include
+their `browser.toml` or `pyproject.toml` workspace declarations, then select
+the imported `/project/...` repository in **+ Workspace → Discover**.
+The normal Python installation continues to discover and read files on its
+server; these browser file controls are specific to the static build.
+
+Static mode requires a current browser with WebAssembly, workers, IndexedDB,
+and service workers, served over HTTPS (or localhost for development).
+The initial download includes Python and scientific libraries. Browser memory
+limits still apply. A Python callback runs to completion on its worker:
+the UI remains responsive, but native threads, subprocesses, direct device
+access, and interruption of a running synchronous batch callback are not
+provided by Pyodide. Workspaces needing those OS facilities should continue
+using the local server. Bundled image processing uses Pillow to encode generated
+arrays; do not deploy custom decoders for untrusted files without checking
+security updates for the selected Pyodide package set.
+
 ## The API
 
-![The API diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.78/docs/pypi-diagrams/01-the-api.svg)
+![The API diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.79/docs/pypi-diagrams/01-the-api.svg)
 
 There is one application object:
 
@@ -364,7 +447,7 @@ Tabs, weighted grids, nested groups, multidimensional switchers, display
 controls, inline processing controls, tables, text, and deferred plots all stay
 in the one nested `ui` API.
 
-![Exact complex layouts diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.78/docs/pypi-diagrams/02-exact-complex-layouts.svg)
+![Exact complex layouts diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.79/docs/pypi-diagrams/02-exact-complex-layouts.svg)
 
 ## Custom discovery metadata
 
@@ -440,7 +523,7 @@ to the most recently run action. A particular notification still links to its
 individual job, while **All batch results** shows finished outputs from every
 action sharing the same destination directory.
 
-![Optional capabilities diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.78/docs/pypi-diagrams/03-optional-capabilities.svg)
+![Optional capabilities diagram](https://raw.githubusercontent.com/briday1/sigvue/v2026.79/docs/pypi-diagrams/03-optional-capabilities.svg)
 
 ## Configuration
 
