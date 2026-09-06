@@ -8,3 +8,4 @@ build/
 dist/
 .pyinstaller/
 logs/
+.browser-test-work/

@@ -1,0 +1,67 @@
+name: Static demos on GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install Sigvue and browser test tools
+        run: python -m pip install -e ".[test,examples,static-test]"
+      - name: Test server and examples
+        run: python -m pytest -q tests examples/tests
+      - name: Generate all bundled recordings
+        run: python -m examples.scripts.generate_all
+      - name: Download verified Pyodide runtime
+        working-directory: ${{ runner.temp }}
+        run: |
+          curl --fail --location --retry 3 \
+            https://github.com/pyodide/pyodide/releases/download/314.0.6/pyodide-314.0.6.tar.bz2 \
+            --output pyodide.tar.bz2
+          echo "fd25b21567f83f83b0b8bb1780a5458c6d4dd10bb07a22004424194022037f00  pyodide.tar.bz2" | sha256sum --check
+          tar -xjf pyodide.tar.bz2
+      - name: Build self-contained static site
+        run: >-
+          sigvue-static --root . --config examples/browser.toml
+          --include examples --pyodide "${{ runner.temp }}/pyodide"
+          --output _site
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Test actual browser runtime at a project subpath
+        env:
+          SIGVUE_STATIC_SITE: ${{ github.workspace }}/_site
+        run: python -m pytest -q tests/test_static_browser.py
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - uses: actions/deploy-pages@v4
+        id: deployment
