@@ -37,6 +37,12 @@ sigvue --config examples/browser.toml
 Open <http://127.0.0.1:8000>. Generated data is untracked. Use the individual
 generator modules when only one data group is needed.
 
+The same complete recordings and Python workspaces also run without a server:
+see [static hosting](../README.md#static-hosting-github-pages-and-gitlab-pages).
+The Pages workflow generates these files and tests the real Pyodide runtime,
+including annotation persistence and JSON/MAT downloads. In that mode,
+annotations and imported files stay in the visitor's browser on their device.
+
 ## The interface
 
 Each example returns one `Workspace`:

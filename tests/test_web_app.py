@@ -455,11 +455,11 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("headerNotifications.onclick=event=>", body)
         self.assertIn("function followInternalResultLink(event)", body)
         self.assertIn(
-            "!target.pathname.startsWith('/results/')",
+            "!route.pathname.startsWith('/results/')",
             body,
         )
         self.assertIn(
-            "pushRoute(`${target.pathname}${target.search}${target.hash}`);"
+            "pushRoute(`${route.pathname}${route.search}${route.hash}`);"
             "void boot()",
             body,
         )

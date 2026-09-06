@@ -23,12 +23,14 @@ build = ["certifi>=2024.2.2", "pyinstaller>=6.0", "pywebview>=6.0"]
 desktop = ["pywebview>=6.0"]
 examples = ["numpy>=1.24", "scipy>=1.10"]
 test = ["numpy>=1.24", "pytest>=8.0"]
+static-test = ["playwright==1.58.0"]
 release = ["build>=1.2", "twine>=5.0"]
 
 [project.scripts]
 sigvue = "sigvue.web.application:main"
 sigvue-desktop = "sigvue.web.desktop:main"
 sigvue-build = "sigvue._packaging.build:main"
+sigvue-static = "sigvue.web.static:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -39,3 +41,4 @@ where = ["src"]
 [tool.setuptools.package-data]
 sigvue = ["py.typed"]
 "sigvue._packaging" = ["*.spec"]
+"sigvue.web" = ["static_assets/*.js"]
