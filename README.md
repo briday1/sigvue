@@ -117,6 +117,23 @@ filesystem: changing the hosted source files or another person's annotations
 is neither necessary nor possible. Clearing site data removes local changes;
 private browsing and storage quotas follow browser policy. Storage failures
 are reported rather than silently switching to nonpersistent storage.
+Local profiles and data are preserved when a new version of the site is
+deployed; deployed Python modules are refreshed.
+
+To create a workspace using your own recordings:
+
+1. Open **Local files**, choose a destination such as `my-recordings`, and
+   import your files (or import a folder, preserving its folder name).
+2. Open **+ Workspace**, choose the LTE or communications workspace type, and
+   set **Data directory** to `/project/my-recordings`.
+3. Choose a name and identifier. Enable **Save to a profile** to retain the
+   workspace after reload; the default profile is also browser-local.
+
+Custom Python workspace repositories can be imported the same way. Include
+their `browser.toml` or `pyproject.toml` workspace declarations, then select
+the imported `/project/...` repository in **+ Workspace → Discover**.
+The normal Python installation continues to discover and read files on its
+server; these browser file controls are specific to the static build.
 
 Static mode requires a current browser with WebAssembly, workers, IndexedDB,
 and service workers, served over HTTPS (or localhost for development).

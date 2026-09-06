@@ -4,6 +4,7 @@ import json
 import os
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from itertools import product
 from pathlib import Path
 from threading import Thread
 from urllib.parse import quote
@@ -38,7 +39,7 @@ def browser_page():
         page.on("request", lambda request: requests.append(request.url))
         # Also reject worker requests to CDNs, APIs, and any origin outside this static server.
         page.context.route("**/*", lambda route: route.continue_()
-                           if route.request.url.startswith(base)
+                           if route.request.url.startswith(base) and route.request.method == "GET"
                            else route.abort())
         page.goto(base)
         page.evaluate("async () => { await window.sigvueStatic.ready; }")
@@ -94,8 +95,8 @@ def test_all_recordings_render_and_export_without_backend(browser_page, tmp_path
             assert data["page"]["export"]["enabled"]
             opened.append((workspace["id"], item["id"], path))
         # Both exporters are run by scipy/numpy inside WASM, not precomputed files.
-        for format in ("json", "mat"):
-            job = api(page, path + "/exports", {"scope": "buffer", "format": format})
+        for scope, format in product(("buffer", "full"), ("json", "mat")):
+            job = api(page, path + "/exports", {"scope": scope, "format": format})
             status = api(page, job["status_url"])
             assert status["status"] == "ready", status
             file = status["files"][0]
@@ -104,12 +105,29 @@ def test_all_recordings_render_and_export_without_backend(browser_page, tmp_path
             destination = tmp_path / file["name"]
             download.value.save_as(destination)
             assert destination.stat().st_size > 128
+            import numpy as np
+            from examples.formats.sigmf.recording import load_sigmf_recording
+            with ZipFile(Path(SITE) / "project.zip") as archive:
+                source = next(name for name in archive.namelist()
+                              if name.endswith(f"/{item['id']}.sigmf-data"))
+                metadata_source = source.replace(".sigmf-data", ".sigmf-meta")
+                metadata_path = tmp_path / Path(metadata_source).name
+                metadata_path.write_bytes(archive.read(metadata_source))
+                (tmp_path / Path(source).name).write_bytes(archive.read(source))
+            recording = load_sigmf_recording(metadata_path)
+            expected = recording.read(0, recording.sample_count)
             if format == "json":
                 exported = json.loads(destination.read_text())
-                assert exported
+                assert exported["scope"] == scope
+                count = exported["sample_count"]
+                actual = np.asarray(exported["samples"]["real"]) + 1j * np.asarray(exported["samples"]["imag"])
             else:
                 from scipy.io import loadmat
-                assert loadmat(destination)
+                exported = loadmat(destination)
+                count = int(exported["sample_count"][0, 0])
+                actual = exported["samples"]
+            assert count == (expected.shape[-1] if scope == "full" else round(0.012 * recording.sample_rate))
+            np.testing.assert_array_equal(actual, expected[:, :count])
     workspace, item, _ = opened[0]
     page.goto(f"{base}#/workspace/{workspace}/item/{quote(item, safe='')}")
     page.wait_for_selector(".js-plotly-plot")
@@ -153,7 +171,7 @@ def test_local_file_import_new_workspace_matplotlib_and_backup(browser_page, tmp
     source = b"""
 from pathlib import Path
 from matplotlib.figure import Figure
-from sigvue import Files, Workspace
+from sigvue import Batch, BatchDestination, BatchResult, CapabilityChoice, Files, Workspace
 
 def load(path):
     return [float(value) for value in path.read_text().split(',')]
@@ -166,31 +184,55 @@ def view(data, ui):
     with ui.tab("Values"):
         ui.plot(figure, key="local-plot")
 
+class PlotBatch(Batch):
+    @property
+    def item_actions(self):
+        return (CapabilityChoice("plot", "Render PNG"),)
+
+    def item_destination(self, resource, request):
+        return BatchDestination(Path("/project/results"), files=("plot.png",))
+
+    def run_item(self, resource, source_data, request, directory):
+        figure = Figure()
+        figure.subplots().plot(source_data)
+        path = directory / "plot.png"
+        figure.savefig(path)
+        return BatchResult((path,), "Rendered locally")
+
 def create_workspace(config):
     return Workspace(identifier="local-values", name="Local values",
         description="Imported visitor files",
-        reader=Files(Path(config["data_root"]), "*.samples", load), view=view)
+        reader=Files(Path(config["data_root"]), "*.samples", load), view=view,
+        batch=PlotBatch())
 """
     page.locator("#local-files").click()
-    page.locator("#local-file-input").set_input_files({
-        "name": "local_demo.py", "mimeType": "text/plain", "buffer": source,
-    })
-    page.wait_for_function("document.querySelector('#local-file-status').textContent.startsWith('Saved 1')")
+    page.locator("#local-file-input").set_input_files([
+        {"name": "local_demo.py", "mimeType": "text/plain", "buffer": source},
+        {"name": "pyproject.toml", "mimeType": "text/plain", "buffer": b"""
+[project]
+name = "browser-imports"
+[project.entry-points."sigvue.workspaces"]
+local-values = "local_demo:create_workspace"
+"""},
+    ])
+    page.wait_for_function("document.querySelector('#local-file-status').textContent.startsWith('Saved 2')")
     page.locator("#local-directory").fill("uploads")
     page.locator("#local-file-input").set_input_files({
         "name": "values.samples", "mimeType": "text/plain", "buffer": b"1,2,3",
     })
     page.wait_for_function("document.querySelector('#local-file-status').textContent.startsWith('Saved 1')")
     page.locator("#local-close").click()
-    api(page, "/workspaces", {
-        "use": "local_demo:create_workspace",
-        "path": "/project",
-        "id": "local-values",
-        "name": "Local values",
-        "config": {"data_root": "/project/uploads"},
-        "persist": True,
-        "profile_path": "/project/examples/browser.toml",
-    })
+    page.locator("#workspace-add").click()
+    option = page.locator("#workspace-factory option", has_text="local-values")
+    option.wait_for(state="attached")
+    page.locator("#workspace-factory").select_option(option.get_attribute("value"))
+    page.locator("#workspace-data-root").fill("/project/uploads")
+    page.locator("#workspace-name").fill("Local values")
+    page.locator("#workspace-id").fill("local-values")
+    page.locator("#workspace-persist").check()
+    page.locator("#workspace-profile-path").fill("/project/examples/browser.toml")
+    page.locator("#workspace-wizard-submit").click()
+    page.locator("#workspace-wizard").wait_for(state="hidden")
     item = recordings(page, "local-values")[0]
     path = f"/workspaces/local-values/items/{quote(item['id'], safe='')}"
     opened = api(page, path)
@@ -198,7 +240,27 @@ def create_workspace(config):
     assert opened["page"]["rendered_views"][0]["kind"] == "matplotlib"
     changed = api(page, path + "?gain=3")
     assert changed["page"]["statistics"]["Scaled sum"] == 18
+    job = api(page, path + "/batch", {"action": "plot"})
+    status = api(page, job["status_url"])
+    assert status["status"] == "ready", status
+    dimensions = page.evaluate("""url => new Promise((resolve,reject) => {
+      const image = new Image();
+      image.onload = () => resolve([image.naturalWidth,image.naturalHeight]);
+      image.onerror = () => reject(new Error('Local batch image did not load'));
+      image.src = url;
+    })""", status["files"][0]["url"])
+    assert dimensions[0] > 0 and dimensions[1] > 0
+    page.goto(status["result_browser_url"])
+    page.wait_for_selector(".result-browser")
     page.goto(base)
+    page.reload()
+    page.evaluate("async () => { await window.sigvueStatic.ready; }")
+    assert "local-values" in {entry["id"] for entry in api(page, "/workspaces")["workspaces"]}
+    next_manifest = json.loads((Path(SITE) / "manifest.json").read_text())
+    next_manifest["buildId"] = "test-next-deployment"
+    page.context.route("**/manifest.json", lambda route: route.fulfill(
+        content_type="application/json", body=json.dumps(next_manifest),
+    ))
     page.reload()
     page.evaluate("async () => { await window.sigvueStatic.ready; }")
     assert "local-values" in {entry["id"] for entry in api(page, "/workspaces")["workspaces"]}
@@ -210,6 +272,7 @@ def create_workspace(config):
     with ZipFile(backup) as archive:
         assert archive.read("uploads/values.samples") == b"1,2,3"
         assert archive.read("local_demo.py") == source
+        assert archive.read("results/plot.png").startswith(b"\x89PNG")
         assert any(name.endswith(".sigmf-data") for name in archive.namelist())
     page.locator("#local-close").click()
 

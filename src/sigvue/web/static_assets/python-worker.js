@@ -56,8 +56,8 @@ with zipfile.ZipFile(io.BytesIO(_project_archive.to_py())) as archive:
         if entry.is_dir():
             target.mkdir(parents=True, exist_ok=True)
             continue
-        # Refresh deployed code, but keep writable data and companion annotations.
-        if not target.exists() or (_refresh_code and target.suffix in {".py", ".toml"}):
+        # Refresh deployed Python code, never overwrite local profiles or annotations.
+        if not target.exists() or (_refresh_code and target.suffix == ".py"):
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(archive.read(entry))
 _version_path.write_text(_build_id)
